@@ -1,0 +1,36 @@
+# Use the official Streamlit image
+FROM python:3.12-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the requirements file
+COPY requirements.txt .
+
+# Install the dependencies
+RUN pip install -r requirements.txt
+
+# Create directory for credentials
+RUN mkdir -p /root/.config/gcloud
+
+# Copy the rest of the application code
+COPY app.py .
+COPY function_handler.py .
+COPY chart_handler.py .
+COPY logging_config.py .
+COPY .streamlit/secrets.toml .streamlit/secrets.toml
+
+# Copy credentials file (if using service account JSON)
+COPY .streamlit/credentials.json /root/.config/gcloud/application_default_credentials.json
+
+# Expose the port where Streamlit runs
+EXPOSE 8080
+
+HEALTHCHECK CMD curl --fail http://localhost:8080/_stcore/health
+
+# Add environment variables for Google Cloud
+ENV GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
+ENV GOOGLE_CLOUD_PROJECT=tribal-logic-351707
+
+ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+
