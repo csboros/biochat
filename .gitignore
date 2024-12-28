@@ -1,0 +1,21 @@
+# python generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# venv
+.venv
+.streamlit
+.DS_Store
+.python-version
+logs/
+scripts/*.csv 
+scripts/*.md 
+scripts/*.sql
+requirements-dev.lock
+requirements.lock
+
+
