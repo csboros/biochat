@@ -66,7 +66,8 @@ class BiodiversityApp:
     def setup_tools(self):
         """
         Configures the biodiversity tools and function declarations for the application.
-        Sets up various functions for species information, geographical data, and endangered species queries. 
+        Sets up various functions for species information, geographical data, 
+        and endangered species queries. 
         Raises:
             Exception: If tool setup fails
         """
@@ -83,7 +84,8 @@ class BiodiversityApp:
                     self.function_declarations['endangered_orders_for_class'],
                     self.function_declarations['get_occurences'],
                     self.function_declarations['endangered_species_for_country'],
-                    self.function_declarations['number_of_endangered_species_by_conservation_status'],
+                    self.function_declarations
+                        ['number_of_endangered_species_by_conservation_status'],
                     self.function_declarations['google_search'],
                 ],
             )
@@ -131,7 +133,7 @@ class BiodiversityApp:
                 st.session_state.messages = []
                 self.logger.debug("Initialized empty messages in session state")
 
-            # Add system message to set context     
+            # Add system message to set context
             system_message = """You are a biodiversity expert assistant. Your role is to help users
             understand endangered species, their conservation status, and global biodiversity patterns. 
             When providing information:
@@ -142,11 +144,10 @@ class BiodiversityApp:
             """
             self.chat = self.gemini_model.start_chat(history=st.session_state.history)
             self.chat.send_message(system_message)
-            self.chat = self.gemini_model.start_chat(history=st.session_state.history)
-            self.logger.debug("Started new chat session with Gemini") 
+            self.logger.debug("Started new chat session with Gemini")
         except google_exceptions.ResourceExhausted as e:
             self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
-            st.error("API quota has been exceeded. Please wait a few minutes and try again.")  
+            st.error("API quota has been exceeded. Please wait a few minutes and try again.")
         except Exception as e:
             self.logger.error("Error initializing session state: %s", str(e), exc_info=True)
             raise
@@ -163,113 +164,146 @@ class BiodiversityApp:
         self.logger.info("Starting BiodiversityApp")
         try:
             st.title("Biodiversity Chat")
-            # Display message history
-            self.logger.debug("Displaying %d previous messages", len(st.session_state.messages))
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    if "chart_data" in message["content"]:
-                        df = message["content"]["chart_data"]
-                        self.logger.debug("Rendering chart of type: %s", message['content']['type'])
-                        self.chart_handler.draw_chart(
-                            df,
-                            message["content"]["type"],
-                            message["content"]["parameters"]
-                        )
-                    else:
-                        st.markdown(message["content"]["text"])
-
-            # Handle new input
-            if prompt := st.chat_input("Can I help you?"):
-                self.logger.info("Received new user prompt: %s", prompt)
-                st.session_state.messages.append({"role": "user", "content": {"text": prompt}})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
-
-                # Process assistant response
-                with st.chat_message("assistant"):
-                    self.logger.debug("Sending message to Gemini")
-                    response = self.chat.send_message(content=prompt)
-                    function_calling_in_process = True
-                    
-                    while function_calling_in_process:
-                        parts = response.candidates[0].content.parts
-                        function_names = []
-                        function_api_responses = []
-                        function_api_parameters = []
-                        
-                        # Call functions one by one 
-                        for part in parts:
-                            if part.function_call is not None:
-
-                                function_name = part.function_call.name
-                                self.logger.info("Processing function call: %s", function_name)
-                                function_names.append(function_name)
-                                params = dict(part.function_call.args.items())
-                                function_api_parameters.append(params)
-                                self.logger.debug("Function parameters: %s", params)
-
-                                function_api_response = self.function_handler[function_name](params)
-                                self.logger.info("len(function_api_response): %d", len(function_api_response))
-                                function_api_responses.append(function_api_response)
-                                self.logger.debug("Received response for function: %s", function_name)
-
-                        # Process function responses
-                        if len(function_names) > 0:
-                            num_responses = len(function_names)
-                            self.logger.debug("Processing %d function responses", num_responses)
-                            func_parts = []
-                            for i, function_name in enumerate(function_names):
-                                self.logger.debug("Processing response for function: %s", function_name)
-                                # Anything that can be handled locally should be handled here 
-                                if function_name == "get_occurences":
-                                    self.process_occurrences_data(
-                                        function_api_responses[i],
-                                        function_api_parameters[i]
-                                    )
-                                elif function_name in ('endangered_species_for_country',
-                                      'number_of_endangered_species_by_conservation_status',
-                                      'endangered_species_for_family', 'endangered_families_for_order'):
-                                    st.session_state.messages.append({
-                                        "role": "assistant",
-                                        "content": {"text": function_api_responses[i]}
-                                    })
-                                    st.markdown(function_api_responses[i])
-                                # Anything that can't be handled locally should be sent back to Gemini
-                                else:
-                                    func_parts.append(Part.from_function_response(
-                                        name=function_name,
-                                        response={"content": {"text": function_api_responses[i]}},
-                                    ))
-                            # Send function responses back to Gemini if any and use the response to check for function calls
-                            if len(func_parts) > 0:
-                                self.logger.debug("Sending function responses back to Gemini")
-                                response = self.chat.send_message(func_parts)
-                            # If no function responses, then we have the final response
-                            else:
-                                function_calling_in_process = False
-                                self.logger.info("Received final response from Gemini")
-                                st.session_state.history = self.chat.history
-
-                        else:
-                            # If no function responses, then we have the final response
-                            function_calling_in_process = False
-                            if response is not None:
-                                response = response.candidates[0].content.parts[0]
-                                response_text = response.text
-                                self.logger.info("Received final response from Gemini: %s", response_text)
-                                st.session_state.messages.append({
-                                    "role": "assistant", 
-                                    "content": {"text": response_text}
-                                })
-                                st.write(response_text)
-                                st.session_state.history = self.chat.history
-        except (ValueError, RuntimeError, IOError) as e:
-            self.logger.error("Error in main application loop: %s", str(e), exc_info=True)
-            st.error("An unexpected error occurred. Please try again later.")
+            self.display_message_history()
+            self.handle_user_input()
         except google_exceptions.ResourceExhausted as e:
             self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
             st.error("API quota has been exceeded. Please wait a few minutes and try again.")
+        except (ValueError, RuntimeError, AttributeError) as e:
+            self.logger.error("Error in main application loop: %s", str(e), exc_info=True)
+            st.error("An unexpected error occurred. Please try again later.")
 
+    def display_message_history(self):
+        """
+        Displays the chat history including text messages and charts.
+        """
+        self.logger.debug("Displaying %d previous messages", len(st.session_state.messages))
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                if "chart_data" in message["content"]:
+                    df = message["content"]["chart_data"]
+                    self.logger.debug("Rendering chart of type: %s", message['content']['type'])
+                    self.chart_handler.draw_chart(
+                        df,
+                        message["content"]["type"],
+                        message["content"]["parameters"]
+                    )
+                else:
+                    st.markdown(message["content"]["text"])
+
+    def handle_user_input(self):
+        """
+        Processes new user input and generates responses.
+        """
+        if prompt := st.chat_input("Can I help you?"):
+            self.logger.info("Received new user prompt: %s", prompt)
+            self.add_message_to_history("user", {"text": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.chat_message("assistant"):
+                self.process_assistant_response(prompt)
+
+    def process_assistant_response(self, prompt):
+        """
+        Processes the assistant's response, including function calls.
+        
+        Args:
+            prompt (str): The user's input prompt
+        """
+        self.logger.debug("Sending message to Gemini")
+        response = self.chat.send_message(content=prompt)
+        # Loop until all function calls are processed
+        while True:
+            parts = response.candidates[0].content.parts
+            function_calls = self.collect_function_calls(parts)
+            # If no function calls are found, handle the final response
+            if not function_calls:
+                self.handle_final_response(response)
+                break
+            # Process function calls and get a new response
+            response = self.process_function_calls(function_calls)
+            # If no new response is needed (all functions handled locally), exit the loop
+            if response is None:
+                break
+
+    def collect_function_calls(self, parts):
+        """
+        Collects function calls from response parts.
+        
+        Args:
+            parts (list): List of response parts from Gemini
+            
+        Returns:
+            list: List of dictionaries containing function call information
+        """
+        function_calls = []
+        for part in parts:
+            if part.function_call is not None:
+                function_name = part.function_call.name
+                params = dict(part.function_call.args.items())
+                self.logger.info("Processing function call: %s", function_name)
+                self.logger.debug("Function parameters: %s", params)
+                response = self.function_handler[function_name](params)
+                function_calls.append({
+                    'name': function_name,
+                    'params': params,
+                    'response': response
+                })
+        return function_calls
+
+    def process_function_calls(self, function_calls):
+        """
+        Processes function calls and their responses.
+        
+        Args:
+            function_calls (list): List of function calls to process
+            
+        Returns:
+            Response: New response from Gemini if needed
+        """
+        func_parts = []
+        for call in function_calls:
+            if call['name'] == "get_occurences":
+                self.process_occurrences_data(call['response'], call['params'])
+            elif call['name'] in ('endangered_species_for_country',
+                              'number_of_endangered_species_by_conservation_status',
+                              'endangered_species_for_family', 
+                              'endangered_families_for_order'):
+                self.add_message_to_history("assistant", {"text": call['response']})
+                st.markdown(call['response'])
+            else:
+                func_parts.append(Part.from_function_response(
+                    name=call['name'],
+                    response={"content": {"text": call['response']}},
+                ))
+        if func_parts:
+            self.logger.debug("Sending function responses back to Gemini")
+            return self.chat.send_message(func_parts)
+        return None
+
+    def handle_final_response(self, response):
+        """
+        Handles the final response from the assistant.
+        
+        Args:
+            response: The response from Gemini
+        """
+        if response is not None:
+            response_text = response.candidates[0].content.parts[0].text
+            self.logger.info("Received final response from Gemini: %s", response_text)
+            self.add_message_to_history("assistant", {"text": response_text})
+            st.write(response_text)
+            st.session_state.history = self.chat.history
+
+    def add_message_to_history(self, role, content):
+        """
+        Adds a message to the session state history.
+        
+        Args:
+            role (str): The role of the message sender
+            content (dict): The content of the message
+        """
+        st.session_state.messages.append({"role": role, "content": content})
 
     def process_occurrences_data(self, data_response, parameters):
         """
@@ -290,7 +324,9 @@ class BiodiversityApp:
             chart_type = parameters.get("chart_type", "hexagon")
             self.logger.debug("Parameters: %s", parameters)
             if parameters.get("country_code", None) is not None:
-                parameters["geojson"] = self.function_handler['get_country_geojson'](parameters)[:20000]
+                parameters["geojson"] = (
+                    self.function_handler['get_country_geojson'](parameters)[:20000]
+                )
             self.chart_handler.draw_chart(df, chart_type, parameters)
             st.session_state.messages.append({"role": "assistant",
                                               "content": {"chart_data": df, "type": chart_type,
