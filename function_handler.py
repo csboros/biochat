@@ -121,13 +121,19 @@ class FunctionHandler:
             ),
             "get_occurences": FunctionDeclaration(
                 name="get_occurences",
-                description="Get occurences, distribution for a given species, show where species is found, where it lives.",
+                description=(
+                    "Get occurences, distribution for a given species, "
+                    "show where species is found, where it lives."
+                ),
                 parameters={
                     "type": "object",
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "name of the species to get occurences for, if it is a common name, use the scientific name",
+                            "description": (
+                                "name of the species to get occurences for, "
+                                "if it is a common name, use the scientific name"
+                            ),
                         },
                         "country_code": {
                             "type": "string",
@@ -157,7 +163,10 @@ class FunctionHandler:
             ),
             "endangered_species_for_family": FunctionDeclaration(
                 name="endangered_species_for_family",
-                description="Get list of endangered species for a given family name, with link to ICFN",
+                description=(
+                    "Get list of endangered species for a given family name, "
+                    "with link to ICFN"
+                ),
                 parameters={
                     "type": "object",
                     "properties": {
@@ -167,9 +176,12 @@ class FunctionHandler:
                         },
                         "conservation_status": {
                             "type": "string",
-                            "description": "optional conservation status to filter by, possible values are: "
-                            "Least Concern, Endangered, Near Threatened, Vulnerable, Data Deficient, "
-                            "Critically Endangered, Extinct,",
+                            "description": (
+                                "optional conservation status to filter by, "
+                                "possible values are: "
+                                "Least Concern, Endangered, Near Threatened, Vulnerable, "
+                                "Data Deficient, Critically Endangered, Extinct,"
+                            ),
                         }
                     },
                     "required": ["family_name"]  # conservation_status is optional
@@ -242,9 +254,12 @@ class FunctionHandler:
                         },
                         "conservation_status": {
                             "type": "string",
-                            "description": "optional conservation status to filter by, possible values are: "
-                            "Least Concern, Endangered, Near Threatened, Vulnerable, Data Deficient, "
-                            "Critically Endangered, Extinct,",
+                            "description": (
+                                "optional conservation status to filter by, "
+                                "possible values are: "
+                                "Least Concern, Endangered, Near Threatened, Vulnerable, "
+                                "Data Deficient, Critically Endangered, Extinct,"
+                            ),
                         }
                     },
                 },
@@ -265,9 +280,12 @@ class FunctionHandler:
                         },
                         "conservation_status": {
                             "type": "string",
-                            "description": "optional conservation status to filter by, possible values are:"
-                            "Least Concern, Endangered, Near Threatened, Vulnerable, Data Deficient, "
-                            "Critically Endangered, Extinct,",
+                            "description": (
+                                "optional conservation status to filter by, "
+                                "possible values are:"
+                                "Least Concern, Endangered, Near Threatened, Vulnerable, "
+                                "Data Deficient, Critically Endangered, Extinct,"
+                            ),
                         }
 
                     },
@@ -473,8 +491,12 @@ class FunctionHandler:
         species_name = content['name']
         species_info = species.name_backbone(species_name)
         return json.dumps(species_info)
-
-    def handle_get_country_geojson(self, content):
+    @st.cache_data(
+        ttl=3600,  # Cache for 1 hour
+        show_spinner="Translating species name...",
+        max_entries=100
+    )
+    def handle_get_country_geojson(_self, content): # pylint: disable=no-self-argument
         """
         Retrieves GeoJSON data for a specific country from cached world data.
         
@@ -492,28 +514,28 @@ class FunctionHandler:
         """
         country_name = content.get('country_name')
         country_code = content.get('country_code')
-        self.logger.info("Fetching GeoJSON data for country: %s", country_name)
+        _self.logger.info("Fetching GeoJSON data for country: %s", country_name)
         try:
             country_data = None
             if country_code is not None:
-                country_data = next((feature for feature in self.world_gdf.get("features", [])
+                country_data = next((feature for feature in _self.world_gdf.get("features", [])
                                      if feature["properties"]["ISO_A2"].lower()
                                         == country_code.lower()), None)
             elif country_name is not None:
-                country_data = next((feature for feature in self.world_gdf.get("features", [])
+                country_data = next((feature for feature in _self.world_gdf.get("features", [])
                                      if feature["properties"]["NAME_EN"].lower()
                                         == country_name.lower()), None)
             if country_data is None or len(country_data) == 0:
                 country_identifier = country_name if country_name is not None else country_code
-                self.logger.warning("Country not found: %s", country_identifier)
+                _self.logger.warning("Country not found: %s", country_identifier)
                 return {"error": f"Country not found: {country_identifier}"}
             # Convert to GeoJSON
             country_geojson = country_data
-            self.logger.info("Successfully retrieved GeoJSON for %s", country_name)
-            self.logger.info("GeoJSON data: %s", country_geojson)
+            _self.logger.info("Successfully retrieved GeoJSON for %s", country_name)
+            _self.logger.info("GeoJSON data: %s", country_geojson)
             return json.dumps(country_geojson)
         except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
-            self.logger.error("Error getting GeoJSON for country %s: %s",
+            _self.logger.error("Error getting GeoJSON for country %s: %s",
                               country_name, str(e), exc_info=True)
             return {"error": f"Error processing request: {str(e)}"}
 
@@ -598,10 +620,8 @@ class FunctionHandler:
                 GROUP BY order_name 
                 ORDER BY order_name
             """
-            
             project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
             query = query.format(project_id)
-            
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
                     bigquery.ScalarQueryParameter("class", "STRING", clazz)
@@ -654,10 +674,8 @@ class FunctionHandler:
                 GROUP BY family_name 
                 ORDER BY family_name
             """
-            
             project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
             query = query.format(project_id)
-            
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
                     bigquery.ScalarQueryParameter("order_name", "STRING", order_name)
@@ -667,7 +685,8 @@ class FunctionHandler:
                 query,
                 job_config=job_config
             )
-            intro = f"Here are the families within the {order_name} order, along with the number of endangered species in each:\n\n"
+            intro = (f"Here are the families within the {order_name} order, along with "
+                    "the number of endangered species in each:\n\n")
             results = []
             for row in query_job:
                 formatted_entry = f"* **{row['family_name']}**: {row['cnt']} endangered species"
@@ -722,25 +741,24 @@ class FunctionHandler:
                GROUP BY genus_name, species_name
                ORDER BY species_header
             """
-            conservation_status_filter = (      
+            conservation_status_filter = (
                 "AND LOWER(conservation_status) = LOWER(@conservation_status)"
                 if conservation_status
                 else ""
             )
-            
             project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-            query = base_query.format(project_id, conservation_status_filter=conservation_status_filter)
+            query = base_query.format(project_id,
+                                        conservation_status_filter=conservation_status_filter)
             parameters = [
                 bigquery.ScalarQueryParameter("family_name", "STRING", family_name)
             ]
             if conservation_status:
                 parameters.append(
-                    bigquery.ScalarQueryParameter("conservation_status", "STRING", conservation_status)
+                    bigquery.ScalarQueryParameter("conservation_status", "STRING",
+                                                    conservation_status)
                 )
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
-
             query_job = client.query(query, job_config=job_config)
-            
             # Collect all scientific names first
             scientific_names = []
             results_data = []
@@ -752,14 +770,16 @@ class FunctionHandler:
             # Translation takes too long, so we skip it
 #            common_names_dict = to_common(scientific_names)
             common_names_dict = {}
-            
             results = []
             for scientific_name, urls in results_data:
                 urls_formatted = '\n'.join(f'    * {url}' for url in urls.split('||'))
                 common_names = common_names_dict.get(scientific_name, [])
                 print(common_names)
-                common_names_str = f" ({', '.join(common_names[1])})" if common_names and len(common_names) > 1 else ""
-                formatted_entry = f"* **{scientific_name}**{common_names_str}:\n{urls_formatted}"
+                common_names_str = (f" ({', '.join(common_names[1])})"
+                                    if common_names and len(common_names) > 1
+                                    else "")
+                formatted_entry = (f"* **{scientific_name}**{common_names_str}:\n"
+                                   f"{urls_formatted}")
                 results.append(formatted_entry)
 
             final_text = '\n'.join(results)
@@ -827,25 +847,24 @@ class FunctionHandler:
                 "AND LOWER(conservation_status) = LOWER(@conservation_status)"
                 if conservation_status
                 else ""
-            )           
+            )
             project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-            query = base_query.format(project_id, project_id, conservation_status_filter=conservation_status_filter)
-
+            query = base_query.format(project_id, project_id,
+                                      conservation_status_filter=conservation_status_filter)
             # Set up query parameters based on whether conservation_status is provided
             parameters = [
                 bigquery.ScalarQueryParameter("country_code", "STRING", country_code)
             ]
             if conservation_status:
                 parameters.append(
-                    bigquery.ScalarQueryParameter("conservation_status", "STRING", conservation_status)
+                    bigquery.ScalarQueryParameter("conservation_status", "STRING",
+                                                  conservation_status)
                 )
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
-
             # Time the BigQuery query execution
             start_query = time.time()
             query_job = client.query(query, job_config=job_config)
             query_time = time.time() - start_query
-            
             # Log query timing information
             self.logger.info(
                 "BigQuery query completed in %.2f seconds",
@@ -863,14 +882,12 @@ class FunctionHandler:
                     row['conservation_status'],
                     row['url']
                 ))
-            
             # Time the common name translation
             start_translation = time.time()
             # Translation takes too long, so we skip it
 #            common_names_dict = to_common(scientific_names)
             common_names_dict = {}
             translation_time = time.time() - start_translation
-            
             # Log timing information
             self.logger.info(
                 "Name translation completed in %.2f seconds for %d species",
@@ -881,9 +898,11 @@ class FunctionHandler:
             result = "**Only Mammals are included in the list.**\n"
             for scientific_name, family, status, url in results_data:
                 common_names = common_names_dict.get(scientific_name, [])
-                common_names_str = f" ({', '.join(common_names[1])})" if common_names and len(common_names) > 1 else ""
-                result += f"* **{scientific_name}**{common_names_str} ({family}, {status}):\n{url}\n"
-            
+                common_names_str = (f" ({', '.join(common_names[1])})"
+                                    if common_names and len(common_names) > 1
+                                    else "")
+                result += (f"* **{scientific_name}**{common_names_str} ({family}, "
+                           f"{status}):\n{url}\n")
             return result
 
         except Exception as e:
@@ -940,8 +959,8 @@ class FunctionHandler:
             # Set up query parameters only if country_code is provided
             parameters = []
             if country_code:
-                parameters.append(bigquery.ScalarQueryParameter("country_code", "STRING", country_code))
-
+                parameters.append(bigquery.ScalarQueryParameter("country_code", "STRING",
+                                                                country_code))
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
 
             # Time the BigQuery query execution
@@ -949,7 +968,6 @@ class FunctionHandler:
             query_job = client.query(query, job_config=job_config)
             results = query_job.result()  # Wait for query to complete
             query_time = time.time() - start_query
-            
             # Log query timing information
             self.logger.info(
                 "BigQuery query completed in %.2f seconds",

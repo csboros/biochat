@@ -244,7 +244,8 @@ class ChartHandler:
             # Create a copy to avoid modifying original data
             filtered_df = df.copy()
             # First check if we have any valid data
-            if filtered_df.empty or filtered_df['decimallatitude'].isna().all() or filtered_df['decimallongitude'].isna().all():
+            if filtered_df.empty or filtered_df['decimallatitude'].isna().all() \
+                or filtered_df['decimallongitude'].isna().all():
                 logging.warning("No valid coordinates in dataset")
                 return None
 
@@ -253,11 +254,10 @@ class ChartHandler:
             lat_upper = np.percentile(filtered_df['decimallatitude'], 100 - percentile_cutoff)
             lon_lower = np.percentile(filtered_df['decimallongitude'], percentile_cutoff)
             lon_upper = np.percentile(filtered_df['decimallongitude'], 100 - percentile_cutoff)
-            
             filtered_df = filtered_df[
-                (filtered_df['decimallatitude'] >= lat_lower) & 
+                (filtered_df['decimallatitude'] >= lat_lower) &
                 (filtered_df['decimallatitude'] <= lat_upper) &
-                (filtered_df['decimallongitude'] >= lon_lower) & 
+                (filtered_df['decimallongitude'] >= lon_lower) &
                 (filtered_df['decimallongitude'] <= lon_upper)
             ]
 
@@ -270,23 +270,25 @@ class ChartHandler:
 
                 # Keep only cells with point counts above the 25th percentile
                 density_threshold = max(min_points, np.percentile(grid_counts, 25))
-                dense_cells = grid_counts[grid_counts >= density_threshold].index  
+                dense_cells = grid_counts[grid_counts >= density_threshold].index
                 if not dense_cells.empty:
                     filtered_df = filtered_df[
-                        filtered_df.apply(lambda x: 
+                        filtered_df.apply(lambda x:
                             (pd.qcut([x['decimallatitude']], q=15, duplicates='drop')[0],
-                             pd.qcut([x['decimallongitude']], q=15, duplicates='drop')[0]) 
+                             pd.qcut([x['decimallongitude']], q=15, duplicates='drop')[0])
                             in dense_cells, axis=1)
                     ]
             except ValueError as e:
-                logging.warning("Density-based filtering failed: %s. Using percentile-filtered dataset.", e)
+                logging.warning("Density-based filtering failed: %s. "
+                                "Using percentile-filtered dataset.", e)
             # If filtering removed too many points, use percentile-filtered dataset
             if len(filtered_df) < len(df) * 0.1:  # If we've removed more than 90% of points
-                logging.warning("Density filtering too aggressive. Using percentile-filtered dataset.")
+                logging.warning("Density filtering too aggressive. "
+                                "Using percentile-filtered dataset.")
                 filtered_df = df[
-                    (df['decimallatitude'] >= lat_lower) & 
+                    (df['decimallatitude'] >= lat_lower) &
                     (df['decimallatitude'] <= lat_upper) &
-                    (df['decimallongitude'] >= lon_lower) & 
+                    (df['decimallongitude'] >= lon_lower) &
                     (df['decimallongitude'] <= lon_upper)
                 ]
             # Calculate bounds from filtered data
@@ -297,7 +299,7 @@ class ChartHandler:
             # Verify we have valid bounds
             if np.isnan(min_lat) or np.isnan(min_lon) or np.isnan(max_lat) or np.isnan(max_lon):
                 logging.warning("Invalid bounds calculated")
-                return None      
+                return None
             return [[min_lat, min_lon], [max_lat, max_lon]]
         except (ValueError, TypeError, pd.errors.EmptyDataError) as e:
             logging.error("Error getting bounds from data: %s", e)
