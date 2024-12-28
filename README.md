@@ -86,9 +86,7 @@ This application serves as a powerful tool for researchers, conservationists, an
    - Protected areas overlay
 
 
-## Technical Documentation
-
-### Configuration
+## Technical Documentation and Configuration
 
 ### Secrets Management
 
@@ -178,27 +176,26 @@ WHERE es.conservation_status = CAST(cs.id AS STRING);
  
 (*) IUCN (2022). The IUCN Red List of Threatened Species. Version 2022-2. https://www.iucnredlist.org. Downloaded on 2023-05-09. https://doi.org/10.15468/0qnb58 accessed via GBIF.org on 2023-11-17. accessed via GBIF.org on 2024-12-28.
 
-### Deploying and running the application in Production on Google Cloud Run
+## Deploying and running the application in Production on Google Cloud Run
 
-# Build docker image 
+#### Build docker image 
 ```bash
 export PROJECT_ID="[your-project-id]"
-export PROJECT_ID="***REMOVED***"
 docker build --platform linux/amd64 -t gcr.io/$PROJECT_ID/biochat-app:latest .
 ```
-# Push docker image to Google repository
+#### Push docker image to Google repository
 ```bash
 docker push  gcr.io/$PROJECT_ID/biochat-app:latest  
 ```
 
-# Create the secrets
+#### Create the secrets
 ```bash
 gcloud secrets create GOOGLE_CLOUD_PROJECT --data-file=- <<< "[your-project-id]"
 gcloud secrets create GOOGLE_API_KEY --data-file=- <<< "[your-google-api-key]"
 gcloud secrets create GOOGLE_CSE_ID --data-file=- <<< "[your-cse-id]"
 ```
 
-# Grant Secret Manager access to you service principal 
+#### Grant Secret Manager access to you service principal 
 ```bash
 export SERVICE_ACCOUNT="[your-service-principal]"
 export SERVICE_ACCOUNT="153810785966-compute@developer.gserviceaccount.com"
@@ -218,26 +215,26 @@ gcloud secrets add-iam-policy-binding GOOGLE_CLOUD_PROJECT \
     --role="roles/secretmanager.secretAccessor"
 ```
 
-# Grant Vertex AI User role to the service principal
+#### Grant Vertex AI User role to the service principal
 ```bash
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
     --role="roles/aiplatform.user"   
 ```
-# Grant BigQuery Job User role (for creating jobs)
+#### Grant BigQuery Job User role (for creating jobs)
 ```bash
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
     --role="roles/bigquery.jobUser"
 ```
-# Grant BigQuery Data Viewer role (for reading data)
+#### Grant BigQuery Data Viewer role (for reading data)
 ```bash
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
     --role="roles/bigquery.dataViewer"
 ```
 
-# Deploy application and reference secrets from Google Cloud Run 
+#### Deploy application and reference secrets from Google Cloud Run 
 ```bash
 gcloud run deploy biochat-app \
   --image gcr.io/$PROJECT_ID/biochat-app:latest \
