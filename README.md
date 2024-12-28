@@ -136,11 +136,11 @@ you have to be logged in to google cloud and have to select the relevant cloud p
 2. build the docker image using Dockerfile_local, it copies the credentials into the docker image
 ```bash
       docker build -f Dockerfile_local -t biochat .
-      ```
+```
 3. Run the application: 
-      ```bash
+```bash
       docker run  -p 8888:8080 biochat
-      ```
+```
 4. Access the application under http://localhost:8888 
 
 
@@ -198,7 +198,6 @@ gcloud secrets create GOOGLE_CSE_ID --data-file=- <<< "[your-cse-id]"
 #### Grant Secret Manager access to you service principal 
 ```bash
 export SERVICE_ACCOUNT="[your-service-principal]"
-export SERVICE_ACCOUNT="153810785966-compute@developer.gserviceaccount.com"
 
 gcloud secrets add-iam-policy-binding GOOGLE_API_KEY \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
@@ -209,7 +208,6 @@ gcloud secrets add-iam-policy-binding GOOGLE_CSE_ID \
     --role="roles/secretmanager.secretAccessor"
 
 
-export SERVICE_ACCOUNT="153810785966-compute@developer.gserviceaccount.com"
 gcloud secrets add-iam-policy-binding GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
     --role="roles/secretmanager.secretAccessor"
