@@ -73,6 +73,7 @@ class BiodiversityApp:
             logger.error("API quota exceeded: %s", str(e), exc_info=True)
             st.error("API quota has been exceeded. "
                      "Please wait a few minutes and reload the application")
+            raise
         except Exception as e:
             logger.error("Error during initialization: %s", str(e), exc_info=True)
             raise
