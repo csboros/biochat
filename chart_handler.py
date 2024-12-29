@@ -34,6 +34,7 @@ class ChartHandler:
         The default view provides a global perspective centered slightly east of
         Greenwich (30° longitude) to show most landmasses.
         """
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.default_view_state = pdk.ViewState(
             latitude=0.0,
             longitude=30,
@@ -46,121 +47,134 @@ class ChartHandler:
         Main entry point for creating visualizations.
 
         Args:
-            data (pd.DataFrame): DataFrame containing at minimum 'decimallatitude'
-                and 'decimallongitude' columns
-            chart_type (str): Type of visualization to create. Supported types:
-                - "heatmap": Density-based heatmap
-                - "hexagon"/"hex"/"hexagons"/"hexbin": Hexagonal binning
-            params (dict): Additional parameters for the visualization including:
-                - species_name (str): Name of species being visualized
+            data (pd.DataFrame): DataFrame containing coordinate data
+            chart_type (str): Type of visualization to create
+            params (dict): Additional parameters for visualization
 
         Raises:
-            ValueError: If an unsupported chart type is specified
+            ValueError: If chart_type is invalid or data format is incorrect
+            TypeError: If arguments are of wrong type
+            pd.errors.EmptyDataError: If DataFrame is empty
         """
-        if chart_type.lower() == "heatmap":
-            self.draw_heatmap(data)
-        else:
-            self.draw_hexagon_map(data, params)
+        try:
+            if not isinstance(data, pd.DataFrame):
+                raise TypeError("Data must be a pandas DataFrame")
+            if data.empty:
+                raise pd.errors.EmptyDataError("Empty DataFrame provided")
+            if chart_type.lower() == "heatmap":
+                self.draw_heatmap(data)
+            elif chart_type.lower() in ["hexagon", "hex", "hexagons", "hexbin"]:
+                self.draw_hexagon_map(data, params)
+            else:
+                raise ValueError(f"Unsupported chart type: {chart_type}")
+        except (ValueError, TypeError, pd.errors.EmptyDataError) as e:
+            self.logger.error("Error creating visualization: %s", str(e), exc_info=True)
+            raise
 
     def draw_heatmap(self, df):
         """
         Creates a heatmap visualization using PyDeck's HeatmapLayer.
 
-        Args:
-            df (pd.DataFrame): DataFrame containing coordinate data
-            parameters (dict): Visualization parameters including:
-                - species_name (str): Species name for tooltip display
-
-        Note:
-            The heatmap intensity is automatically calculated based on point density.
-            View state is adjusted to fit all data points with outlier filtering.
+        Raises:
+            ValueError: If coordinate data is invalid
+            TypeError: If DataFrame columns are of wrong type
+            st.StreamlitAPIException: If chart rendering fails
         """
-        # Get bounds from data
-        bounds = self._get_bounds_from_data(df)
-        view_state = self.default_view_state
-        if bounds:
-            view_state = pdk.ViewState(
-                latitude=sum(coord[0] for coord in bounds)/2,
-                longitude=sum(coord[1] for coord in bounds)/2,
-                zoom=3,
-                pitch=30
-            )
-
-        st.pydeck_chart(
-            pdk.Deck(
-                initial_view_state=view_state,
-                layers=[
-                    pdk.Layer(
-                        "HeatmapLayer",
-                        data=df,
-                        get_position=["decimallongitude", "decimallatitude"],
-                        pickable=True,
-                        auto_highlight=True,
-                    )
-                ],
-                tooltip={
-                    "html": "Species<br/>Total Load: {parameters['species_name']}",
-                    "style": {
-                        "backgroundColor": "steelblue",
-                        "color": "white"
-                    }
-                },
-            )
-        )
-    def draw_hexagon_map(self, data, parameters):
-        """
-        Creates a 3D hexagon bin visualization using PyDeck's HexagonLayer.
-
-        Args:
-            data (pd.DataFrame): DataFrame containing coordinate data
-            parameters (dict): Visualization parameters including:
-                - species_name (str): Species name for tooltip display
-
-        Note:
-            Hexagon height represents point density in each bin.
-            The map includes interactive tooltips showing occurrence counts.
-        """
-        logging.debug("Drawing hexagon map with parameters: %s", parameters)
-        bounds = self._get_bounds_from_data(data)
-
-        if bounds is not None:
-            view_state = pdk.ViewState(
-                    latitude=sum(coord[0] for coord in bounds)/len(bounds),
-                    longitude=sum(coord[1] for coord in bounds)/len(bounds),
+        try:
+            bounds = self._get_bounds_from_data(df)
+            view_state = self.default_view_state
+            if bounds:
+                view_state = pdk.ViewState(
+                    latitude=sum(coord[0] for coord in bounds)/2,
+                    longitude=sum(coord[1] for coord in bounds)/2,
                     zoom=3,
                     pitch=30
-            )
-        else:
-            view_state = self.default_view_state
+                )
 
-        st.pydeck_chart(
-            pdk.Deck(
-                initial_view_state=view_state,
-                layers=[
-                    pdk.Layer(
-                        "HexagonLayer",
-                        data=data,
-                        get_position=["decimallongitude", "decimallatitude"],
-                        radius=10000,
-                        elevation_scale=5000,
-                        elevation_range=[0, 1000],
-                        pickable=True,
-                        extruded=True,
-                    )
-                ],
+            st.pydeck_chart(
+                pdk.Deck(
+                    initial_view_state=view_state,
+                    layers=[
+                        pdk.Layer(
+                            "HeatmapLayer",
+                            data=df,
+                            get_position=["decimallongitude", "decimallatitude"],
+                            pickable=True,
+                            auto_highlight=True,
+                        )
+                    ],
                     tooltip={
-                        "html": (
-                            f"{parameters.get('species_name', '')}"
-                            "<br/>Occurrences: {elevationValue}"
-                        ) if parameters.get('species_name') else None,
+                        "html": "Species: {parameters['species_name']}",
                         "style": {
-                        "backgroundColor": "steelblue", 
-                        "color": "white"
-                    } if parameters.get('species_name') else None
-                },
+                            "backgroundColor": "steelblue",
+                            "color": "white"
+                        }
+                    },
+                )
             )
-        )
+        except (ValueError, TypeError) as e:
+            self.logger.error("Error creating heatmap: %s", str(e), exc_info=True)
+            raise
+        except Exception as e:
+            self.logger.error("Streamlit chart error: %s", str(e), exc_info=True)
+            raise
 
+    def draw_hexagon_map(self, data, parameters):
+        """
+        Creates a 3D hexagon bin visualization.
+
+        Raises:
+            ValueError: If coordinate data is invalid
+            TypeError: If parameters are of wrong type
+            st.StreamlitAPIException: If chart rendering fails
+        """
+        try:
+            logging.debug("Drawing hexagon map with parameters: %s", parameters)
+            bounds = self._get_bounds_from_data(data)
+
+            if bounds is not None:
+                view_state = pdk.ViewState(
+                        latitude=sum(coord[0] for coord in bounds)/len(bounds),
+                        longitude=sum(coord[1] for coord in bounds)/len(bounds),
+                        zoom=3,
+                        pitch=30
+                )
+            else:
+                view_state = self.default_view_state
+
+            st.pydeck_chart(
+                pdk.Deck(
+                    initial_view_state=view_state,
+                    layers=[
+                        pdk.Layer(
+                            "HexagonLayer",
+                            data=data,
+                            get_position=["decimallongitude", "decimallatitude"],
+                            radius=10000,
+                            elevation_scale=5000,
+                            elevation_range=[0, 1000],
+                            pickable=True,
+                            extruded=True,
+                        )
+                    ],
+                        tooltip={
+                            "html": (
+                                f"{parameters.get('species_name', '')}"
+                                "<br/>Occurrences: {elevationValue}"
+                            ) if parameters.get('species_name') else None,
+                            "style": {
+                            "backgroundColor": "steelblue", 
+                            "color": "white"
+                        } if parameters.get('species_name') else None
+                    },
+                )
+            )
+        except (ValueError, TypeError) as e:
+            self.logger.error("Error creating hexagon map: %s", str(e), exc_info=True)
+            raise
+        except Exception as e:
+            self.logger.error("Streamlit chart error: %s", str(e), exc_info=True)
+            raise
 
     def _get_bounds_from_data(self, df, percentile_cutoff=2.5, min_points=10):
         """Calculates appropriate map bounds from coordinate data with outlier filtering."""
