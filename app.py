@@ -290,7 +290,9 @@ class BiodiversityApp:
                 - country_code (str, optional): Country code for geographical data
                 
         Raises:
-            Exception: If data processing or visualization fails
+            TypeError: If data_response format is invalid for JSON normalization
+            ValueError: If data processing or visualization fails
+            AttributeError: If required parameters are missing or session state is not initialized
         """
         self.logger.debug("Processing occurrences data")
         try:
@@ -301,8 +303,11 @@ class BiodiversityApp:
             st.session_state.messages.append({"role": "assistant",
                                               "content": {"chart_data": df, "type": chart_type,
                                               "parameters": parameters}})
-        except Exception as e:
-            self.logger.error("Error processing occurrences data: %s", str(e), exc_info=True)
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid data format: %s", str(e), exc_info=True)
+            raise
+        except AttributeError as e:
+            self.logger.error("Missing required attribute: %s", str(e), exc_info=True)
             raise
 
 if __name__ == "__main__":

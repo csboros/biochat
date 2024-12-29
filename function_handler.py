@@ -11,13 +11,13 @@ import time
 import logging
 from typing import List
 import requests
+import google.api_core.exceptions
 from google.cloud import bigquery
 from pygbif import species
 #from EcoNameTranslator import to_common
 from langchain_google_community import GoogleSearchAPIWrapper
 import streamlit as st
 from function_declarations import FUNCTION_DECLARATIONS
-
 
 class FunctionHandler:
     """
@@ -114,21 +114,23 @@ class FunctionHandler:
             list: List of dictionaries containing occurrence data with latitude and longitude
 
         Raises:
-            Exception: If BigQuery query fails or returns invalid data
+            ValueError: If species_name is invalid or not found
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
+            KeyError: If required fields are missing from the response
         """
-        species_name = content['species_name']
-        if 'country_code' in content:
-            country_code = content['country_code']
-            _self.logger.info("Fetching occurrences for species: %s and country: %s",
-                              species_name, country_code)
-        else:
-            country_code = None
-            _self.logger.info("Fetching occurrences for species: %s", species_name)
         try:
+            species_name = content['species_name']
+            if 'country_code' in content:
+                country_code = content['country_code']
+                _self.logger.info("Fetching occurrences for species: %s and country: %s",
+                              species_name, country_code)
+            else:
+                country_code = None
+                _self.logger.info("Fetching occurrences for species: %s", species_name)
             client = bigquery.Client(
-                project=os.getenv('GOOGLE_CLOUD_PROJECT'),
-            )
-
+                    project=os.getenv('GOOGLE_CLOUD_PROJECT'),
+                )
             # Base query with parameterization
             query = """
                 SELECT 
@@ -174,13 +176,16 @@ class FunctionHandler:
             )
             return results
 
-        except Exception as e:
-            _self.logger.error(
-                "Error fetching terrestrial human coexistence index: %s",
-                str(e),
-                exc_info=True
-            )
+        except google.api_core.exceptions.GoogleAPIError as e:
+            _self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
+        except KeyError as e:
+            _self.logger.error("Missing required field: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            _self.logger.error("Invalid input: %s", str(e), exc_info=True)
+            raise
+
 
     @st.cache_data(
         ttl=3600,  # Cache for 1 hour
@@ -277,8 +282,11 @@ class FunctionHandler:
                  or error message if country not found
         
         Raises:
-            Exception: If there is an error processing the GeoJSON data
-        """
+            ValueError: If country_name is invalid or not found
+            FileNotFoundError: If GeoJSON file is not found
+            TypeError: If content is not in expected format
+            json.JSONDecodeError: If GeoJSON file is malformed
+    """
         country_name = content.get('country_name')
         country_code = content.get('country_code')
         self.logger.info("Fetching GeoJSON data for country: %s", country_name)
@@ -302,11 +310,15 @@ class FunctionHandler:
             self.logger.info("Successfully retrieved GeoJSON for %s", country_name)
             self.logger.info("GeoJSON data: %s", country_geojson)
             return json.dumps(country_geojson)
-        except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
-            self.logger.error("Error getting GeoJSON for country %s: %s",
-                              country_name, str(e), exc_info=True)
-            return {"error": f"Error processing request: {str(e)}"}
-
+        except FileNotFoundError as e:
+            self.logger.error("GeoJSON file not found: %s", str(e), exc_info=True)
+            raise
+        except json.JSONDecodeError as e:
+            self.logger.error("Invalid GeoJSON format: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid input: %s", str(e), exc_info=True)
+            raise
 
     def load_world_geojson(self):
         """
@@ -332,32 +344,22 @@ class FunctionHandler:
         """
         Retrieves endangered classes within a specified kingdom and their species counts.
 
-        This function queries BigQuery to get a list of all classes within a given kingdom
-        that have endangered species, along with the count of endangered species in each class.
-
         Args:
             content (dict): Dictionary containing:
                 - kingdom_name (str): Name of the kingdom to query (e.g., 'Animalia', 'Plantae')
 
         Returns:
-            str: Formatted string containing:
-                - Introduction line mentioning the kingdom
-                - Bulleted list of classes with their endangered species counts
-                Example:
-                "Here are the classes within the Animalia kingdom:
-                 * Mammalia: 123 endangered species
-                 * Aves: 456 endangered species"
+            str: Formatted string with classes and their endangered species counts
 
         Raises:
-            Exception: If there is an error querying BigQuery or processing results
-
-        Note:
-            The results are ordered alphabetically by class name.
+            ValueError: If kingdom_name is invalid or not found
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
         """
-        kingdom_name = content['kingdom_name']
-        self.logger.info("Fetching classes for kingdom from BigQuery")
-
         try:
+            kingdom_name = content['kingdom_name']
+            self.logger.info("Fetching classes for kingdom from BigQuery")
+
             client = bigquery.Client(
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
@@ -385,44 +387,33 @@ class FunctionHandler:
                 results.append(formatted_entry)
             final_text = intro + '\n'.join(results)
             return final_text
-        except Exception as e:
-            self.logger.error(
-                "Error fetching terrestrial human coexistence index: %s",
-                str(e),
-                exc_info=True
-            )
+        except google.api_core.exceptions.GoogleAPIError as e:
+            self.logger.error("BigQuery error: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
     def endangered_orders_for_class(self, content) -> str:
         """
         Retrieves endangered orders within a specified class and their species counts.
 
-        This function queries BigQuery to get a list of all orders within a given class
-        that have endangered species, along with the count of endangered species in each order.
-
         Args:
             content (dict): Dictionary containing:
                 - class_name (str): Name of the class to query (e.g., 'Mammalia', 'Aves')
 
         Returns:
-            str: Formatted string containing:
-                - Introduction line mentioning the class
-                - Bulleted list of orders with their endangered species counts
-                Example:
-                "Here are the orders within the Mammalia class:
-                 * Primates: 89 endangered species
-                 * Carnivora: 45 endangered species"
+            str: Formatted string with orders and their endangered species counts
 
         Raises:
-            Exception: If there is an error querying BigQuery or processing results
-
-        Note:
-            The results are ordered alphabetically by order name.
+            ValueError: If class_name is invalid or not found
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
         """
-        clazz = content['class_name']
-        self.logger.info("Fetching families for classes from BigQuery")
-
         try:
+            clazz = content['class_name']
+            self.logger.info("Fetching families for classes from BigQuery")
+
             client = bigquery.Client(
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
@@ -452,44 +443,32 @@ class FunctionHandler:
                 results.append(formatted_entry)
             final_text = intro + '\n'.join(results)
             return final_text
-        except Exception as e:
-            self.logger.error(
-                "Error fetching terrestrial human coexistence index: %s",
-                str(e),
-                exc_info=True
-            )
+        except google.api_core.exceptions.GoogleAPIError as e:
+            self.logger.error("BigQuery error: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
     def endangered_families_for_order(self, content) -> str:
         """
         Retrieves endangered families within a specified order and their species counts.
 
-        This function queries BigQuery to get a list of all families within a given order
-        that have endangered species, along with the count of endangered species in each family.
-
         Args:
             content (dict): Dictionary containing:
                 - order_name (str): Name of the order to query (e.g., 'Primates', 'Carnivora')
 
         Returns:
-            str: Formatted string containing:
-                - Introduction line mentioning the order
-                - Bulleted list of families with their endangered species counts
-                Example:
-                "Here are the families within the Primates order, along with the number 
-                 of endangered species in each:
-                 * Hominidae: 6 endangered species
-                 * Lemuridae: 12 endangered species"
+            str: Formatted string with families and their endangered species counts
 
         Raises:
-            Exception: If there is an error querying BigQuery or processing results
-
-        Note:
-            The results are ordered alphabetically by family name.
+            ValueError: If order_name is invalid or not found
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
         """
-        self.logger.info("Fetching families for order from BigQuery")
-        order_name = content['order_name']
         try:
+            self.logger.info("Fetching families for order from BigQuery")
+            order_name = content['order_name']
             client = bigquery.Client(
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
@@ -521,40 +500,45 @@ class FunctionHandler:
 
             final_text = intro + '\n'.join(results)
             return final_text
-        except Exception as e:
-            self.logger.error(
-                "Error fetching endangered families for order: %s",
-                str(e),
-                exc_info=True
-            )
+        except google.api_core.exceptions.GoogleAPIError as e:
+            self.logger.error("BigQuery error: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
     def endangered_species_for_family(self, content) -> str:
-        """Retrieves endangered species within a specified family.
-        
+        """
+        Retrieves endangered species within a specified family.
+
         Args:
             content (dict): Dictionary containing:
-                - family_name (str): Name of the family to query
-                - conservation_status (str, optional): Filter by conservation status
-            
-        Returns:
-            str: Formatted string containing list of endangered species
-        """
-        self.logger.info("Fetching endangered species for family from BigQuery")
-        family_name = content['family_name']
-        conservation_status = None
-        if 'conservation_status' in content:
-            conservation_status = content['conservation_status']
+                - family_name (str): Name of the family to query (e.g., 'Hominidae', 'Lemuridae')
+                - conservation_status (str, optional):
+                    Status to filter by (e.g., 'Critically Endangered')
 
+        Returns:
+            str: Formatted string with endangered species and their IUCN links
+
+        Raises:
+            ValueError: If family_name is invalid or not found
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
+        """
         try:
+            self.logger.info("Fetching endangered species for family from BigQuery")
+            family_name = content['family_name']
+            conservation_status = None
+            if 'conservation_status' in content:
+                conservation_status = content['conservation_status']
+
             results_data = self._query_endangered_species(family_name, conservation_status)
             return self._format_species_results(results_data)
-        except Exception as e:
-            self.logger.error(
-                "Error fetching endangered species for family: %s",
-                str(e),
-                exc_info=True
-            )
+        except google.api_core.exceptions.GoogleAPIError as e:
+            self.logger.error("BigQuery error: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
 
@@ -623,32 +607,38 @@ class FunctionHandler:
         return f"* **{scientific_name}**:\n{urls_formatted}"
 
     def endangered_species_for_country(self, content) -> str:
-        """Retrieves endangered species found in a specific country.
-        
+        """
+        Retrieves endangered species for a specified country.
+
         Args:
             content (dict): Dictionary containing:
-                - country_code (str): Two-letter ISO country code
-                - conservation_status (str, optional): Filter by conservation status
-            
-        Returns:
-            str: Formatted string containing list of endangered species
-        """
-        self.logger.info("Fetching species for country from BigQuery")
-        country_code = content['country_code']
-        if 'conservation_status' in content:
-            conservation_status = content['conservation_status']
-        else:
-            conservation_status = None
+                - country_code (str): Two-letter country code to query (e.g., 'DE', 'ES')
+                - conservation_status (str, optional):
+                    Status to filter by (e.g., 'Critically Endangered')
 
+        Returns:
+            str: Formatted string with endangered species in the country
+
+        Raises:
+            ValueError: If country_code is invalid or not found
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
+        """
         try:
+            self.logger.info("Fetching species for country from BigQuery")
+            country_code = content['country_code']
+            if 'conservation_status' in content:
+                conservation_status = content['conservation_status']
+            else:
+                conservation_status = None
+
             results_data = self._query_country_species(country_code, conservation_status)
             return self._format_country_species_results(results_data)
-        except Exception as e:
-            self.logger.error(
-                "Error fetching endangered species for country: %s",
-                str(e),
-                exc_info=True
-            )
+        except google.api_core.exceptions.GoogleAPIError as e:
+            self.logger.error("BigQuery error: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
     def _query_country_species(self, country_code: str,
@@ -722,29 +712,42 @@ class FunctionHandler:
         return f"* **{scientific_name}** ({status}):\n  {url}\n"
 
     def number_of_endangered_species_by_conservation_status(self, content) -> str:
-        """Retrieves count of endangered species grouped by conservation status.
-        
+        """
+        Retrieves count of endangered species by conservation status.
+
         Args:
             content (dict): Dictionary containing:
-                - country_code (str, optional): Two-letter ISO country code
-                                              If not provided, returns global statistics
-            
+                - country_code (str, optional):
+                    Two-letter country code to filter by (e.g., 'DE', 'ES')
+                - conservation_status (str, optional):
+                    Status to filter by (e.g., 'Critically Endangered')
+
         Returns:
-            str: Formatted string containing conservation status counts
-            
-        Note:
-            Currently only includes mammal species.
+            str: Formatted string with species counts per conservation status
+
+        Raises:
+            ValueError: If country_code is invalid
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
         """
-        country_code = content.get('country_code')
         try:
-            results = self._query_conservation_status_counts(country_code)
+            country_code = content.get('country_code')
+            conservation_status = content.get('conservation_status')
+            if not country_code and not conservation_status:
+                # If neither country_code nor conservation_status is provided,
+                # return global statistics
+                results = self._query_conservation_status_counts()
+            else:
+                # If either country_code or conservation_status is provided,
+                #  return statistics for the specified country
+                results = self._query_conservation_status_counts(country_code)
             return self._format_conservation_counts(results)
-        except (ValueError, RuntimeError, bigquery.exceptions.BigQueryError) as e:
-            self.logger.error(
-                "Error retrieving conservation status counts: %s",
-                str(e)
-            )
-            return f"Error retrieving conservation status counts: {str(e)}"
+        except google.api_core.exceptions.GoogleAPIError as e:
+            self.logger.error("BigQuery error: %s", str(e), exc_info=True)
+            raise
+        except (TypeError, ValueError) as e:
+            self.logger.error("Invalid input: %s", str(e), exc_info=True)
+            raise
 
     def _query_conservation_status_counts(self, country_code: str = None) -> List[tuple]:
         """Execute BigQuery to fetch conservation status counts."""
