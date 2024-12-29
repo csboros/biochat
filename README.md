@@ -69,7 +69,6 @@ Here are some example queries you can try with the application:
 - List the endangered classes per kingdom Animalia
 - List all orders with endangered species for class Mammalia
 - List all families for primates with the number of endangered species 
-- List all families for primates with the number of endangered species 
 - Show all endangered species in the family of HOMINIDAE with link to IUCN
 - Show the taxonomy of Bornean Orangutans
 
@@ -84,7 +83,7 @@ Here are some example queries you can try with the application:
 - List the number of endangered species per conservation status for Spain
 - List the number of endangered species per conservation status for Germany
 - List the endangered species for Germany with status Critically Endangered
-- Get detailed information about conservation status and threats based on the IUCN website
+- Get detailed information about conservation status and threats for Cricetus cricetus based on the IUCN website
 
 
 This application serves as a powerful tool for researchers, conservationists, and anyone interested in exploring biodiversity data through a user-friendly, conversational interface.

@@ -101,7 +101,6 @@ FUNCTION_DECLARATIONS = [
                     ),
                 },
             },
-            "required": ["family_name"]
         },
     ),
     FunctionDeclaration(

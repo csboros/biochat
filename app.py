@@ -51,10 +51,23 @@ class BiodiversityApp:
                 generation_config=GenerationConfig(temperature=0),
                 tools=[tools],
             )
+                        # Add system message to set context
+            system_message = """You are a biodiversity expert assistant. Your role is to help users
+            understand endangered species, their conservation status, and global biodiversity patterns. 
+            When providing information:
+            - First, Use the provided tools to get the data and information you need 
+            - Second, if you don't have the answer, use the google_search tool to find the answer. 
+            - Third, if you don't have the answer based on the tools and google search, use your own knowledge to answer the questions. 
+            - Use available tools to show data visualizations when relevant
+            """
+            chat = model.start_chat()
+            chat.send_message(system_message)
+            logger.debug("Started new chat session with Gemini")
             return {
                 'handler': handler,
                 'chart_handler': chart_handler,
-                'model': model
+                'model': model,
+                'chat': chat
             }
         except Exception as e:
             logger.error("Error during initialization: %s", str(e), exc_info=True)
@@ -80,7 +93,12 @@ class BiodiversityApp:
             self.function_declarations = resources['handler'].declarations
             self.chart_handler = resources['chart_handler']
             self.gemini_model = resources['model']
+            self.chat = resources['chat']
             self.initialize_session_state()
+        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
+            self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
+            st.error("API quota has been exceeded. "
+                     "Please wait a few minutes and reload the application")
         except Exception as e:
             self.logger.error("Error during initialization: %s", str(e), exc_info=True)
             raise
@@ -90,37 +108,10 @@ class BiodiversityApp:
         """
         Initializes the Streamlit session state and sets up the chat history.
         Creates a new chat session with the Gemini model and sets the initial system context.
-        
-        Raises:
-            Exception: If session state initialization fails
         """
-        self.logger.info("Initializing session state")
-        try:
-            if "history" not in st.session_state:
-                st.session_state.history = []
-                self.logger.debug("Initialized empty history in session state")
-            if "messages" not in st.session_state:
-                st.session_state.messages = []
-                self.logger.debug("Initialized empty messages in session state")
-
-            # Add system message to set context
-            system_message = """You are a biodiversity expert assistant. Your role is to help users
-            understand endangered species, their conservation status, and global biodiversity patterns. 
-            When providing information:
-            - First, Use the provided tools to get the data and information you need 
-            - Second, if you don't have the answer, use the google_search tool to find the answer. 
-            - Third, if you don't have the answer based on the tools and google search, use your own knowledge to answer the questions. 
-            - Use available tools to show data visualizations when relevant
-            """
-            self.chat = self.gemini_model.start_chat(history=st.session_state.history)
-            self.chat.send_message(system_message)
-            self.logger.debug("Started new chat session with Gemini")
-        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
-            self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
-            st.error("API quota has been exceeded. Please wait a few minutes and try again.")
-        except Exception as e:
-            self.logger.error("Error initializing session state: %s", str(e), exc_info=True)
-            raise
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+            self.logger.debug("Initialized empty messages in session state")
 
     def run(self):
         """
@@ -278,7 +269,6 @@ class BiodiversityApp:
             self.logger.info("Received final response from Gemini: %s", response_text)
             self.add_message_to_history("assistant", {"text": response_text})
             st.write(response_text)
-            st.session_state.history = self.chat.history
 
     def add_message_to_history(self, role, content):
         """
