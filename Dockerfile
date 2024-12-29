@@ -15,6 +15,7 @@ COPY app.py .
 COPY function_handler.py .
 COPY chart_handler.py .
 COPY logging_config.py .
+COPY function_declarations.py .
 
 # Expose the port where Streamlit runs
 EXPOSE 8080
