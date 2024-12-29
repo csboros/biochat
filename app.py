@@ -44,14 +44,14 @@ class BiodiversityApp:
             logger.info("Initialized Vertex AI")
             handler = FunctionHandler()
             chart_handler = ChartHandler()
-            tools = Tool(function_declarations= handler.declarations)
             # Initialize model and tools
+            tools = Tool(function_declarations= handler.declarations)
             model = GenerativeModel(
                 model_name="gemini-1.5-pro-002",
                 generation_config=GenerationConfig(temperature=0),
                 tools=[tools],
             )
-                        # Add system message to set context
+            # Add system message to set context
             system_message = """You are a biodiversity expert assistant. Your role is to help users
             understand endangered species, their conservation status, and global biodiversity patterns. 
             When providing information:
@@ -69,6 +69,10 @@ class BiodiversityApp:
                 'model': model,
                 'chat': chat
             }
+        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
+            logger.error("API quota exceeded: %s", str(e), exc_info=True)
+            st.error("API quota has been exceeded. "
+                     "Please wait a few minutes and reload the application")
         except Exception as e:
             logger.error("Error during initialization: %s", str(e), exc_info=True)
             raise
@@ -95,10 +99,6 @@ class BiodiversityApp:
             self.gemini_model = resources['model']
             self.chat = resources['chat']
             self.initialize_session_state()
-        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
-            self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
-            st.error("API quota has been exceeded. "
-                     "Please wait a few minutes and reload the application")
         except Exception as e:
             self.logger.error("Error during initialization: %s", str(e), exc_info=True)
             raise
@@ -106,8 +106,7 @@ class BiodiversityApp:
 
     def initialize_session_state(self):
         """
-        Initializes the Streamlit session state and sets up the chat history.
-        Creates a new chat session with the Gemini model and sets the initial system context.
+        Initializes the Streamlit session state and sets up the chat message history.
         """
         if "messages" not in st.session_state:
             st.session_state.messages = []
