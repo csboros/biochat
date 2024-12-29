@@ -77,7 +77,6 @@ class BiodiversityApp:
                 function_declarations=[
                     self.function_declarations['translate_to_scientific_name'],
                     self.function_declarations['get_species_info'],
-                    self.function_declarations['get_country_geojson'],
                     self.function_declarations['endangered_species_for_family'],
                     self.function_declarations['endangered_classes_for_kingdom'],
                     self.function_declarations['endangered_families_for_order'],
@@ -323,10 +322,6 @@ class BiodiversityApp:
             df = pd.json_normalize(data_response)
             chart_type = parameters.get("chart_type", "hexagon")
             self.logger.debug("Parameters: %s", parameters)
-            if parameters.get("country_code", None) is not None:
-                parameters["geojson"] = (
-                    self.function_handler['get_country_geojson'](parameters)[:20000]
-                )
             self.chart_handler.draw_chart(df, chart_type, parameters)
             st.session_state.messages.append({"role": "assistant",
                                               "content": {"chart_data": df, "type": chart_type,
