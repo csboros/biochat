@@ -190,7 +190,8 @@ class BiodiversityApp:
         """
         self.logger.debug("Displaying %d previous messages", len(st.session_state.messages))
         for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
+            avatar = "🦊" if message["role"] == "assistant" else "👨‍🦰"
+            with st.chat_message(message["role"], avatar=avatar):
                 if "chart_data" in message["content"]:
                     df = message["content"]["chart_data"]
                     self.logger.debug("Rendering chart of type: %s", message['content']['type'])
@@ -209,9 +210,9 @@ class BiodiversityApp:
         if prompt := st.chat_input("Can I help you?"):
             self.logger.info("Received new user prompt: %s", prompt)
             self.add_message_to_history("user", {"text": prompt})
-            with st.chat_message("user"):
+            with st.chat_message("user", avatar="👨‍🦰"):
                 st.markdown(prompt)
-            with st.chat_message("assistant"):
+            with st.chat_message("assistant", avatar="🦊"):
                 self.process_assistant_response(prompt)
 
     def process_assistant_response(self, prompt):
