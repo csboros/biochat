@@ -10,13 +10,13 @@ import os
 import time
 import logging
 from typing import List
-from vertexai.generative_models import FunctionDeclaration
 import requests
 from google.cloud import bigquery
 from pygbif import species
 #from EcoNameTranslator import to_common
 from langchain_google_community import GoogleSearchAPIWrapper
 import streamlit as st
+from function_declarations import FUNCTION_DECLARATIONS
 
 
 class FunctionHandler:
@@ -61,222 +61,8 @@ class FunctionHandler:
     def setup_function_declarations(self):
         """
         Sets up function declarations and their corresponding handlers.
-
-        Initializes two main dictionaries:
-        - declarations: Contains FunctionDeclaration objects for Vertex AI
-        - function_handler: Maps function names to their implementing methods
-
-        Each function declaration includes:
-        - Name
-        - Description
-        - Parameter specifications
-        - Required parameters
         """
-        # Store declarations separately from handlers
-        self.declarations = {
-            "translate_to_scientific_name": FunctionDeclaration(
-                name="translate_to_scientific_name",
-                description="Translate a given species name to a scientific name",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": (
-                                "english name of the species to be translated "
-                                "into scientific name"
-                            ),
-                        }
-                    },
-                },
-            ),
-            "get_species_info": FunctionDeclaration(
-                name="get_species_info",
-                description="Get info about a given species, get taxonomy of a given species",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "get taxonomy of a given species",
-                        }
-                    },
-                },
-            ),
-            "get_occurences": FunctionDeclaration(
-                name="get_occurences",
-                description=(
-                    "Get occurences, distribution for a given species, "
-                    "show where species is found, where it lives."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "species_name": {
-                            "type": "string",
-                            "description": (
-                                "name of the species to get occurences for, "
-                                "if it is a common name, use the scientific name"
-                            ),
-                        },
-                        "country_code": {
-                            "type": "string",
-                            "description": "2 letter country code to get occurences for",
-                        },
-                         "chart_type": {
-                            "type": "string",
-                            "description": "type of chart to display",
-                        },
-                    },
-                    "required": ["species_name"]
-                },
-            ),
-            "get_country_geojson": FunctionDeclaration(
-                name="get_country_geojson",
-                description="Get GeoJSON data for a specific country",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "country_name": {
-                            "type": "string",
-                            "description": "name of the country to get GeoJSON data for",
-                        }
-                    },
-                    "required": ["country_name"]
-                },
-            ),
-            "endangered_species_for_family": FunctionDeclaration(
-                name="endangered_species_for_family",
-                description=(
-                    "Get list of endangered species for a given family name, "
-                    "with link to ICFN"
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "family_name": {
-                            "type": "string",
-                            "description": "name of the family to get endangered species for",
-                        },
-                        "conservation_status": {
-                            "type": "string",
-                            "description": (
-                                "optional conservation status to filter by, "
-                                "possible values are: "
-                                "Least Concern, Endangered, Near Threatened, Vulnerable, "
-                                "Data Deficient, Critically Endangered, Extinct,"
-                            ),
-                        }
-                    },
-                    "required": ["family_name"]  # conservation_status is optional
-                },
-            ),
-            "endangered_classes_for_kingdom": FunctionDeclaration(
-                name="endangered_classes_for_kingdom",
-                description="Get list of endangered classes for a given kingdom name",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "kingdom_name": {
-                            "type": "string",
-                            "description": "name of the kingdom to get endangered classes for",
-                        }
-                    },
-                },
-            ),
-            "endangered_families_for_order": FunctionDeclaration(
-                name="endangered_families_for_order",
-                description="Get list of endangered families for a given order name",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "order_name": {
-                            "type": "string",
-                            "description": "name of the order to get endangered families for",
-                        }
-                    },
-                },
-            ),
-            "endangered_orders_for_class": FunctionDeclaration(
-                name="endangered_orders_for_class",
-                description="Get list of endangered orders for a given class name",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "class_name": {
-                            "type": "string",
-                            "description": "name of the class to get endangered orders for",
-                        }
-                    },
-                },
-            ),
-            "google_search": FunctionDeclaration(
-                name="google_search",
-                description=(
-                    "Search Google for the given query and return relevant results, "
-                    "try this as last resort before giving up please."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "query to search for",
-                        }
-                    },
-                },
-            ),
-            "endangered_species_for_country": FunctionDeclaration(
-                name="endangered_species_for_country",
-                description="Get list of endangered species for a given country code",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "country_code": {
-                            "type": "string",
-                            "description": "country code to get endangered species for",
-                        },
-                        "conservation_status": {
-                            "type": "string",
-                            "description": (
-                                "optional conservation status to filter by, "
-                                "possible values are: "
-                                "Least Concern, Endangered, Near Threatened, Vulnerable, "
-                                "Data Deficient, Critically Endangered, Extinct,"
-                            ),
-                        }
-                    },
-                },
-            ),
-            "number_of_endangered_species_by_conservation_status": FunctionDeclaration(
-                name="number_of_endangered_species_by_conservation_status",
-                description=(
-                    "Get number of endangered species for different conservational "
-                    "status for a given country code or the whole world if country "
-                    "code is not specified"
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "country_code": {
-                            "type": "string",
-                            "description": "country code to get endangered species for",
-                        },
-                        "conservation_status": {
-                            "type": "string",
-                            "description": (
-                                "optional conservation status to filter by, "
-                                "possible values are:"
-                                "Least Concern, Endangered, Near Threatened, Vulnerable, "
-                                "Data Deficient, Critically Endangered, Extinct,"
-                            ),
-                        }
-
-                    },
-                },
-            ),
-        }
-
+        self.declarations = FUNCTION_DECLARATIONS
         # Function handlers point to actual methods
         self.function_handler = {
             "translate_to_scientific_name": self.translate_to_scientific_name_from_api,
@@ -475,11 +261,6 @@ class FunctionHandler:
         species_name = content['name']
         species_info = species.name_backbone(species_name)
         return json.dumps(species_info)
-    @st.cache_data(
-        ttl=3600,  # Cache for 1 hour
-        show_spinner="Translating species name...",
-        max_entries=100
-    )
 
 
     def handle_get_country_geojson(self, content):
@@ -547,23 +328,33 @@ class FunctionHandler:
             raise
 
 
-    def endangered_classes_for_kingdom(self, content) -> List[str]:
+    def endangered_classes_for_kingdom(self, content) -> str:
         """
-        Retrieves endangered classes within a specified kingdom.
+        Retrieves endangered classes within a specified kingdom and their species counts.
+
+        This function queries BigQuery to get a list of all classes within a given kingdom
+        that have endangered species, along with the count of endangered species in each class.
 
         Args:
             content (dict): Dictionary containing:
-                - kingdom (str): Name of the kingdom to query
+                - kingdom_name (str): Name of the kingdom to query (e.g., 'Animalia', 'Plantae')
 
         Returns:
-            List[dict]: List of dictionaries containing:
-                - class (str): Name of the endangered class
-                - count (int): Number of endangered species in that class
+            str: Formatted string containing:
+                - Introduction line mentioning the kingdom
+                - Bulleted list of classes with their endangered species counts
+                Example:
+                "Here are the classes within the Animalia kingdom:
+                 * Mammalia: 123 endangered species
+                 * Aves: 456 endangered species"
 
         Raises:
-            Exception: If there is an error querying BigQuery
+            Exception: If there is an error querying BigQuery or processing results
+
+        Note:
+            The results are ordered alphabetically by class name.
         """
-        kingdom = content['kingdom']
+        kingdom_name = content['kingdom_name']
         self.logger.info("Fetching classes for kingdom from BigQuery")
 
         try:
@@ -580,15 +371,20 @@ class FunctionHandler:
             query = query.format(project_id)
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
-                    bigquery.ScalarQueryParameter("kingdom", "STRING", kingdom)
+                    bigquery.ScalarQueryParameter("kingdom", "STRING", kingdom_name)
                 ]
             )
             query_job = client.query(
                 query,
                 job_config=job_config
             )
-            results = [{'class': row['class'], 'count': row['cnt']} for row in query_job]
-            return results
+            results = []
+            intro = f"Here are the classes within the {kingdom_name} kingdom:\n\n"
+            for row in query_job:
+                formatted_entry = f"* **{row['class']}**: {row['cnt']} endangered species"
+                results.append(formatted_entry)
+            final_text = intro + '\n'.join(results)
+            return final_text
         except Exception as e:
             self.logger.error(
                 "Error fetching terrestrial human coexistence index: %s",
@@ -597,23 +393,33 @@ class FunctionHandler:
             )
             raise
 
-    def endangered_orders_for_class(self, content) -> List[str]:
+    def endangered_orders_for_class(self, content) -> str:
         """
-        Retrieves endangered orders within a specified class.
+        Retrieves endangered orders within a specified class and their species counts.
+
+        This function queries BigQuery to get a list of all orders within a given class
+        that have endangered species, along with the count of endangered species in each order.
 
         Args:
             content (dict): Dictionary containing:
-                - class (str): Name of the class to query
+                - class_name (str): Name of the class to query (e.g., 'Mammalia', 'Aves')
 
         Returns:
-            List[dict]: List of dictionaries containing:
-                - family_name (str): Name of the endangered order
-                - count (int): Number of endangered species in that order
+            str: Formatted string containing:
+                - Introduction line mentioning the class
+                - Bulleted list of orders with their endangered species counts
+                Example:
+                "Here are the orders within the Mammalia class:
+                 * Primates: 89 endangered species
+                 * Carnivora: 45 endangered species"
 
         Raises:
-            Exception: If there is an error querying BigQuery
+            Exception: If there is an error querying BigQuery or processing results
+
+        Note:
+            The results are ordered alphabetically by order name.
         """
-        clazz = content['class']
+        clazz = content['class_name']
         self.logger.info("Fetching families for classes from BigQuery")
 
         try:
@@ -639,11 +445,13 @@ class FunctionHandler:
                 query,
                 job_config=job_config
             )
-            results = [
-                {'family_name': row['family_name'], 'count': row['cnt']}
-                for row in query_job
-            ]
-            return results
+            results = []
+            intro = f"Here are the orders within the {clazz} class:\n\n"
+            for row in query_job:
+                formatted_entry = f"* **{row['order_name']}**: {row['cnt']} endangered species"
+                results.append(formatted_entry)
+            final_text = intro + '\n'.join(results)
+            return final_text
         except Exception as e:
             self.logger.error(
                 "Error fetching terrestrial human coexistence index: %s",
@@ -652,21 +460,32 @@ class FunctionHandler:
             )
             raise
 
-    def endangered_families_for_order(self, content) -> List[str]:
+    def endangered_families_for_order(self, content) -> str:
         """
-        Retrieves endangered families within a specified order.
+        Retrieves endangered families within a specified order and their species counts.
+
+        This function queries BigQuery to get a list of all families within a given order
+        that have endangered species, along with the count of endangered species in each family.
 
         Args:
             content (dict): Dictionary containing:
-                - order_name (str): Name of the order to query
+                - order_name (str): Name of the order to query (e.g., 'Primates', 'Carnivora')
 
         Returns:
-            List[dict]: List of dictionaries containing:
-                - family_name (str): Name of the endangered family
-                - count (int): Number of endangered species in that family
+            str: Formatted string containing:
+                - Introduction line mentioning the order
+                - Bulleted list of families with their endangered species counts
+                Example:
+                "Here are the families within the Primates order, along with the number 
+                 of endangered species in each:
+                 * Hominidae: 6 endangered species
+                 * Lemuridae: 12 endangered species"
 
         Raises:
-            Exception: If there is an error querying BigQuery
+            Exception: If there is an error querying BigQuery or processing results
+
+        Note:
+            The results are ordered alphabetically by family name.
         """
         self.logger.info("Fetching families for order from BigQuery")
         order_name = content['order_name']
@@ -710,7 +529,7 @@ class FunctionHandler:
             )
             raise
 
-    def endangered_species_for_family(self, content) -> List[str]:
+    def endangered_species_for_family(self, content) -> str:
         """Retrieves endangered species within a specified family.
         
         Args:

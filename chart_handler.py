@@ -59,11 +59,8 @@ class ChartHandler:
         """
         if chart_type.lower() == "heatmap":
             self.draw_heatmap(data)
-        elif chart_type.lower() == "hexagon" or  chart_type.lower() == "hex" \
-            or chart_type.lower() == "hexagons" or chart_type.lower() == "hexbin":
-            self.draw_hexagon_map(data, params)
         else:
-            st.write(data)
+            self.draw_hexagon_map(data, params)
 
     def draw_heatmap(self, df):
         """
@@ -125,8 +122,6 @@ class ChartHandler:
         """
         logging.debug("Drawing hexagon map with parameters: %s", parameters)
         bounds = self._get_bounds_from_data(data)
-
-        print(bounds)
 
         if bounds is not None:
             view_state = pdk.ViewState(
