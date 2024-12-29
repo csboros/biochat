@@ -50,29 +50,13 @@ class FunctionHandler:
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
         self.logger.info("Initializing FunctionHandler")
         self.setup_function_declarations()
-
         self.search = GoogleSearchAPIWrapper()
-
+        self.world_gdf = None  # Initialize the attribute
         # Add URL for natural earth data
         self.world_geojson_url = (
             "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
             "master/geojson/ne_110m_admin_0_countries.geojson"
         )
-        # Cache the world data
-        try:
-            if 'world_gdf' not in st.session_state or st.session_state.world_gdf is None:
-                self.logger.info("Loading world GeoJSON data")
-                response = requests.get(self.world_geojson_url, timeout=30)  # 30 second timeout
-                self.world_gdf = response.json()
-                st.session_state.world_gdf = self.world_gdf
-                self.logger.info("Loaded GeoJSON data for %d countries",
-                                 len(self.world_gdf.get('features', [])))
-            else:
-                self.world_gdf = st.session_state.world_gdf
-
-        except Exception as e:
-            self.logger.error("Failed to load world GeoJSON data: %s", str(e), exc_info=True)
-            raise
 
     def setup_function_declarations(self):
         """
@@ -298,7 +282,6 @@ class FunctionHandler:
             "translate_to_scientific_name": self.translate_to_scientific_name_from_api,
             "get_occurences": self.get_occurrences,
             "get_species_info": self.get_species_info_from_api,
-            "get_country_geojson": self.handle_get_country_geojson,
             "endangered_species_for_family": self.endangered_species_for_family,
             "endangered_classes_for_kingdom": self.endangered_classes_for_kingdom,
             "endangered_families_for_order": self.endangered_families_for_order,
@@ -474,6 +457,7 @@ class FunctionHandler:
             _self.logger.error("Failed to parse response for species %s: %s", species_name, str(e))
             return json.dumps({"error": f"Failed to parse response: {str(e)}"})
 
+
     def get_species_info_from_api(self, content):
         """
         Retrieves detailed species information from the GBIF API.
@@ -496,7 +480,9 @@ class FunctionHandler:
         show_spinner="Translating species name...",
         max_entries=100
     )
-    def handle_get_country_geojson(_self, content): # pylint: disable=no-self-argument
+
+
+    def handle_get_country_geojson(self, content):
         """
         Retrieves GeoJSON data for a specific country from cached world data.
         
@@ -514,30 +500,52 @@ class FunctionHandler:
         """
         country_name = content.get('country_name')
         country_code = content.get('country_code')
-        _self.logger.info("Fetching GeoJSON data for country: %s", country_name)
+        self.logger.info("Fetching GeoJSON data for country: %s", country_name)
         try:
+            self.load_world_geojson()
             country_data = None
             if country_code is not None:
-                country_data = next((feature for feature in _self.world_gdf.get("features", [])
+                country_data = next((feature for feature in  self.world_gdf.get("features", [])
                                      if feature["properties"]["ISO_A2"].lower()
                                         == country_code.lower()), None)
             elif country_name is not None:
-                country_data = next((feature for feature in _self.world_gdf.get("features", [])
+                country_data = next((feature for feature in self.world_gdf.get("features", [])
                                      if feature["properties"]["NAME_EN"].lower()
                                         == country_name.lower()), None)
             if country_data is None or len(country_data) == 0:
                 country_identifier = country_name if country_name is not None else country_code
-                _self.logger.warning("Country not found: %s", country_identifier)
+                self.logger.warning("Country not found: %s", country_identifier)
                 return {"error": f"Country not found: {country_identifier}"}
             # Convert to GeoJSON
             country_geojson = country_data
-            _self.logger.info("Successfully retrieved GeoJSON for %s", country_name)
-            _self.logger.info("GeoJSON data: %s", country_geojson)
+            self.logger.info("Successfully retrieved GeoJSON for %s", country_name)
+            self.logger.info("GeoJSON data: %s", country_geojson)
             return json.dumps(country_geojson)
         except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
-            _self.logger.error("Error getting GeoJSON for country %s: %s",
+            self.logger.error("Error getting GeoJSON for country %s: %s",
                               country_name, str(e), exc_info=True)
             return {"error": f"Error processing request: {str(e)}"}
+
+
+    def load_world_geojson(self):
+        """
+        Loads the world GeoJSON data from the URL.
+        """
+        try:
+            if 'world_gdf' not in st.session_state or st.session_state.world_gdf is None:
+                self.logger.info("Loading world GeoJSON data")
+                response = requests.get(self.world_geojson_url, timeout=30)  # 30 second timeout
+                self.world_gdf = response.json()
+                st.session_state.world_gdf = self.world_gdf
+                self.logger.info("Loaded GeoJSON data for %d countries",
+                                 len(self.world_gdf.get('features', [])))
+            else:
+                self.world_gdf = st.session_state.world_gdf
+
+        except Exception as e:
+            self.logger.error("Failed to load world GeoJSON data: %s", str(e), exc_info=True)
+            raise
+
 
     def endangered_classes_for_kingdom(self, content) -> List[str]:
         """

@@ -19,10 +19,10 @@ def convert_to_csv(input_file, output_file):
         # Process each line
         for line in infile:
             # Split the line by tabs
-            parts = line.strip().split('\t')    
+            parts = line.strip().split('\t')
             # Skip empty lines
             if not parts or len(parts) < 5:
-                continue          
+                continue
             # Write the data to CSV
             writer.writerow([
                 parts[0],  # ID
