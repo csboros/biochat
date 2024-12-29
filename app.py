@@ -163,6 +163,18 @@ class BiodiversityApp:
         self.logger.info("Starting BiodiversityApp")
         try:
             st.title("Biodiversity Chat")
+            with st.expander("Examples Queries"):
+                st.write('''
+                    - Show all families for primates as list with the number of endangered species 
+                    - Show all endangered species in the family of HOMINIDAE with link to IUCN
+                    - Where do Bornean Orangutans live?
+                    - Show Bornean Orangutans distribution as heatmap
+                    - List the number of endangered species per conservation status for Germany
+                    - List the endangered species for Germany with status Critically Endangered
+                    - Show me the taxonomy of Common Hamster
+                    - Show the distribution of Common Hamster
+                    - Give me more details about the Common Hamster such as conservation status and threats based on the IUCN website
+                ''')
             self.display_message_history()
             self.handle_user_input()
         except google_exceptions.ResourceExhausted as e:
@@ -267,7 +279,9 @@ class BiodiversityApp:
             elif call['name'] in ('endangered_species_for_country',
                               'number_of_endangered_species_by_conservation_status',
                               'endangered_species_for_family', 
-                              'endangered_families_for_order'):
+                              'endangered_families_for_order',
+                              'endangered_orders_for_class',
+                              'endangered_classes_for_kingdom'):
                 self.add_message_to_history("assistant", {"text": call['response']})
                 st.markdown(call['response'])
             else:

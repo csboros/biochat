@@ -1,4 +1,3 @@
-
 ## Overview of the Application 
 
 This is a Streamlit-based web application that provides an interactive chat interface for exploring biodiversity data, with a particular focus on endangered species. It uses Google's Vertex AI Gemini model for natural language processing and integrates with various biodiversity data sources.
@@ -62,7 +61,34 @@ User Query → Gemini Model → Function Calls → BigQuery/APIs → Data Proces
 5. View species occurrence data by country or region
 
 
+## Example Chats
+
+Here are some example queries you can try with the application:
+
+### Taxonomic Queries (walk through the taxonomy)
+- List the endangered classes per kingdom Animalia
+- List all orders with endangered species for class Mammalia
+- List all families for primates with the number of endangered species 
+- List all families for primates with the number of endangered species 
+- Show all endangered species in the family of HOMINIDAE with link to IUCN
+- Show the taxonomy of Bornean Orangutans
+
+### Geographic Analysis
+- Where do Bornean Orangutans live?
+![alt text](scripts/image.png)
+
+- Show species distribution as heatmap
+![alt text](scripts/image-1.png)
+
+### Conservation Status Analysis
+- List the number of endangered species per conservation status for Spain
+- List the number of endangered species per conservation status for Germany
+- List the endangered species for Germany with status Critically Endangered
+- Get detailed information about conservation status and threats based on the IUCN website
+
+
 This application serves as a powerful tool for researchers, conservationists, and anyone interested in exploring biodiversity data through a user-friendly, conversational interface.
+
 
 
 ### Here are several potential enhancements for the Biodiversity Chat application:
