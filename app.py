@@ -34,6 +34,32 @@ class BiodiversityApp:
     Handles user interactions, function calls, and visualization of biodiversity data.
     """
 
+    @st.cache_resource
+    def initialize_app_resources(_self):  # pylint: disable=no-self-argument
+        """Initialize all app resources that should persist across reruns"""
+        logger = logging.getLogger("BiodiversityApp")
+        logger.info("Initializing BiodiversityApp resources")
+        try:
+            vertexai.init(location="us-central1")
+            logger.info("Initialized Vertex AI")
+            handler = FunctionHandler()
+            chart_handler = ChartHandler()
+            tools = Tool(function_declarations= handler.declarations)
+            # Initialize model and tools
+            model = GenerativeModel(
+                model_name="gemini-1.5-pro-002",
+                generation_config=GenerationConfig(temperature=0),
+                tools=[tools],
+            )
+            return {
+                'handler': handler,
+                'chart_handler': chart_handler,
+                'model': model
+            }
+        except Exception as e:
+            logger.error("Error during initialization: %s", str(e), exc_info=True)
+            raise
+
     def __init__(self):
         """
         Initializes the BiodiversityApp with necessary components and configurations.
@@ -43,77 +69,22 @@ class BiodiversityApp:
         See the .streamlit/secrets.toml file for configuration details.
         
         Raises:
-            StreamlitAPIException: If the required secret GOOGLE_CLOUD_PROJECT is not found
             Exception: If initialization of any component fails
         """
         # Create a class-specific logger
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initializing BiodiversityApp")
         try:
-            vertexai.init()
-            self.logger.info("Initialized Vertex AI")
-            handler = FunctionHandler()
-            self.function_handler = handler.function_handler
-            self.function_declarations = handler.declarations
-            self.chart_handler = ChartHandler()
-            self.setup_tools()
-            self.setup_model()
+            resources = self.initialize_app_resources()
+            self.function_handler = resources['handler'].function_handler
+            self.function_declarations = resources['handler'].declarations
+            self.chart_handler = resources['chart_handler']
+            self.gemini_model = resources['model']
             self.initialize_session_state()
         except Exception as e:
             self.logger.error("Error during initialization: %s", str(e), exc_info=True)
             raise
 
-    def setup_tools(self):
-        """
-        Configures the biodiversity tools and function declarations for the application.
-        Sets up various functions for species information, geographical data, 
-        and endangered species queries. 
-        Raises:
-            Exception: If tool setup fails
-        """
-        self.logger.info("Setting up tools and function declarations")
-        try:
-            self.biodiversity_tool = Tool(
-                function_declarations=[
-                    self.function_declarations['translate_to_scientific_name'],
-                    self.function_declarations['get_species_info'],
-                    self.function_declarations['endangered_species_for_family'],
-                    self.function_declarations['endangered_classes_for_kingdom'],
-                    self.function_declarations['endangered_families_for_order'],
-                    self.function_declarations['endangered_orders_for_class'],
-                    self.function_declarations['get_occurences'],
-                    self.function_declarations['endangered_species_for_country'],
-                    self.function_declarations
-                        ['number_of_endangered_species_by_conservation_status'],
-                    self.function_declarations['google_search'],
-                ],
-            )
-            self.logger.debug("Successfully set up tools and function declarations")
-        except Exception as e:
-            self.logger.error("Error setting up tools: %s", str(e), exc_info=True)
-            raise
-
-    def setup_model(self):
-        """
-        Initializes the Gemini model with specific configuration parameters.
-        Sets up the model with appropriate temperature and tools for generation.
-        
-        Raises:
-            Exception: If model setup fails
-        """
-        self.logger.info("Setting up Gemini model")
-        try:
-            self.gemini_model = GenerativeModel(
-#                "gemini-pro",
-                "gemini-1.5-pro-002",
-#                "gemini-1.5-flash",
-                generation_config=GenerationConfig(temperature=0),
-                tools=[ self.biodiversity_tool],
-            )
-            self.logger.debug("Successfully initialized Gemini model")
-        except Exception as e:
-            self.logger.error("Error setting up Gemini model: %s", str(e), exc_info=True)
-            raise
 
     def initialize_session_state(self):
         """
@@ -144,7 +115,7 @@ class BiodiversityApp:
             self.chat = self.gemini_model.start_chat(history=st.session_state.history)
             self.chat.send_message(system_message)
             self.logger.debug("Started new chat session with Gemini")
-        except google_exceptions.ResourceExhausted as e:
+        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
             self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
             st.error("API quota has been exceeded. Please wait a few minutes and try again.")
         except Exception as e:
@@ -177,7 +148,7 @@ class BiodiversityApp:
                 ''')
             self.display_message_history()
             self.handle_user_input()
-        except google_exceptions.ResourceExhausted as e:
+        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
             self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
             st.error("API quota has been exceeded. Please wait a few minutes and try again.")
         except (ValueError, RuntimeError, AttributeError) as e:
