@@ -6,8 +6,8 @@ including species information, geographic data, and endangered species queries.
 
 from vertexai.generative_models import FunctionDeclaration
 
-FUNCTION_DECLARATIONS = {
-    "translate_to_scientific_name": FunctionDeclaration(
+FUNCTION_DECLARATIONS = [
+    FunctionDeclaration(
         name="translate_to_scientific_name",
         description="Translate a given species name to a scientific name",
         parameters={
@@ -23,7 +23,7 @@ FUNCTION_DECLARATIONS = {
             "required": ["name"]
         },
     ),
-    "get_species_info": FunctionDeclaration(
+   FunctionDeclaration(
         name="get_species_info",
         description="Get info about a given species, get taxonomy of a given species",
         parameters={
@@ -37,7 +37,7 @@ FUNCTION_DECLARATIONS = {
             "required": ["name"]
         },
     ),
-    "get_occurences": FunctionDeclaration(
+    FunctionDeclaration(
         name="get_occurences",
         description=(
             "Get occurences, distribution for a given species, "
@@ -65,7 +65,7 @@ FUNCTION_DECLARATIONS = {
             "required": ["species_name"]
         },
     ),
-    "get_country_geojson": FunctionDeclaration(
+    FunctionDeclaration(
         name="get_country_geojson",
         description="Get GeoJSON data for a specific country",
         parameters={
@@ -79,7 +79,7 @@ FUNCTION_DECLARATIONS = {
             "required": ["country_name"]
         },
     ),
-    "endangered_species_for_family": FunctionDeclaration(
+    FunctionDeclaration(
         name="endangered_species_for_family",
         description=(
             "Get list of endangered species for a given family name, "
@@ -104,7 +104,7 @@ FUNCTION_DECLARATIONS = {
             "required": ["family_name"]
         },
     ),
-    "endangered_classes_for_kingdom": FunctionDeclaration(
+    FunctionDeclaration(
         name="endangered_classes_for_kingdom",
         description=(
             "Get list of endangered classes for a given kingdom name "
@@ -123,7 +123,7 @@ FUNCTION_DECLARATIONS = {
             },
         },
     ),
-    "endangered_families_for_order": FunctionDeclaration(
+    FunctionDeclaration(
         name="endangered_families_for_order",
         description="Get list of endangered families for a given order name",
         parameters={
@@ -136,7 +136,7 @@ FUNCTION_DECLARATIONS = {
             },
         },
     ),
-    "endangered_orders_for_class": FunctionDeclaration(
+    FunctionDeclaration(
         name="endangered_orders_for_class",
         description="Get list of endangered orders for a given class name",
         parameters={
@@ -149,7 +149,7 @@ FUNCTION_DECLARATIONS = {
             },
         },
     ),
-    "google_search": FunctionDeclaration(
+    FunctionDeclaration(
         name="google_search",
         description=(
             "Search Google for the given query and return relevant results, "
@@ -165,7 +165,7 @@ FUNCTION_DECLARATIONS = {
             },
         },
     ),
-    "endangered_species_for_country": FunctionDeclaration(
+    FunctionDeclaration(
         name="endangered_species_for_country",
         description="Get list of endangered species for a given country code",
         parameters={
@@ -186,7 +186,7 @@ FUNCTION_DECLARATIONS = {
             },
         },
     ),
-    "number_of_endangered_species_by_conservation_status": FunctionDeclaration(
+    FunctionDeclaration(
         name="number_of_endangered_species_by_conservation_status",
         description=(
             "Get number of endangered species for different conservational "
@@ -211,4 +211,4 @@ FUNCTION_DECLARATIONS = {
             },
         },
     ),
-}
+]
