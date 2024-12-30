@@ -9,6 +9,7 @@
 """
 
 import logging
+import json
 import pandas as pd
 import vertexai
 from vertexai.generative_models import (
@@ -17,6 +18,7 @@ from vertexai.generative_models import (
     Part,
     Tool,
 )
+import requests
 from google.api_core import exceptions as google_exceptions
 import streamlit as st
 from function_handler import FunctionHandler
@@ -36,7 +38,35 @@ class BiodiversityApp:
 
     @st.cache_resource
     def initialize_app_resources(_self):  # pylint: disable=no-self-argument
-        """Initialize all app resources that should persist across reruns"""
+        """
+        Initializes and caches all application resources required 
+        for the Biodiversity Chat interface.
+
+        This method handles the initialization of Vertex AI, function handlers, and the chat model.
+        Resources are cached using Streamlit's cache_resource to persist across reruns.
+
+        Returns
+        -------
+        dict
+            Dictionary containing initialized resources:
+                handler : FunctionHandler
+                    Handles function declarations and executions
+                chart_handler : ChartHandler
+                    Manages chart generation and visualization
+                model : GenerativeModel
+                    Initialized Gemini model instance
+                chat : ChatSession
+                    Active chat session with system context
+
+        Raises
+        ------
+        google.api_core.exceptions.ResourceExhausted
+            If API quota is exceeded
+        google.api_core.exceptions.TooManyRequests
+            If request rate limit is exceeded
+        Exception
+            For other initialization failures
+        """
         logger = logging.getLogger("BiodiversityApp")
         logger.info("Initializing BiodiversityApp resources")
         try:
@@ -71,27 +101,23 @@ class BiodiversityApp:
             }
         except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
             logger.error("API quota exceeded: %s", str(e), exc_info=True)
-            st.error("API quota has been exceeded. "
-                     "Please wait a few minutes and reload the application")
             raise
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
+            # Justified broad catch as this is initialization and
+            # we want to catch all possible setup failures
             logger.error("Error during initialization: %s", str(e), exc_info=True)
             raise
 
     def __init__(self):
         """
-        Initializes the BiodiversityApp with necessary components and configurations.
-        Sets up logging, Vertex AI, function handlers, and session state.
-        
-        The Google Cloud Project ID is loaded from Streamlit secrets configuration.
-        See the .streamlit/secrets.toml file for configuration details.
+        Initializes the BiodiversityApp.
         
         Raises:
-            Exception: If initialization of any component fails
+            google.api_core.exceptions.ResourceExhausted: If API quota is exceeded
+            ValueError: If initialization parameters are invalid
+            RuntimeError: If required resources cannot be initialized
         """
-        # Create a class-specific logger
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.info("Initializing BiodiversityApp")
         try:
             resources = self.initialize_app_resources()
             self.function_handler = resources['handler'].function_handler
@@ -100,10 +126,12 @@ class BiodiversityApp:
             self.gemini_model = resources['model']
             self.chat = resources['chat']
             self.initialize_session_state()
-        except Exception as e:
+        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
+            self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
+            st.error("API quota has been exceeded. Please wait a few minutes and try again.")
+        except Exception as e:  # pylint: disable=broad-except
+            # Justified as initialization failure should catch all possible errors
             self.logger.error("Error during initialization: %s", str(e), exc_info=True)
-            raise
-
 
     def initialize_session_state(self):
         """
@@ -116,15 +144,15 @@ class BiodiversityApp:
     def run(self):
         """
         Main execution method for the Streamlit application.
-        Handles the chat interface, message history, and processes user inputs.
-        Manages function calls and responses from the Gemini model.
-        
-        Raises:
-            Exception: If any error occurs during application execution
+
+        Handles the chat interface setup, message history display, and user input processing.
+        Most error handling is delegated to process_assistant_response method.
         """
         self.logger.info("Starting BiodiversityApp")
         try:
+            # Main UI setup
             st.title("Biodiversity Chat")
+            # Example queries section
             with st.expander("Examples Queries"):
                 st.write('''
                     - Show all families for primates as list with the number of endangered species 
@@ -137,37 +165,44 @@ class BiodiversityApp:
                     - Show the distribution of Common Hamster
                     - Give me more details about the Common Hamster such as conservation status and threats based on the IUCN website
                 ''')
+            # Core functionality
             self.display_message_history()
             self.handle_user_input()
-        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
-            self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
-            st.error("API quota has been exceeded. Please wait a few minutes and try again.")
-        except (ValueError, RuntimeError, AttributeError) as e:
-            self.logger.error("Error in main application loop: %s", str(e), exc_info=True)
-            st.error("An unexpected error occurred. Please try again later.")
+        except Exception as e:  # pylint: disable=broad-except
+            # Catch-all for unexpected errors not handled by process_assistant_response
+            # This is intentionally broad as it's the last resort error handler
+            # for the main app loop
+            self.logger.error("Critical application error: %s", str(e), exc_info=True)
+            st.error("A critical error occurred. Please refresh the page and try again.")
 
     def display_message_history(self):
         """
-        Displays the chat history including text messages and charts.
+        Displays the chat history.
+        
+        Raises:
+            AttributeError: If session state is not initialized
+            ValueError: If message format is invalid
         """
-        self.logger.debug("Displaying %d previous messages", len(st.session_state.messages))
-        for message in st.session_state.messages:
-            avatar = "🦊" if message["role"] == "assistant" else "👨‍🦰"
-            with st.chat_message(message["role"], avatar=avatar):
-                if "chart_data" in message["content"]:
-                    df = message["content"]["chart_data"]
-                    self.logger.debug("Rendering chart of type: %s", message['content']['type'])
-                    self.chart_handler.draw_chart(
-                        df,
-                        message["content"]["type"],
-                        message["content"]["parameters"]
-                    )
-                else:
-                    st.markdown(message["content"]["text"])
+        try:
+            for message in st.session_state.messages:
+                avatar = "🦊" if message["role"] == "assistant" else "👨‍🦰"
+                with st.chat_message(message["role"], avatar=avatar):
+                    if "chart_data" in message["content"]:
+                        df = message["content"]["chart_data"]
+                        self.chart_handler.draw_chart(
+                            df,
+                            message["content"]["type"],
+                            message["content"]["parameters"]
+                        )
+                    else:
+                        st.markdown(message["content"]["text"])
+        except (AttributeError, ValueError) as e:
+            self.logger.error("Message display error: %s", str(e), exc_info=True)
+            raise
 
     def handle_user_input(self):
         """
-        Processes new user input and generates responses.
+        Processes user input.
         """
         if prompt := st.chat_input("Can I help you?"):
             self.logger.info("Received new user prompt: %s", prompt)
@@ -177,38 +212,73 @@ class BiodiversityApp:
             with st.chat_message("assistant", avatar="🦊"):
                 self.process_assistant_response(prompt)
 
-    def process_assistant_response(self, prompt):
+    def process_assistant_response(self, prompt: str) -> None:
         """
-        Processes the assistant's response, including function calls.
-        
-        Args:
-            prompt (str): The user's input prompt
+        Processes the assistant's response to user input and manages the conversation flow.
+
+        This method handles the interaction with the Gemini model, processes any function
+        calls requested by the model, and manages the display of responses in the chat interface.
+
+        Parameters
+        ----------
+        prompt : str
+            The user's input text to be processed by the assistant
+
+        Raises
+        ------
+        google_exceptions.ResourceExhausted
+            When the API quota has been exceeded
+        google_exceptions.TooManyRequests
+            When too many requests are made in a short time period
+        google_exceptions.GoogleAPIError
+            When there's an error in the API communication
+        ValueError
+            When there's an error processing the response format
+        AttributeError
+            When expected response attributes are missing
         """
-        self.logger.debug("Sending message to Gemini")
-        response = self.chat.send_message(content=prompt)
-        # Loop until all function calls are processed
-        while True:
-            parts = response.candidates[0].content.parts
-            function_calls = self.collect_function_calls(parts)
-            # If no function calls are found, handle the final response
-            if not function_calls:
-                self.handle_final_response(response)
-                break
-            # Process function calls and get a new response
-            response = self.process_function_calls(function_calls)
-            # If no new response is needed (all functions handled locally), exit the loop
-            if response is None:
-                break
+        try:
+            response = self.chat.send_message(content=prompt)
+            while True:
+                try:
+                    parts = response.candidates[0].content.parts
+                    function_calls = self.collect_function_calls(parts)
+                    if not function_calls:
+                        self.handle_final_response(response)
+                        break
+                    response = self.process_function_calls(function_calls)
+                    if response is None:
+                        break
+                except IndexError as e:
+                    self.logger.error("Invalid response format: %s", str(e), exc_info=True)
+                    st.error("Received an invalid response format. Please try again.")
+                    break
+                except (ValueError, AttributeError) as e:
+                    self.logger.error("Missing response attributes: %s", str(e), exc_info=True)
+                    st.error("Received an incomplete response. Please try again.")
+                    break
+
+        except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
+            self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
+            st.error("API quota has been exceeded. Please wait a few minutes and try again.")
+        except google_exceptions.GoogleAPIError as e:
+            self.logger.error("API error: %s", str(e), exc_info=True)
+            st.error(f"Failed to get data from Google BigQuery: {str(e)}")
+        except requests.exceptions.RequestException as e:
+            self.logger.error("Network error: %s", str(e), exc_info=True)
+            st.error("Network error occurred. Please check your connection and try again.")
+        except json.JSONDecodeError as e:
+            self.logger.error("JSON parsing error: %s", str(e), exc_info=True)
+            st.error("Error processing the response. Please try again.")
+        except Exception as e: # pylint: disable=broad-except
+            # Justified as this is the main processing function
+            # and needs to catch unexpected errors
+            self.logger.error("Unexpected error: %s", str(e), exc_info=True)
+            raise
 
     def collect_function_calls(self, parts):
         """
         Collects function calls from response parts.
-        
-        Args:
-            parts (list): List of response parts from Gemini
-            
-        Returns:
-            list: List of dictionaries containing function call information
         """
         function_calls = []
         for part in parts:
@@ -216,7 +286,6 @@ class BiodiversityApp:
                 function_name = part.function_call.name
                 params = dict(part.function_call.args.items())
                 self.logger.info("Processing function call: %s", function_name)
-                self.logger.debug("Function parameters: %s", params)
                 response = self.function_handler[function_name](params)
                 function_calls.append({
                     'name': function_name,
@@ -237,21 +306,28 @@ class BiodiversityApp:
         """
         func_parts = []
         for call in function_calls:
-            if call['name'] == "get_occurences":
-                self.process_occurrences_data(call['response'], call['params'])
-            elif call['name'] in ('endangered_species_for_country',
-                              'number_of_endangered_species_by_conservation_status',
-                              'endangered_species_for_family', 
-                              'endangered_families_for_order',
-                              'endangered_orders_for_class',
-                              'endangered_classes_for_kingdom'):
-                self.add_message_to_history("assistant", {"text": call['response']})
-                st.markdown(call['response'])
-            else:
-                func_parts.append(Part.from_function_response(
-                    name=call['name'],
-                    response={"content": {"text": call['response']}},
-                ))
+            try:
+                if call['name'] == "get_occurences":
+                    self.process_occurrences_data(call['response'], call['params'])
+                elif call['name'] in ('endangered_species_for_country',
+                                  'number_of_endangered_species_by_conservation_status',
+                                  'endangered_species_for_family', 
+                                  'endangered_families_for_order',
+                                  'endangered_orders_for_class',
+                                  'endangered_classes_for_kingdom'):
+                    self.add_message_to_history("assistant", {"text": call['response']})
+                    st.markdown(call['response'])
+                else:
+                    func_parts.append(Part.from_function_response(
+                        name=call['name'],
+                        response={"content": {"text": call['response']}},
+                    ))
+            except (TypeError, ValueError, AttributeError) as e:
+                self.logger.error("Error processing function call %s: %s",
+                                    call['name'], str(e), exc_info=True)
+                st.error(f"Error processing data for {call['name']}. Please try a different query.")
+                continue  # Skip this function call but continue processing others
+
         if func_parts:
             self.logger.debug("Sending function responses back to Gemini")
             return self.chat.send_message(func_parts)
@@ -259,16 +335,21 @@ class BiodiversityApp:
 
     def handle_final_response(self, response):
         """
-        Handles the final response from the assistant.
+        Handles the final response.
         
-        Args:
-            response: The response from Gemini
+        Raises:
+            ValueError: If response format is invalid
+            AttributeError: If required attributes are missing
         """
-        if response is not None:
-            response_text = response.candidates[0].content.parts[0].text
-            self.logger.info("Received final response from Gemini: %s", response_text)
-            self.add_message_to_history("assistant", {"text": response_text})
-            st.write(response_text)
+        try:
+            if response is not None:
+                response_text = response.candidates[0].content.parts[0].text
+                self.logger.info("Received final response from Gemini")
+                self.add_message_to_history("assistant", {"text": response_text})
+                st.write(response_text)
+        except (ValueError, AttributeError) as e:
+            self.logger.error("Final response error: %s", str(e), exc_info=True)
+            raise
 
     def add_message_to_history(self, role, content):
         """
