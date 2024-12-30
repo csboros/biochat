@@ -65,8 +65,8 @@ User Query → Gemini Model → Function Calls → BigQuery/APIs → Data Proces
 
 Here are some example queries you can try with the application:
 
-#### Taxonomic Queries (walk through the taxonomy)
-- List the endangered classes per kingdom Animalia
+#### Taxonomic Queries (walk through the taxonomy) 
+- 
 - List all orders with endangered species for class Mammalia
 - List all families for primates with the number of endangered species 
 - Show all endangered species in the family of HOMINIDAE with link to IUCN
@@ -220,7 +220,7 @@ gcloud secrets create GOOGLE_API_KEY --data-file=- <<< "[your-google-api-key]"
 gcloud secrets create GOOGLE_CSE_ID --data-file=- <<< "[your-cse-id]"
 ```
 
-#### Grant Secret Manager access to you service principal 
+#### Grant Secret Manager access to your service principal 
 ```bash
 export SERVICE_ACCOUNT="[your-service-principal]"
 
