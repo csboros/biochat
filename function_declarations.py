@@ -41,7 +41,8 @@ FUNCTION_DECLARATIONS = [
         name="get_occurences",
         description=(
             "Get occurences, distribution for a given species, "
-            "show where species is found, where it lives."
+            "show where species is found, where species live. Answer to questions like: "
+            "Where do species live? Where is species found? Where is species found?"
         ),
         parameters={
             "type": "object",
@@ -50,7 +51,9 @@ FUNCTION_DECLARATIONS = [
                     "type": "string",
                     "description": (
                         "name of the species to get occurences for, "
-                        "if it is a common name, use the scientific name"
+                        "if it is a common name, use the scientific name. "
+                        "If you do not know the scientific name, translate it to scientific name "
+                        "using the translate_to_scientific_name function."
                     ),
                 },
                 "country_code": {
@@ -62,7 +65,7 @@ FUNCTION_DECLARATIONS = [
                     "description": "type of chart to display",
                 },
             },
-            "required": ["species_name"]
+#            "required": ["species_name"]
         },
     ),
     FunctionDeclaration(
