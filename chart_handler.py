@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
+from streamlit.errors import StreamlitAPIException
 
 class ChartHandler:
     """
@@ -63,11 +64,10 @@ class ChartHandler:
                 raise pd.errors.EmptyDataError("Empty DataFrame provided")
             if chart_type.lower() == "heatmap":
                 self.draw_heatmap(data)
-            elif chart_type.lower() in ["hexagon", "hex", "hexagons", "hexbin"]:
-                self.draw_hexagon_map(data, params)
+            # hexagon is default chart type
             else:
-                raise ValueError(f"Unsupported chart type: {chart_type}")
-        except (ValueError, TypeError, pd.errors.EmptyDataError) as e:
+                self.draw_hexagon_map(data, params)
+        except (TypeError, ValueError, pd.errors.EmptyDataError) as e:
             self.logger.error("Error creating visualization: %s", str(e), exc_info=True)
             raise
 
@@ -115,9 +115,9 @@ class ChartHandler:
         except (ValueError, TypeError) as e:
             self.logger.error("Error creating heatmap: %s", str(e), exc_info=True)
             raise
-        except Exception as e:
+        except (StreamlitAPIException, RuntimeError) as e:
             self.logger.error("Streamlit chart error: %s", str(e), exc_info=True)
-            raise
+            raise ValueError("Failed to render chart") from e
 
     def draw_hexagon_map(self, data, parameters):
         """
@@ -129,6 +129,8 @@ class ChartHandler:
             st.StreamlitAPIException: If chart rendering fails
         """
         try:
+            if not isinstance(parameters, dict):
+                raise TypeError("Parameters must be a dictionary")   
             logging.debug("Drawing hexagon map with parameters: %s", parameters)
             bounds = self._get_bounds_from_data(data)
 
@@ -198,6 +200,8 @@ class ChartHandler:
 
     def _apply_percentile_filtering(self, df, percentile_cutoff):
         """Apply percentile-based filtering to remove extreme outliers."""
+        if not 0 <= percentile_cutoff <= 50:
+            raise ValueError("Percentile cutoff must be between 0 and 50")
         lat_lower = np.percentile(df['decimallatitude'], percentile_cutoff)
         lat_upper = np.percentile(df['decimallatitude'], 100 - percentile_cutoff)
         lon_lower = np.percentile(df['decimallongitude'], percentile_cutoff)

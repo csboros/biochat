@@ -37,64 +37,71 @@ class FunctionHandler:
 
     def __init__(self):
         """
-        Initializes the FunctionHandler with necessary components and configurations.
-
-        Sets up logging, loads geographical data, and initializes function declarations
-        and handlers. Caches world geographical data in Streamlit session state for
-        improved performance.
+        Initializes the FunctionHandler.
 
         Raises:
-            Exception: If initialization of any component fails, particularly during
-                      world GeoJSON data loading
+            FileNotFoundError: If required files cannot be loaded
+            ValueError: If configuration is invalid
         """
-        self.logger = logging.getLogger(f"{self.__class__.__name__}")
-        self.logger.info("Initializing FunctionHandler")
-        self.setup_function_declarations()
-        self.search = GoogleSearchAPIWrapper()
-        self.world_gdf = None  # Initialize the attribute
-        # Add URL for natural earth data
-        self.world_geojson_url = (
-            "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
-            "master/geojson/ne_110m_admin_0_countries.geojson"
-        )
+        try:
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.logger.info("Initializing FunctionHandler")
+            self.setup_function_declarations()
+            self.search = GoogleSearchAPIWrapper()
+            self.world_gdf = None
+            self.world_geojson_url = (
+                "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+                "master/geojson/ne_110m_admin_0_countries.geojson"
+            )
+        except Exception as e:
+            self.logger.error("Initialization error: %s", str(e), exc_info=True)
+            raise
 
     def setup_function_declarations(self):
         """
-        Sets up function declarations and their corresponding handlers.
+        Sets up function declarations.
+
+        Raises:
+            ValueError: If declarations are invalid
+            ImportError: If required modules cannot be imported
         """
-        self.declarations = FUNCTION_DECLARATIONS
-        # Function handlers point to actual methods
-        self.function_handler = {
-            "translate_to_scientific_name": self.translate_to_scientific_name_from_api,
-            "get_occurences": self.get_occurrences,
-            "get_species_info": self.get_species_info_from_api,
-            "endangered_species_for_family": self.endangered_species_for_family,
-            "endangered_classes_for_kingdom": self.endangered_classes_for_kingdom,
-            "endangered_families_for_order": self.endangered_families_for_order,
-            "endangered_orders_for_class": self.endangered_orders_for_class,
-            "endangered_species_for_country": self.endangered_species_for_country,
-            "number_of_endangered_species_by_conservation_status":
-            self.number_of_endangered_species_by_conservation_status,
-            "google_search": self.google_search
-        }
+        try:
+            self.declarations = FUNCTION_DECLARATIONS
+            self.function_handler = {
+                "translate_to_scientific_name": self.translate_to_scientific_name_from_api,
+                "get_occurences": self.get_occurrences,
+                "get_species_info": self.get_species_info_from_api,
+                "endangered_species_for_family": self.endangered_species_for_family,
+                "endangered_classes_for_kingdom": self.endangered_classes_for_kingdom,
+                "endangered_families_for_order": self.endangered_families_for_order,
+                "endangered_orders_for_class": self.endangered_orders_for_class,
+                "endangered_species_for_country": self.endangered_species_for_country,
+                "number_of_endangered_species_by_conservation_status":
+                self.number_of_endangered_species_by_conservation_status,
+                "google_search": self.google_search
+            }
+        except (ValueError, ImportError) as e:
+            self.logger.error("Setup error: %s", str(e), exc_info=True)
+            raise
 
     def google_search(self, content) -> str:
         """
         Performs a Google search focused on IUCN Red List results.
         
-        Args:
-            content (dict): Dictionary containing:
-                - query (str): Search query string
-            
-        Returns:
-            str: Search results from Google, filtered to IUCN Red List content
-            
-        Note:
-            This is used as a fallback when other API methods don't return results.
+        Raises:
+            ValueError: If query is invalid
+            google.api_core.exceptions.GoogleAPIError: If search API fails
         """
-        query_string = content.get('query')
-        query = f"site:https://www.iucnredlist.org/ {query_string}"
-        return self.search.run(query)
+        try:
+            query_string = content.get('query')
+            query = f"site:https://www.iucnredlist.org/ {query_string}"
+            return self.search.run(query)
+        except google.api_core.exceptions.GoogleAPIError as e:
+            self.logger.error("Google Search API error: %s", str(e), exc_info=True)
+            raise
+        except ValueError as e:
+            self.logger.error("Invalid query: %s", str(e), exc_info=True)
+            raise
 
     @st.cache_data(
         ttl=3600,  # Cache for 1 hour
@@ -192,23 +199,26 @@ class FunctionHandler:
         show_spinner="Translating species name...",
         max_entries=100
     )
-    def translate_to_scientific_name_from_api(_self, content):  # pylint: disable=no-self-argument
+    def translate_to_scientific_name_from_api(_self, content: dict) -> str:  # pylint: disable=no-self-argument
         """
-        Translates common species names to scientific names using the EBI Taxonomy API.
+        Translates a common species name to its scientific name using the EBI Taxonomy REST API.
+        Results are cached for 1 hour to improve performance and reduce API calls.
 
         Args:
-            content (dict): Dictionary containing:
-                - name (str): Common name of the species to translate
+            content (dict): A dictionary containing:
+                - name (str): The common name of the species to translate
 
         Returns:
-            str: JSON string containing either:
-                - scientific_name: The translated scientific name
-                - error: Error message if translation fails
+            str: A JSON-formatted string containing either:
+                - Success: {"scientific_name": "<scientific_name>"}
+                - Error: {"error": "<error_message>"}
 
         Raises:
-            requests.Timeout: If the API request times out
+            requests.Timeout: If the API request exceeds 10 seconds
             requests.RequestException: If the API request fails
-            JSONDecodeError: If the API response cannot be parsed
+            json.JSONDecodeError: If the API response cannot be parsed
+            KeyError, ValueError: If the response format is unexpected
+
         """
         species_name = content.get('name', '').strip()
         if not species_name:
@@ -251,21 +261,22 @@ class FunctionHandler:
 
     def get_species_info_from_api(self, content):
         """
-        Retrieves detailed species information from the GBIF API.
-
-        Args:
-            content (dict): Dictionary containing:
-                - name (str): Scientific or common name of the species
-
-        Returns:
-            str: JSON string containing species taxonomic and classification information
-
+        Retrieves species information from GBIF API.
+        
         Raises:
-            JSONDecodeError: If the API response cannot be parsed
+            ValueError: If species name is invalid
+            pygbif.gbif.GbifError: If GBIF API request fails
         """
-        species_name = content['name']
-        species_info = species.name_backbone(species_name)
-        return json.dumps(species_info)
+        try:
+            species_name = content['name']
+            species_info = species.name_backbone(species_name)
+            return json.dumps(species_info)
+        except KeyError as e:
+            self.logger.error("Missing species name: %s", str(e), exc_info=True)
+            raise ValueError("Species name is required") from e
+        except Exception as e:  # GBIF doesn't expose specific exceptions
+            self.logger.error("GBIF API error: %s", str(e), exc_info=True)
+            raise
 
 
     def handle_get_country_geojson(self, content):
@@ -322,21 +333,23 @@ class FunctionHandler:
 
     def load_world_geojson(self):
         """
-        Loads the world GeoJSON data from the URL.
+        Loads world GeoJSON data.
+        
+        Raises:
+            requests.RequestException: If GeoJSON download fails
+            json.JSONDecodeError: If GeoJSON is malformed
         """
         try:
             if 'world_gdf' not in st.session_state or st.session_state.world_gdf is None:
-                self.logger.info("Loading world GeoJSON data")
-                response = requests.get(self.world_geojson_url, timeout=30)  # 30 second timeout
+                response = requests.get(self.world_geojson_url, timeout=30)
+                response.raise_for_status()
                 self.world_gdf = response.json()
                 st.session_state.world_gdf = self.world_gdf
-                self.logger.info("Loaded GeoJSON data for %d countries",
-                                 len(self.world_gdf.get('features', [])))
-            else:
-                self.world_gdf = st.session_state.world_gdf
-
-        except Exception as e:
-            self.logger.error("Failed to load world GeoJSON data: %s", str(e), exc_info=True)
+        except requests.RequestException as e:
+            self.logger.error("Failed to download GeoJSON: %s", str(e), exc_info=True)
+            raise
+        except json.JSONDecodeError as e:
+            self.logger.error("Invalid GeoJSON format: %s", str(e), exc_info=True)
             raise
 
 
