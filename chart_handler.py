@@ -130,7 +130,7 @@ class ChartHandler:
         """
         try:
             if not isinstance(parameters, dict):
-                raise TypeError("Parameters must be a dictionary")   
+                raise TypeError("Parameters must be a dictionary")
             logging.debug("Drawing hexagon map with parameters: %s", parameters)
             bounds = self._get_bounds_from_data(data)
 
