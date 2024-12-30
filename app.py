@@ -77,7 +77,8 @@ class BiodiversityApp:
             # Initialize model and tools
             tools = Tool(function_declarations= handler.declarations)
             model = GenerativeModel(
-                model_name="gemini-1.5-pro-002",
+                model_name="gemini-pro",
+#                model_name="gemini-1.5-pro-002",
                 generation_config=GenerationConfig(temperature=0),
                 tools=[tools],
             )
@@ -285,7 +286,8 @@ class BiodiversityApp:
             if part.function_call is not None:
                 function_name = part.function_call.name
                 params = dict(part.function_call.args.items())
-                self.logger.info("Processing function call: %s", function_name)
+                self.logger.info("Processing function call: %s with params: %s",
+                                 function_name, params)
                 response = self.function_handler[function_name](params)
                 function_calls.append({
                     'name': function_name,
@@ -379,12 +381,17 @@ class BiodiversityApp:
         self.logger.debug("Processing occurrences data")
         try:
             df = pd.json_normalize(data_response)
-            chart_type = parameters.get("chart_type", "hexagon")
-            self.logger.debug("Parameters: %s", parameters)
-            self.chart_handler.draw_chart(df, chart_type, parameters)
-            st.session_state.messages.append({"role": "assistant",
-                                              "content": {"chart_data": df, "type": chart_type,
-                                              "parameters": parameters}})
+            if df.empty:
+                st.markdown("No data to display")
+                st.session_state.messages.append({"role": "assistant",
+                                                  "content": {"text": "No data to display"}})
+            else:
+                chart_type = parameters.get("chart_type", "hexagon")
+                self.logger.debug("Parameters: %s", parameters)
+                self.chart_handler.draw_chart(df, chart_type, parameters)
+                st.session_state.messages.append({"role": "assistant",
+                                                  "content": {"chart_data": df, "type": chart_type,
+                                                  "parameters": parameters}})
         except (TypeError, ValueError) as e:
             self.logger.error("Invalid data format: %s", str(e), exc_info=True)
             raise

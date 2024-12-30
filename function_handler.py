@@ -128,6 +128,10 @@ class FunctionHandler:
         """
         try:
             species_name = content['species_name']
+            scientific_name = _self.translate_to_scientific_name_from_api({'name': species_name})
+            print(scientific_name)
+            if scientific_name:
+                species_name = json.loads(scientific_name).get('scientific_name')
             if 'country_code' in content:
                 country_code = content['country_code']
                 _self.logger.info("Fetching occurrences for species: %s and country: %s",
