@@ -88,7 +88,7 @@ class ChartHandler:
                     zoom=3,
                     pitch=30
                 )
-
+    # pylint: disable=no-member
             st.pydeck_chart(
                 pdk.Deck(
                     initial_view_state=view_state,
@@ -138,7 +138,8 @@ class ChartHandler:
                 )
             else:
                 view_state = self.default_view_state
-
+                
+            # pylint: disable=no-member
             st.pydeck_chart(
                 pdk.Deck(
                     initial_view_state=view_state,
