@@ -138,7 +138,6 @@ class ChartHandler:
                 )
             else:
                 view_state = self.default_view_state
-                
             # pylint: disable=no-member
             st.pydeck_chart(
                 pdk.Deck(
