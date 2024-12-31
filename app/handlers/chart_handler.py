@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
-from streamlit.errors import StreamlitAPIException
 
 class ChartHandler:
     """
@@ -78,7 +77,6 @@ class ChartHandler:
         Raises:
             ValueError: If coordinate data is invalid
             TypeError: If DataFrame columns are of wrong type
-            st.StreamlitAPIException: If chart rendering fails
         """
         try:
             bounds = self._get_bounds_from_data(df)
@@ -115,9 +113,6 @@ class ChartHandler:
         except (ValueError, TypeError) as e:
             self.logger.error("Error creating heatmap: %s", str(e), exc_info=True)
             raise
-        except (StreamlitAPIException, RuntimeError) as e:
-            self.logger.error("Streamlit chart error: %s", str(e), exc_info=True)
-            raise ValueError("Failed to render chart") from e
 
     def draw_hexagon_map(self, data, parameters):
         """

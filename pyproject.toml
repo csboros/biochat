@@ -7,7 +7,6 @@ authors = [
 ]
 dependencies = [
     "pandas>=2.2.3",
-    "streamlit>=1.39.0",
     "vertexai>=1.70.0",
     "requests>=2.32.3",
     "google-cloud-bigquery>=3.27.0",
@@ -17,6 +16,7 @@ dependencies = [
     "langchain-community==0.3.9",
     "langchain_google_community>=2.0.3",
     "EcoNameTranslator>=2.1",
+    "streamlit>=1.41.1",
 ]
 readme = "README.md"
 requires-python = ">= 3.12"
@@ -32,5 +32,10 @@ dev-dependencies = []
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.build]
+include = [
+    "app/**/*.py",
+]
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/streamlit"]
+packages = ["app"]

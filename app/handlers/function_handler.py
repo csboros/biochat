@@ -17,7 +17,7 @@ from pygbif import species
 #from EcoNameTranslator import to_common
 from langchain_google_community import GoogleSearchAPIWrapper
 import streamlit as st
-from function_declarations import FUNCTION_DECLARATIONS
+from app.models.function_declarations import FUNCTION_DECLARATIONS
 
 class FunctionHandler:
     """
@@ -103,6 +103,7 @@ class FunctionHandler:
             self.logger.error("Invalid query: %s", str(e), exc_info=True)
             raise
 
+    # pylint: disable=no-member
     @st.cache_data(
         ttl=3600,  # Cache for 1 hour
         show_spinner="Fetching data...",

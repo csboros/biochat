@@ -10,15 +10,13 @@ COPY requirements.txt .
 # Install the dependencies
 RUN pip install -r requirements.txt
 
+# Copy application code
+COPY app app/.
+COPY __init__.py .
+COPY .streamlit/secrets.toml .streamlit/secrets.toml
+
 # Create directory for credentials
 RUN mkdir -p /root/.config/gcloud
-
-# Copy the rest of the application code
-COPY app.py .
-COPY function_handler.py .
-COPY chart_handler.py .
-COPY logging_config.py .
-COPY .streamlit/secrets.toml .streamlit/secrets.toml
 
 # Copy credentials file (if using service account JSON)
 COPY .streamlit/credentials.json /root/.config/gcloud/application_default_credentials.json
@@ -31,6 +29,7 @@ HEALTHCHECK CMD curl --fail http://localhost:8080/_stcore/health
 # Add environment variables for Google Cloud
 ENV GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
 ENV GOOGLE_CLOUD_PROJECT=tribal-logic-351707
+ENV PYTHONPATH=/app
 
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+ENTRYPOINT ["streamlit", "run", "app/main.py", "--server.port=8080", "--server.address=0.0.0.0"]
 
