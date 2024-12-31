@@ -21,6 +21,6 @@ jobs:
         pip install -r requirements.txt
     - name: Analysing the code with pylint
       env:
-        PYTHONPATH: /app
+        PYTHONPATH: ${GITHUB_WORKSPACE}
       run: |
         pylint $(git ls-files '*.py')
