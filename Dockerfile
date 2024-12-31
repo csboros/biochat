@@ -11,16 +11,15 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Copy the rest of the application code
-COPY app.py .
-COPY function_handler.py .
-COPY chart_handler.py .
-COPY logging_config.py .
-COPY function_declarations.py .
+COPY app app/.
+COPY __init__.py .
 
 # Expose the port where Streamlit runs
 EXPOSE 8080
 
 HEALTHCHECK CMD curl --fail http://localhost:8080/_stcore/health
 
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+ENV PYTHONPATH=/app
+
+ENTRYPOINT ["streamlit", "run", "app/main.py", "--server.port=8080", "--server.address=0.0.0.0"]
 

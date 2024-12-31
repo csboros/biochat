@@ -1,0 +1,52 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.py[cod]
+*$py.class
+.pytest_cache
+.coverage
+htmlcov/
+.tox/
+.nox/
+.ruff_cache/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE specific files
+.idea
+.vscode
+*.swp
+*.swo
+.DS_Store
+**/.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Local development
+*.lock
+requirements-dev.lock
+.python-version
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Rye specific
+.rye/ 
+

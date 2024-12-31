@@ -8,8 +8,10 @@ wheels/
 
 # venv
 .venv
+.env    
 .streamlit
 .DS_Store
+**/.DS_Store
 .python-version
 logs/
 scripts/*.csv 

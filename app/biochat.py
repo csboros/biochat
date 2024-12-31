@@ -21,14 +21,15 @@ from vertexai.generative_models import (
 import requests
 from google.api_core import exceptions as google_exceptions
 import streamlit as st
-from function_handler import FunctionHandler
-from chart_handler import ChartHandler
-from logging_config import setup_logging
+from app.utils.logging_config import setup_logging
+from app.handlers.function_handler import FunctionHandler
+from app.handlers.chart_handler import ChartHandler
+
 
 # Setup logging configuration at application startup
 setup_logging()
 
-class BiodiversityApp:
+class BioChat:
     """
     Main application class for the Biodiversity Chat interface.
     
@@ -36,6 +37,7 @@ class BiodiversityApp:
     Handles user interactions, function calls, and visualization of biodiversity data.
     """
 
+    # pylint: disable=no-member
     @st.cache_resource
     def initialize_app_resources(_self):  # pylint: disable=no-self-argument
         """
@@ -398,7 +400,3 @@ class BiodiversityApp:
         except AttributeError as e:
             self.logger.error("Missing required attribute: %s", str(e), exc_info=True)
             raise
-
-if __name__ == "__main__":
-    app = BiodiversityApp()
-    app.run()
