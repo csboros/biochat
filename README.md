@@ -22,7 +22,7 @@ This is a Streamlit-based web application that provides an interactive chat inte
    - Country-specific geographical data overlays
 
 ### Technical Architecture
-   - `BiodiversityApp`: Main application class managing the chat interface and model interactions
+   - `BioCht`: Main application class managing the chat interface and model interactions
    - `FunctionHandler`: Manages data retrieval and processing functions
    - `ChartHandler`: Handles data visualization using PyDeck
 
