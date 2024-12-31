@@ -20,5 +20,7 @@ jobs:
         pip install pylint
         pip install -r requirements.txt
     - name: Analysing the code with pylint
+      env:
+        PYTHONPATH: /app
       run: |
         pylint $(git ls-files '*.py')
