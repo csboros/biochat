@@ -19,5 +19,7 @@ scripts/*.md
 scripts/*.sql
 requirements-dev.lock
 requirements.lock
+.vscode
+
 
 

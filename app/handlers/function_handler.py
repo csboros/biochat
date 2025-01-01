@@ -44,7 +44,7 @@ class FunctionHandler:
             ValueError: If configuration is invalid
         """
         try:
-            self.logger = logging.getLogger(self.__class__.__name__)
+            self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
             self.logger.info("Initializing FunctionHandler")
             self.setup_function_declarations()
             self.search = GoogleSearchAPIWrapper()
@@ -104,11 +104,11 @@ class FunctionHandler:
             raise
 
     # pylint: disable=no-member
-    @st.cache_data(
-        ttl=3600,  # Cache for 1 hour
-        show_spinner="Fetching data...",
-        max_entries=100
-    )
+#    @st.cache_data(
+#        ttl=3600,  # Cache for 1 hour
+#        show_spinner="Fetching data...",
+#        max_entries=100
+#    )
     def get_occurrences(_self, content):  # pylint: disable=no-self-argument
         """
         Retrieves species occurrence data from BigQuery.
@@ -127,12 +127,18 @@ class FunctionHandler:
             TypeError: If content is not in expected format
             KeyError: If required fields are missing from the response
         """
+        start_time = time.time()
         try:
+            # Translation timing
+            translation_start = time.time()
             species_name = content['species_name']
             scientific_name = _self.translate_to_scientific_name_from_api({'name': species_name})
-            print(scientific_name)
             if scientific_name:
                 species_name = json.loads(scientific_name).get('scientific_name')
+            _self.logger.info("Translation took %.2f seconds", time.time() - translation_start)
+
+            # Query setup timing
+            query_setup_start = time.time()
             if 'country_code' in content:
                 country_code = content['country_code']
                 _self.logger.info("Fetching occurrences for species: %s and country: %s",
@@ -148,7 +154,7 @@ class FunctionHandler:
                 SELECT 
                     decimallatitude,
                     decimallongitude
-                FROM `{}.biodiversity.occurances_endangered_species_mammals`
+                FROM `{}.biodiversity.cached_occurrences`
                 WHERE LOWER(species) = LOWER(@species_name)
                     AND decimallatitude IS NOT NULL
                     AND decimallongitude IS NOT NULL
@@ -169,6 +175,10 @@ class FunctionHandler:
                         bigquery.ScalarQueryParameter("species_name", "STRING", species_name)
                     ]
                 )
+            _self.logger.info("Query setup took %.2f seconds", time.time() - query_setup_start)
+
+            # Query execution timing
+            query_start = time.time()
             query_job = client.query(
                 query,
                 job_config=job_config
@@ -180,30 +190,35 @@ class FunctionHandler:
                 "decimallatitude": row.decimallatitude,
                 "decimallongitude": row.decimallongitude
             } for row in query_job]
+            _self.logger.info("Query execution took %.2f seconds", time.time() - query_start)
+
             _self.logger.info(
-                "Successfully fetched %d occurrences for species %s%s",
+                "Successfully fetched %d occurrences for species %s%s in %.2f seconds",
                 len(results),
                 species_name,
-                ' and country ' + country_code if country_code else ''
+                ' and country ' + country_code if country_code else '',
+                time.time() - start_time
             )
             return results
 
         except google.api_core.exceptions.GoogleAPIError as e:
-            _self.logger.error("BigQuery error: %s", str(e), exc_info=True)
+            _self.logger.error("BigQuery error (took %.2f seconds): %s",
+                             time.time() - start_time, str(e), exc_info=True)
             raise
         except KeyError as e:
-            _self.logger.error("Missing required field: %s", str(e), exc_info=True)
+            _self.logger.error("Missing required field (took %.2f seconds): %s",
+                             time.time() - start_time, str(e), exc_info=True)
             raise
         except (TypeError, ValueError) as e:
-            _self.logger.error("Invalid input: %s", str(e), exc_info=True)
+            _self.logger.error("Invalid input (took %.2f seconds): %s",
+                             time.time() - start_time, str(e), exc_info=True)
             raise
 
-
-    @st.cache_data(
-        ttl=3600,  # Cache for 1 hour
-        show_spinner="Translating species name...",
-        max_entries=100
-    )
+#    @st.cache_data(
+#        ttl=3600,  # Cache for 1 hour
+#        show_spinner="Translating species name...",
+#        max_entries=100
+#    )
     def translate_to_scientific_name_from_api(_self, content: dict) -> str:  # pylint: disable=no-self-argument
         """
         Translates a common species name to its scientific name using the EBI Taxonomy REST API.
@@ -272,15 +287,27 @@ class FunctionHandler:
             ValueError: If species name is invalid
             pygbif.gbif.GbifError: If GBIF API request fails
         """
+        start_time = time.time()
         try:
             species_name = content['name']
+            self.logger.info("Fetching species info for: %s", species_name)
+            # GBIF API call timing
+            api_call_start = time.time()
             species_info = species.name_backbone(species_name)
-            return json.dumps(species_info)
+            self.logger.info("GBIF API call took %.2f seconds", time.time() - api_call_start)
+            # JSON serialization timing
+            json_start = time.time()
+            result = json.dumps(species_info)
+            self.logger.info("JSON serialization took %.2f seconds", time.time() - json_start)
+            self.logger.info("Total get_species_info took %.2f seconds", time.time() - start_time)
+            return result
         except KeyError as e:
-            self.logger.error("Missing species name: %s", str(e), exc_info=True)
+            self.logger.error("Missing species name (took %.2f seconds): %s",
+                            time.time() - start_time, str(e), exc_info=True)
             raise ValueError("Species name is required") from e
         except Exception as e:  # GBIF doesn't expose specific exceptions
-            self.logger.error("GBIF API error: %s", str(e), exc_info=True)
+            self.logger.error("GBIF API error (took %.2f seconds): %s",
+                            time.time() - start_time, str(e), exc_info=True)
             raise
 
 

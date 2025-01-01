@@ -34,7 +34,7 @@ class ChartHandler:
         The default view provides a global perspective centered slightly east of
         Greenwich (30° longitude) to show most landmasses.
         """
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
         self.default_view_state = pdk.ViewState(
             latitude=0.0,
             longitude=30,
@@ -42,7 +42,7 @@ class ChartHandler:
             pitch=30
         )
 
-    def draw_chart(self, data, chart_type, params):
+    def draw_chart(self, df, chart_type, parameters):
         """
         Main entry point for creating visualizations.
 
@@ -57,15 +57,20 @@ class ChartHandler:
             pd.errors.EmptyDataError: If DataFrame is empty
         """
         try:
-            if not isinstance(data, pd.DataFrame):
+            if not isinstance(df, pd.DataFrame):
                 raise TypeError("Data must be a pandas DataFrame")
-            if data.empty:
+            if df.empty:
                 raise pd.errors.EmptyDataError("Empty DataFrame provided")
+            # Downsample data for large datasets
+            if len(df) > 1000:
+                df = df.sample(n=1000, random_state=42)
             if chart_type.lower() == "heatmap":
-                self.draw_heatmap(data)
+                with st.spinner("Rendering heatmap..."): #pylint: disable=no-member
+                    self.draw_heatmap(df)
             # hexagon is default chart type
             else:
-                self.draw_hexagon_map(data, params)
+                with st.spinner("Rendering distribution map..."):  #pylint: disable=no-member
+                    self.draw_hexagon_map(df, parameters)
         except (TypeError, ValueError, pd.errors.EmptyDataError) as e:
             self.logger.error("Error creating visualization: %s", str(e), exc_info=True)
             raise
@@ -172,6 +177,89 @@ class ChartHandler:
         except Exception as e:
             self.logger.error("Streamlit chart error: %s", str(e), exc_info=True)
             raise
+
+    def draw_chart_client_side_rendering(self, df):
+        """
+        Draws a chart using client-side rendering.
+        """
+        mapbox_token = "YOUR_MAXPOX_TOKEN"  # Replace with your token
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Deck.gl Map</title>
+            <script defer src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
+            <script defer src="https://unpkg.com/@deck.gl/core@8.9.33/dist.min.js"></script>
+            <script defer src="https://unpkg.com/@deck.gl/layers@8.9.33/dist.min.js"></script>
+            <script defer src="https://unpkg.com/@deck.gl/mapbox@8.9.33/dist.min.js"></script>
+            <script defer src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
+            <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
+        </head>
+        <body>
+            <div id="deck-container" style="width: 100%; height: 600px; position: relative;"></div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {{
+                    console.log('DOM loaded, checking for libraries...');
+                    const checkLibraries = setInterval(() => {{
+                        if (window.deck && window.mapboxgl) {{
+                            console.log('Libraries loaded, initializing...');
+                            clearInterval(checkLibraries);
+                            initMap();
+                        }}
+                    }}, 100);
+
+                    function initMap() {{
+                        const MAPBOX_ACCESS_TOKEN = '{mapbox_token}';
+                        mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
+                        const data = {df.to_json(orient='records')};
+                        
+                        try {{
+                            const map = new mapboxgl.Map({{
+                                container: 'deck-container',
+                                style: 'mapbox://styles/mapbox/dark-v10',
+                                interactive: false,
+                                center: [0, 0],
+                                zoom: 2,
+                                pitch: 30
+                            }});
+                            map.on('load', () => {{
+                                console.log('Map loaded, initializing deck.gl...');
+                                const deck = new deck.DeckGL({{
+                                    container: 'deck-container',
+                                    mapboxApiAccessToken: MAPBOX_ACCESS_TOKEN,
+                                    mapStyle: 'mapbox://styles/mapbox/dark-v10',
+                                    initialViewState: {{
+                                        longitude: 0,
+                                        latitude: 0,
+                                        zoom: 2,
+                                        pitch: 30
+                                    }},
+                                    controller: true,
+                                    layers: [
+                                        new deck.HexagonLayer({{
+                                            id: 'hexagon',
+                                            data: data,
+                                            getPosition:
+                                                d => [d.decimallongitude, d.decimallatitude],
+                                            radius: 10000,
+                                            elevationScale: 5000,
+                                            pickable: true,
+                                            extruded: true,
+                                        }})
+                                    ]
+                                }});
+                            }});
+                        }} catch (error) {{
+                            console.error('Error initializing map:', error);
+                        }}
+                    }}
+                }});
+            </script>
+        </body>
+        </html>
+        """
+#        html(html_content, height=600)
 
     def _get_bounds_from_data(self, df, percentile_cutoff=2.5, min_points=10):
         """Calculates appropriate map bounds from coordinate data with outlier filtering."""

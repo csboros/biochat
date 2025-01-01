@@ -22,7 +22,7 @@ This is a Streamlit-based web application that provides an interactive chat inte
    - Country-specific geographical data overlays
 
 ### Technical Architecture
-   - `BioCht`: Main application class managing the chat interface and model interactions
+   - `BioChat`: Main application class managing the chat interface and model interactions
    - `FunctionHandler`: Manages data retrieval and processing functions
    - `ChartHandler`: Handles data visualization using PyDeck
 
@@ -261,6 +261,8 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 ```bash
 gcloud run deploy biochat-app \
   --image gcr.io/$PROJECT_ID/biochat-app:latest \
+  --memory 2Gi \
+  --cpu 2 \
   --platform managed \
   --region us-central1 \
   --service-account="$SERVICE_ACCOUNT" \
