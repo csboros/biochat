@@ -180,7 +180,7 @@ class ChartHandler:
 
     def draw_chart_client_side_rendering(self, df):
         """
-        Draws a chart using client-side rendering.
+        Draws a chart using client-side rendering. Experimental and not yet working.
         """
         mapbox_token = "YOUR_MAXPOX_TOKEN"  # Replace with your token
         html_content = f"""
@@ -259,6 +259,7 @@ class ChartHandler:
         </body>
         </html>
         """
+        print(html_content)
 #        html(html_content, height=600)
 
     def _get_bounds_from_data(self, df, percentile_cutoff=2.5, min_points=10):
