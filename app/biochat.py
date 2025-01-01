@@ -222,7 +222,7 @@ class BioChat:
         self.logger.debug("Starting message history display")
         try:
             messages_start = time.time()
-            for idx, message in enumerate(st.session_state.messages):
+            for message in enumerate(st.session_state.messages):
                 avatar = "🦊" if message["role"] == "assistant" else "👨‍🦰"
                 with st.chat_message(message["role"], avatar=avatar):
                     if "chart_data" in message["content"]:
@@ -283,10 +283,8 @@ class BioChat:
             When too many requests are made in a short time period
         google_exceptions.GoogleAPIError
             When there's an error in the API communication
-        ValueError
-            When there's an error processing the response format
-        AttributeError
-            When expected response attributes are missing
+        requests.exceptions.RequestException
+            When there's an error in the API communication
         """
         start_time = time.time()
         self.logger.info("Starting to process assistant response")
@@ -340,10 +338,6 @@ class BioChat:
             self.logger.error("Network error (took %.2f seconds): %s",
                             time.time() - start_time, str(e), exc_info=True)
             st.error("Network error occurred. Please check your connection and try again.")
-        except json.JSONDecodeError as e:
-            self.logger.error("JSON parsing error (took %.2f seconds): %s",
-                            time.time() - start_time, str(e), exc_info=True)
-            st.error("Error processing the response. Please try again.")
         except Exception as e:  # pylint: disable=broad-except
             self.logger.error("Unexpected error (took %.2f seconds): %s",
                             time.time() - start_time, str(e), exc_info=True)
