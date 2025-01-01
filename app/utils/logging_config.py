@@ -37,7 +37,7 @@ LOGGING_CONFIG = {
             'handlers': ['console'],
             'level': 'INFO',
         },
-        'BiodiversityApp': {
+        'BioChat': {
             'handlers': ['app_file', 'console'],
             'level': 'DEBUG',
             'propagate': False
