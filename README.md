@@ -66,7 +66,7 @@ User Query → Gemini Model → Function Calls → BigQuery/APIs → Data Proces
 Here are some example queries you can try with the application:
 
 #### Taxonomic Queries (walk through the taxonomy) 
-- 
+
 - List all orders with endangered species for class Mammalia
 - List all families for primates with the number of endangered species 
 - Show all endangered species in the family of HOMINIDAE with link to IUCN

@@ -2,13 +2,17 @@
 
 import os
 import logging
-from google.cloud import bigquery
+from typing import List, Optional
 import google.api_core.exceptions
+from google.cloud import bigquery
+from .query_builder import BaseQueryBuilder
+
 class EndangeredSpeciesHandler:
     """Handles queries related to endangered species."""
 
     def __init__(self):
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
+        self.query_builder = BaseQueryBuilder()
 
     def endangered_classes_for_kingdom(self, content) -> str:
         """
@@ -320,41 +324,37 @@ class EndangeredSpeciesHandler:
         results = query_job.result()
         return [(row.species_name, row.family, row.status, row.url) for row in results]
 
-    def _build_country_species_query(self, conservation_status: str = None) -> str:
-        """Build the BigQuery query string for country species."""
+    def _build_country_species_query(self, conservation_status: Optional[str] = None) -> str:
         base_query = """
-            SELECT DISTINCT CONCAT(genus_name, ' ', species_name) as species_name, 
+            SELECT DISTINCT CONCAT(genus_name, ' ', species_name) as species_name,
                    family_name as family, conservation_status as status, url
             FROM `{}.biodiversity.endangered_species` sp
-            JOIN `{}.biodiversity.occurances_endangered_species_mammals` oc 
-                ON CONCAT(genus_name, ' ', species_name) = oc.species 
-            WHERE species_name IS NOT NULL 
-                AND genus_name IS NOT NULL 
+            JOIN `{}.biodiversity.occurances_endangered_species_mammals` oc
+                ON CONCAT(genus_name, ' ', species_name) = oc.species
+            WHERE species_name IS NOT NULL
+                AND genus_name IS NOT NULL
                 AND oc.countrycode = @country_code
-                {conservation_status_filter}
+                {{conservation_status_filter}}
             GROUP BY genus_name, species_name, family_name, conservation_status, url
             ORDER BY species_name
         """
-        conservation_status_filter = (
-            "AND LOWER(conservation_status) = LOWER(@conservation_status)"
-            if conservation_status
-            else ""
-        )
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        return base_query.format(project_id, project_id,
-                                 conservation_status_filter=conservation_status_filter)
+        return self.query_builder.build_query(
+            base_query,
+            project_id,
+            conservation_status=conservation_status
+        )
 
-    def _get_country_query_parameters(self, country_code: str,
-                            conservation_status: str = None) -> list:
+    def _get_country_query_parameters(
+            self,
+            country_code: str,
+            conservation_status: Optional[str] = None
+    ) -> List[bigquery.ScalarQueryParameter]:
         """Create query parameters for country species query."""
-        parameters = [
-            bigquery.ScalarQueryParameter("country_code", "STRING", country_code)
-        ]
-        if conservation_status:
-            parameters.append(
-                bigquery.ScalarQueryParameter("conservation_status", "STRING", conservation_status)
-            )
-        return parameters
+        return self.query_builder.get_parameters(
+            country_code=country_code,
+            conservation_status=conservation_status
+        )
 
     def _format_country_species_results(self, results: list) -> str:
         """Format the country species results into a readable string."""

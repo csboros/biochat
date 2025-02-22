@@ -226,6 +226,7 @@ FUNCTION_DECLARATIONS = [
                 "country_code": {
                     "type": "string",
                     "description": "three letter country code to get protected areas for, "
+                    "(KEN for Kenya, USA for United States of America, etc.) "
                     "if you do not know the three letter country code, "
                     "use google_search function to find it",
                 }
