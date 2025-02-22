@@ -9,7 +9,7 @@ import json
 import os
 import time
 import logging
-from typing import List, Optional
+from typing import List
 import requests
 import google.api_core.exceptions
 from google.cloud import bigquery
@@ -725,22 +725,3 @@ class FunctionHandler:
             FROM `{project_id}.biodiversity.protected_areas_africa`
             WHERE ISO3 = @country_code
         """
-
-    def _build_protected_area_query(self, conservation_status: Optional[str] = None) -> str:
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        return self.handlers['query'].build_query(
-            self.handlers['query'].SPECIES_QUERY_TEMPLATE,
-            project_id,
-            where_clause="AND pa.name = @protected_area_name",
-            conservation_status=conservation_status
-        )
-
-    def _get_protected_area_parameters(
-            self,
-            protected_area_name: str,
-            conservation_status: Optional[str] = None
-    ) -> List[bigquery.ScalarQueryParameter]:
-        return self.handlers['query'].get_parameters(
-            protected_area_name=protected_area_name,
-            conservation_status=conservation_status
-        )
