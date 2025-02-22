@@ -17,6 +17,7 @@ from vertexai.generative_models import (
     GenerativeModel,
     Part,
     Tool,
+    ResponseValidationError
 )
 import requests
 from google.api_core import exceptions as google_exceptions
@@ -145,6 +146,13 @@ class BioChat:
             ValueError: If initialization parameters are invalid
             RuntimeError: If required resources cannot be initialized
         """
+        # Set page config to wide mode
+        st.set_page_config(
+            page_title="AI Chat Assistant",
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
+
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
         try:
             resources = self.initialize_app_resources()
@@ -160,6 +168,7 @@ class BioChat:
         except Exception as e:  # pylint: disable=broad-except
             # Justified as initialization failure should catch all possible errors
             self.logger.error("Error during initialization: %s", str(e), exc_info=True)
+            raise
 
     def initialize_session_state(self):
         """
@@ -196,10 +205,16 @@ class BioChat:
             # Core functionality
             self.handle_user_input()
             self.display_message_history()
-        except Exception as e:  # pylint: disable=broad-except
+        except ResponseValidationError as e:
+            # response has been blocked by safety filters, show the message history
+            # and ask for a different prompt
+            st.session_state.messages.pop()
+            self.logger.error("ResponseValidationError: %s", str(e), exc_info=True)
+            st.error("No results found. Please try a different prompt.")
+            self.display_message_history()
+        # pylint: disable=broad-except
+        except Exception as e:
             # Catch-all for unexpected errors not handled by process_assistant_response
-            # This is intentionally broad as it's the last resort error handler
-            # for the main app loop
             self.logger.error("Critical application error: %s", str(e), exc_info=True)
             st.error("A critical error occurred. Please refresh the page and try again.")
 
@@ -221,7 +236,7 @@ class BioChat:
         self.logger.debug("Starting message history display")
         try:
             messages_start = time.time()
-            for message in enumerate(st.session_state.messages):
+            for _, message in enumerate(st.session_state.messages):
                 avatar = "🦊" if message["role"] == "assistant" else "👨‍🦰"
                 with st.chat_message(message["role"], avatar=avatar):
                     if "chart_data" in message["content"]:
@@ -257,9 +272,6 @@ class BioChat:
         if prompt := st.chat_input("Can I help you?"):
             self.logger.info("Received new user prompt: %s", prompt)
             self.add_message_to_history("user", {"text": prompt})
-#            with st.chat_message("user", avatar="👨‍🦰"):
-#                st.markdown(prompt)
-#            with st.chat_message("assistant", avatar="🦊"):
             self.process_assistant_response(prompt)
 
     def process_assistant_response(self, prompt: str) -> None:
@@ -376,9 +388,15 @@ class BioChat:
         """
         func_parts = []
         for call in function_calls:
+            self.logger.info("Processing function call: %s", call['name'])
+            self.logger.info("Processing function call with parameters: %s", call['params'])
             try:
-                if call['name'] == "get_occurences":
+                if call['name'] in ('get_occurences', 'get_species_occurrences_in_protected_area'):
                     self.process_occurrences_data(call['response'], call['params'])
+                elif call['name'] == "get_protected_areas_geojson":
+                    self.process_geojson_data(call['response'], call['params'])
+                elif call['name'] == "get_endangered_species_in_protected_area":
+                    self.process_json_data(call['response'], call['params'])
                 elif call['name'] in ('endangered_species_for_country',
                                   'number_of_endangered_species_by_conservation_status',
                                   'endangered_species_for_family', 
@@ -386,7 +404,6 @@ class BioChat:
                                   'endangered_orders_for_class',
                                   'endangered_classes_for_kingdom'):
                     self.add_message_to_history("assistant", {"text": call['response']})
-#                    st.markdown(call['response'])
                 else:
                     func_parts.append(Part.from_function_response(
                         name=call['name'],
@@ -416,7 +433,6 @@ class BioChat:
                 response_text = response.candidates[0].content.parts[0].text
                 self.logger.info("Received final response from Gemini")
                 self.add_message_to_history("assistant", {"text": response_text})
-#                st.write(response_text)
         except (ValueError, AttributeError) as e:
             self.logger.error("Final response error: %s", str(e), exc_info=True)
             raise
@@ -430,6 +446,32 @@ class BioChat:
             content (dict): The content of the message
         """
         st.session_state.messages.append({"role": role, "content": content})
+
+    def process_geojson_data(self, data_response, parameters):
+        """
+        Processes and visualizes GeoJSON data for protected areas.
+        """
+        st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": "geojson",
+                        "parameters": parameters
+                    }
+                })
+
+    def process_json_data(self, data_response, parameters):
+        """
+        Processes and visualizes JSON data for protected areas.
+        """
+        st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": "json",
+                        "parameters": parameters
+                    }
+                })
 
     def process_occurrences_data(self, data_response, parameters):
         """
