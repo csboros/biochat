@@ -9,7 +9,7 @@ import json
 import os
 import time
 import logging
-from typing import List
+from typing import List, Optional
 import requests
 import google.api_core.exceptions
 from google.cloud import bigquery
@@ -19,6 +19,7 @@ from langchain_google_community import GoogleSearchAPIWrapper
 import streamlit as st
 from app.models.function_declarations import FUNCTION_DECLARATIONS
 from .endangered_species_handler import EndangeredSpeciesHandler
+from .query_builder import BaseQueryBuilder
 
 class FunctionHandler:
     """
@@ -34,6 +35,7 @@ class FunctionHandler:
         function_handler (dict): Mapping of function names to their implementations
         world_gdf (dict): Cached GeoJSON data for world geographical features
         search (GoogleSearchAPIWrapper): Instance of Google Search API wrapper
+        query_builder (BaseQueryBuilder): Instance of BaseQueryBuilder for query building
     """
 
     def __init__(self):
@@ -48,6 +50,7 @@ class FunctionHandler:
             self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
             self.logger.info("Initializing FunctionHandler")
             self.endangered_handler = EndangeredSpeciesHandler()
+            self.query_builder = BaseQueryBuilder()
             self.setup_function_declarations()
             self.search = GoogleSearchAPIWrapper()
             self.world_gdf = None
@@ -636,32 +639,11 @@ class FunctionHandler:
                 - species_name (str): Name of the species to query
 
         Returns:
-            str: JSON string containing occurrence data with coordinates
+            list: List of dictionaries containing occurrence data
 
         Raises:
             ValueError: If parameters are invalid
             google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
-        """
-        query = """
-            WITH protected_area AS (
-              SELECT ST_GEOGFROMTEXT(WKT) as geometry
-              FROM `{}.biodiversity.protected_areas_africa`
-              WHERE LOWER(name) = LOWER(@protected_area_name)
-              LIMIT 1
-            )
-            SELECT 
-              o.species,
-              o.decimallatitude,
-              o.decimallongitude
-            FROM `{}.biodiversity.cached_occurrences` o
-            CROSS JOIN protected_area p
-            WHERE LOWER(o.species) = LOWER(@species_name)
-              AND o.decimallongitude IS NOT NULL 
-              AND o.decimallatitude IS NOT NULL
-              AND ST_CONTAINS(
-                p.geometry,
-                ST_GEOGPOINT(o.decimallongitude, o.decimallatitude)
-              )
         """
         try:
             project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
@@ -671,15 +653,36 @@ class FunctionHandler:
             if not protected_area_name or not species_name:
                 raise ValueError("Both protected area name and species name are required")
 
-            client = bigquery.Client(project=project_id)
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("protected_area_name", "STRING",
-                                                protected_area_name),
-                    bigquery.ScalarQueryParameter("species_name", "STRING", species_name)
-                ]
+            base_query = """
+                WITH protected_area AS (
+                  SELECT ST_GEOGFROMTEXT(WKT) as geometry
+                  FROM `{}.biodiversity.protected_areas_africa`
+                  WHERE LOWER(name) = LOWER(@protected_area_name)
+                  LIMIT 1
+                )
+                SELECT 
+                  o.species,
+                  o.decimallatitude,
+                  o.decimallongitude
+                FROM `{}.biodiversity.cached_occurrences` o
+                CROSS JOIN protected_area p
+                WHERE LOWER(o.species) = LOWER(@species_name)
+                  AND o.decimallongitude IS NOT NULL 
+                  AND o.decimallatitude IS NOT NULL
+                  AND ST_CONTAINS(
+                    p.geometry,
+                    ST_GEOGPOINT(o.decimallongitude, o.decimallatitude)
+                  )
+            """
+
+            query = self.query_builder.build_query(base_query, project_id)
+            parameters = self.query_builder.get_parameters(
+                protected_area_name=protected_area_name,
+                species_name=species_name
             )
-            query = query.format(project_id, project_id)
+
+            client = bigquery.Client(project=project_id)
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(query, job_config=job_config)
 
             results = [{
@@ -689,6 +692,7 @@ class FunctionHandler:
             } for row in query_job]
 
             return results
+
         except (KeyError, ValueError) as e:
             self.logger.error("Invalid input: %s", str(e))
             raise
@@ -704,3 +708,34 @@ class FunctionHandler:
             FROM `{project_id}.biodiversity.protected_areas_africa`
             WHERE ISO3 = @country_code
         """
+
+    def _build_protected_area_query(self, conservation_status: Optional[str] = None) -> str:
+        base_query = """
+            SELECT DISTINCT sp.species_name, sp.genus_name, sp.family_name, 
+                   sp.conservation_status, sp.url
+            FROM `{}.biodiversity.endangered_species` sp
+            JOIN `{}.biodiversity.occurances_endangered_species_mammals` oc
+                ON CONCAT(sp.genus_name, ' ', sp.species_name) = oc.species
+            CROSS JOIN `{}.biodiversity.protected_areas_africa` pa
+            WHERE ST_CONTAINS(ST_GEOGFROMTEXT(pa.WKT), 
+                  ST_GEOGPOINT(oc.decimallongitude, oc.decimallatitude))
+            AND pa.name = @protected_area_name
+            {conservation_status_filter}
+            ORDER BY sp.species_name
+        """
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        return self.query_builder.build_query(
+            base_query,
+            project_id,
+            conservation_status=conservation_status
+        )
+
+    def _get_protected_area_parameters(
+            self,
+            protected_area_name: str,
+            conservation_status: Optional[str] = None
+    ) -> List[bigquery.ScalarQueryParameter]:
+        return self.query_builder.get_parameters(
+            protected_area_name=protected_area_name,
+            conservation_status=conservation_status
+        )

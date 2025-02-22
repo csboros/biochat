@@ -68,12 +68,12 @@ class ChartHandler:
         """
         try:
             if chart_type.lower() == "geojson":
-                 with st.spinner("Rendering geojson map..."): #pylint: disable=no-member
-                    self.draw_geojson_map(df, parameters)
+                with st.spinner("Rendering geojson map..."): #pylint: disable=no-member
+                    self.draw_geojson_map(df)
                     return
             elif chart_type.lower() == "json":
                 with st.spinner("Rendering json data..."):  #pylint: disable=no-member
-                    self.draw_json_data(df, parameters)
+                    self.draw_json_data(df)
                     return
             if not isinstance(df, pd.DataFrame):
                 raise TypeError("Data must be a pandas DataFrame")
@@ -155,8 +155,7 @@ class ChartHandler:
 
             # Calculate concave hull
             points = data[['decimallongitude', 'decimallatitude']].values
-            hull_geojson = self._calculate_alpha_shape(points, alpha=0.5)  # Already in GeoJSON format
-
+            hull_geojson = self._calculate_alpha_shape(points, alpha=0.5)
             if bounds is not None:
                 view_state = pdk.ViewState(
                     latitude=sum(coord[0] for coord in bounds)/len(bounds),
@@ -371,7 +370,7 @@ class ChartHandler:
 
         return [[min_lat, min_lon], [max_lat, max_lon]]
 
-    def draw_geojson_map(self, data, parameters):
+    def draw_geojson_map(self, data):
         """
         Draws a geojson map.
 
@@ -461,7 +460,7 @@ class ChartHandler:
             self.logger.error("Error calculating GeoJSON bounds: %s", str(e))
             return None
 
-    def draw_json_data(self, data: str, parameters: dict = None) -> None:
+    def draw_json_data(self, data: str) -> None:
         """Draw JSON data as a table.
         
         Args:
@@ -491,71 +490,90 @@ class ChartHandler:
         clustering = DBSCAN(eps=2, min_samples=3).fit(points)
         labels = clustering.labels_
 
-        # Create hulls for each cluster
+        # Process each cluster
+        hulls = self._process_clusters(points, labels, alpha)
+
+        # Convert hulls to GeoJSON format
+        return self._convert_hulls_to_geojson(hulls)
+
+    def _process_clusters(self, points, labels, alpha):
+        """Process each cluster to create hulls."""
         hulls = []
         for label in set(labels):
             if label == -1:  # Skip noise points
                 continue
-                
             cluster_points = points[labels == label]
-            if len(cluster_points) < 4:
-                hull = MultiPoint(cluster_points).convex_hull
-                # Add buffer to smooth edges (0.5 degrees ≈ 55km at equator)
-                hull = hull.buffer(0.5, resolution=16)
+            hull = self._process_single_cluster(cluster_points, alpha)
+            if hull is not None:
                 hulls.append(hull)
-                continue
+        return hulls
 
-            try:
-                # Try to calculate alpha shape
-                tri = Delaunay(cluster_points)
-                edges = set()
-                edge_points = []
+    def _process_single_cluster(self, cluster_points, alpha):
+        """Process a single cluster to create a hull."""
+        if len(cluster_points) < 4:
+            hull = MultiPoint(cluster_points).convex_hull
+            return hull.buffer(0.5, resolution=16)
 
-                for ia, ib, ic in tri.simplices:
-                    pa = cluster_points[ia]
-                    pb = cluster_points[ib]
-                    pc = cluster_points[ic]
+        try:
+            return self._create_alpha_shape(cluster_points, alpha)
+        except Exception:  # pylint: disable=broad-except
+            m = MultiPoint(cluster_points)
+            return m.convex_hull.buffer(0.5, resolution=16)
 
-                    a = np.sqrt((pa[0] - pb[0])**2 + (pa[1] - pb[1])**2)
-                    b = np.sqrt((pb[0] - pc[0])**2 + (pb[1] - pc[1])**2)
-                    c = np.sqrt((pc[0] - pa[0])**2 + (pc[1] - pa[1])**2)
-                    s = (a + b + c) / 2.0
-                    area = np.sqrt(s * (s - a) * (s - b) * (s - c))
-                    circum_r = a * b * c / (4.0 * area) if area > 0 else float('inf')
+    def _create_alpha_shape(self, points, alpha):
+        """Create alpha shape from points."""
+        tri = Delaunay(points)
+        edges = set()
+        edge_points = []
 
-                    if circum_r < 1.0 / alpha:
-                        self._add_edge(edges, edge_points, cluster_points, ia, ib)
-                        self._add_edge(edges, edge_points, cluster_points, ib, ic)
-                        self._add_edge(edges, edge_points, cluster_points, ic, ia)
+        for ia, ib, ic in tri.simplices:
+            pa = points[ia]
+            pb = points[ib]
+            pc = points[ic]
 
-                m = MultiPoint(cluster_points)
-                polygon = Polygon(m.convex_hull)
-                if polygon.is_valid:
-                    # Add buffer to smooth edges
-                    polygon = polygon.buffer(0.5, resolution=16)
-                    hulls.append(polygon)
-                else:
-                    hull = m.convex_hull.buffer(0.5, resolution=16)
-                    hulls.append(hull)
-            except Exception:  # Removed 'as e'
-                # Fallback to convex hull if alpha shape fails
-                m = MultiPoint(cluster_points)
-                hull = m.convex_hull.buffer(0.5, resolution=16)
-                hulls.append(hull)
+            circum_r = self._calculate_circumradius(pa, pb, pc)
+            if circum_r < 1.0 / alpha:
+                self._add_edge(edges, edge_points, points, ia, ib)
+                self._add_edge(edges, edge_points, points, ib, ic)
+                self._add_edge(edges, edge_points, points, ic, ia)
 
-        # Convert hulls to GeoJSON format
-        hull_geojson = {
+        m = MultiPoint(points)
+        polygon = Polygon(m.convex_hull)
+        if polygon.is_valid:
+            return polygon.buffer(0.5, resolution=16)
+        return m.convex_hull.buffer(0.5, resolution=16)
+
+    def _calculate_circumradius(self, pa, pb, pc):
+        """Calculate circumradius of triangle."""
+        a = np.sqrt((pa[0] - pb[0])**2 + (pa[1] - pb[1])**2)
+        b = np.sqrt((pb[0] - pc[0])**2 + (pb[1] - pc[1])**2)
+        c = np.sqrt((pc[0] - pa[0])**2 + (pc[1] - pa[1])**2)
+        s = (a + b + c) / 2.0
+        area = np.sqrt(s * (s - a) * (s - b) * (s - c))
+        return a * b * c / (4.0 * area) if area > 0 else float('inf')
+
+    def _convert_hulls_to_geojson(self, hulls):
+        """Convert hulls to GeoJSON format."""
+        return {
             "type": "Feature",
             "geometry": {
                 "type": "MultiPolygon",
-                "coordinates": [[[list(p) for p in hull.exterior.coords]] for hull in hulls if hasattr(hull, 'exterior')]
+                "coordinates": [[[list(p) for p in hull.exterior.coords]]
+                              for hull in hulls if hasattr(hull, 'exterior')]
             }
         }
-        
-        return hull_geojson
 
+    # pylint: disable=too-many-arguments
     def _add_edge(self, edges, edge_points, coords, i, j):
-        """Helper method to add edges."""
+        """Helper method to add edges.
+        
+        Args:
+            edges (set): Set of existing edges
+            edge_points (list): List of edge point coordinates
+            coords (np.array): Array of all coordinates
+            i (int): First vertex index
+            j (int): Second vertex index
+        """
         if (i, j) in edges or (j, i) in edges:
             return
         edges.add((i, j))
