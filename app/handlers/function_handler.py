@@ -176,41 +176,34 @@ class FunctionHandler:
                     project=os.getenv('GOOGLE_CLOUD_PROJECT'),
                 )
             # Base query with parameterization
-            query = """
+            base_query = """
                 SELECT 
                     decimallatitude,
                     decimallongitude
-                FROM `{}.biodiversity.cached_occurrences`
+                FROM `{project_id}.biodiversity.cached_occurrences`
                 WHERE LOWER(species) = LOWER(@species_name)
                     AND decimallatitude IS NOT NULL
                     AND decimallongitude IS NOT NULL
+                    {where_clause}
             """
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-            query = query.format(project_id)
-            if country_code is not None:
-                query += " AND countrycode = @country_code"
-                job_config = bigquery.QueryJobConfig(
-                    query_parameters=[
-                        bigquery.ScalarQueryParameter("species_name", "STRING", species_name),
-                        bigquery.ScalarQueryParameter("country_code", "STRING", country_code)
-                    ]
-                )
-            else:
-                job_config = bigquery.QueryJobConfig(
-                    query_parameters=[
-                        bigquery.ScalarQueryParameter("species_name", "STRING", species_name)
-                    ]
-                )
+
+            where_clause = "AND countrycode = @country_code" if country_code else ""
+            query = _self.handlers['query'].build_query(
+                base_query,
+                where_clause=where_clause
+            )
             _self.logger.info("Query setup took %.2f seconds", time.time() - query_setup_start)
 
             # Query execution timing
             query_start = time.time()
-            query_job = client.query(
-                query,
-                job_config=job_config
+            parameters = _self.handlers['query'].get_parameters(
+                species_name=species_name,
+                country_code=country_code
             )
 
-            # Efficient result processing
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
+            query_job = client.query(query, job_config=job_config)
+
             results = [{
                 "species": species_name,
                 "decimallatitude": row.decimallatitude,
@@ -469,8 +462,8 @@ class FunctionHandler:
         base_query = """
             SELECT DISTINCT CONCAT(genus_name, ' ', species_name) as species_name, 
                    family_name as family, conservation_status as status, url
-            FROM `{}.biodiversity.endangered_species` sp
-            JOIN `{}.biodiversity.occurances_endangered_species_mammals` oc 
+            FROM `{project_id}.biodiversity.endangered_species` sp
+            JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
                 ON CONCAT(genus_name, ' ', species_name) = oc.species 
             WHERE species_name IS NOT NULL 
                 AND genus_name IS NOT NULL 
@@ -479,14 +472,10 @@ class FunctionHandler:
             GROUP BY genus_name, species_name, family_name, conservation_status, url
             ORDER BY species_name
         """
-        conservation_status_filter = (
-            "AND LOWER(conservation_status) = LOWER(@conservation_status)"
-            if conservation_status
-            else ""
+        return self.handlers['query'].build_query(
+            base_query,
+            conservation_status=conservation_status
         )
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        return base_query.format(project_id, project_id,
-                                 conservation_status_filter=conservation_status_filter)
 
     def _get_country_query_parameters(self, country_code: str,
                             conservation_status: str = None) -> List[bigquery.ScalarQueryParameter]:
@@ -575,11 +564,11 @@ class FunctionHandler:
                      genus_name,
                      family_name,
                      scientific_name
-              FROM `{}.biodiversity.endangered_species`
+              FROM `{project_id}.biodiversity.endangered_species`
             ),
             matching_occurrences AS (
               SELECT o.species, o.decimallatitude, o.decimallongitude
-              FROM `{}.biodiversity.cached_occurrences` o
+              FROM `{project_id}.biodiversity.cached_occurrences` o
               INNER JOIN endangered_species_lookup e
               ON o.species = e.full_name
               WHERE o.decimallongitude IS NOT NULL 
@@ -587,7 +576,7 @@ class FunctionHandler:
             ),
             protected_area AS (
               SELECT ST_GEOGFROMTEXT(WKT) as geometry
-              FROM `{}.biodiversity.protected_areas_africa`
+              FROM `{project_id}.biodiversity.protected_areas_africa`
               WHERE name = @protected_area_name
               LIMIT 1
             )
@@ -609,20 +598,22 @@ class FunctionHandler:
             ORDER BY observation_count DESC, o.species ASC
         """
         try:
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
             protected_area_name = content.get('protected_area_name')
             if not protected_area_name:
                 raise ValueError("Protected area name is required")
 
-            client = bigquery.Client(project=project_id)
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("protected_area_name", "STRING",
-                                                  protected_area_name)
-                ]
+            # Use query_builder methods instead of direct formatting
+            query = self.handlers['query'].build_query(
+                query,
+                where_clause=""
             )
 
-            query = query.format(project_id, project_id, project_id)
+            parameters = self.handlers['query'].get_parameters(
+                protected_area_name=protected_area_name
+            )
+
+            client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(query, job_config=job_config)
 
             results = [{
@@ -717,9 +708,12 @@ class FunctionHandler:
 
     def build_geojson_query(self) -> str:
         """Build the BigQuery query string for geojson query."""
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        return f"""
+        query = """
             SELECT name, IUCN_CAT, ST_ASGEOJSON(ST_GEOGFROMTEXT(WKT)) as geojson
             FROM `{project_id}.biodiversity.protected_areas_africa`
             WHERE ISO3 = @country_code
         """
+        return self.handlers['query'].build_query(
+            query,
+            where_clause=""
+        )
