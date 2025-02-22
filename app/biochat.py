@@ -198,9 +198,11 @@ class BioChat:
                     - Show Bornean Orangutans distribution as heatmap
                     - List the number of endangered species per conservation status for Germany
                     - List the endangered species for Germany with status Critically Endangered
-                    - Show me the taxonomy of Common Hamster
                     - Show the distribution of Common Hamster
                     - Give me more details about the Common Hamster such as conservation status and threats based on the IUCN website
+                    - Show all protected areas in Kenya
+                    - List all endangered species in Massai Mara
+                    - Show the distribution of lions in Masai Mara     
                 ''')
             # Core functionality
             self.handle_user_input()
