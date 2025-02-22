@@ -444,6 +444,7 @@ class FunctionHandler:
         """Execute BigQuery to fetch country's endangered species data."""
         client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
         query = self._build_country_species_query(conservation_status)
+        self.logger.info("Query: %s", query)
         parameters = self._get_country_query_parameters(country_code, conservation_status)
         job_config = bigquery.QueryJobConfig(query_parameters=parameters)
         start_query = time.time()
@@ -656,7 +657,7 @@ class FunctionHandler:
             base_query = """
                 WITH protected_area AS (
                   SELECT ST_GEOGFROMTEXT(WKT) as geometry
-                  FROM `{}.biodiversity.protected_areas_africa`
+                  FROM `{project_id}.biodiversity.protected_areas_africa`
                   WHERE LOWER(name) = LOWER(@protected_area_name)
                   LIMIT 1
                 )
@@ -664,7 +665,7 @@ class FunctionHandler:
                   o.species,
                   o.decimallatitude,
                   o.decimallongitude
-                FROM `{}.biodiversity.cached_occurrences` o
+                FROM `{project_id}.biodiversity.cached_occurrences` o
                 CROSS JOIN protected_area p
                 WHERE LOWER(o.species) = LOWER(@species_name)
                   AND o.decimallongitude IS NOT NULL 
@@ -675,7 +676,12 @@ class FunctionHandler:
                   )
             """
 
-            query = self.query_builder.build_query(base_query, project_id)
+            query = self.query_builder.build_query(
+                base_query,
+                project_id,
+                where_clause=""
+            )
+
             parameters = self.query_builder.get_parameters(
                 protected_area_name=protected_area_name,
                 species_name=species_name
@@ -710,23 +716,11 @@ class FunctionHandler:
         """
 
     def _build_protected_area_query(self, conservation_status: Optional[str] = None) -> str:
-        base_query = """
-            SELECT DISTINCT sp.species_name, sp.genus_name, sp.family_name, 
-                   sp.conservation_status, sp.url
-            FROM `{}.biodiversity.endangered_species` sp
-            JOIN `{}.biodiversity.occurances_endangered_species_mammals` oc
-                ON CONCAT(sp.genus_name, ' ', sp.species_name) = oc.species
-            CROSS JOIN `{}.biodiversity.protected_areas_africa` pa
-            WHERE ST_CONTAINS(ST_GEOGFROMTEXT(pa.WKT), 
-                  ST_GEOGPOINT(oc.decimallongitude, oc.decimallatitude))
-            AND pa.name = @protected_area_name
-            {conservation_status_filter}
-            ORDER BY sp.species_name
-        """
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
         return self.query_builder.build_query(
-            base_query,
+            self.query_builder.SPECIES_QUERY_TEMPLATE,
             project_id,
+            where_clause="AND pa.name = @protected_area_name",
             conservation_status=conservation_status
         )
 
