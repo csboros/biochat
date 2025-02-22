@@ -6,21 +6,24 @@ from google.cloud import bigquery
 class BaseQueryBuilder:
     """Base class for building BigQuery queries."""
 
-    def build_query(self, base_query: str, project_id: str, **kwargs) -> str:
-        """Build a query with proper formatting and filters."""
-        # Replace all project_id placeholders with the same value
-        query = base_query.format(*[project_id] * base_query.count('{}'))
-
-        # Then apply filters
-        filters = self._build_filters(**kwargs)
-        if filters:
-            query = query.format(**filters)
-
-        return query
+    # Add base query templates
+    SPECIES_QUERY_TEMPLATE = """
+        SELECT DISTINCT CONCAT(genus_name, ' ', species_name) as species_name,
+               family_name as family, conservation_status as status, url
+        FROM `{project_id}.biodiversity.endangered_species` sp
+        JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc
+            ON CONCAT(genus_name, ' ', species_name) = oc.species
+        WHERE species_name IS NOT NULL
+            AND genus_name IS NOT NULL
+            {where_clause}
+            {conservation_status_filter}
+        GROUP BY genus_name, species_name, family_name, conservation_status, url
+        ORDER BY species_name
+    """
 
     def _build_filters(self, **kwargs) -> dict:
         """Build query filters based on parameters."""
-        filters = {'conservation_status_filter': ''}  # Default empty filter
+        filters = {'conservation_status_filter': ''}
 
         if kwargs.get('conservation_status'):
             filters['conservation_status_filter'] = (
@@ -28,6 +31,22 @@ class BaseQueryBuilder:
             )
 
         return filters
+
+    def build_query(self, base_query: str, project_id: str, **kwargs) -> str:
+        """Build a query with proper formatting and filters."""
+        # Prepare all parameters
+        params = {
+            'project_id': project_id,
+            'where_clause': kwargs.get('where_clause', ''),
+            'conservation_status_filter': ''
+        }
+
+        # Build filters separately
+        filters = self._build_filters(**kwargs)
+        params.update(filters)
+
+        # Apply all parameters
+        return base_query.format(**params)
 
     def get_parameters(self, **kwargs) -> List[bigquery.ScalarQueryParameter]:
         """Create query parameters."""

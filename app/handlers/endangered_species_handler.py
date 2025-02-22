@@ -325,24 +325,15 @@ class EndangeredSpeciesHandler:
         return [(row.species_name, row.family, row.status, row.url) for row in results]
 
     def _build_country_species_query(self, conservation_status: Optional[str] = None) -> str:
-        base_query = """
-            SELECT DISTINCT CONCAT(genus_name, ' ', species_name) as species_name,
-                   family_name as family, conservation_status as status, url
-            FROM `{}.biodiversity.endangered_species` sp
-            JOIN `{}.biodiversity.occurances_endangered_species_mammals` oc
-                ON CONCAT(genus_name, ' ', species_name) = oc.species
-            WHERE species_name IS NOT NULL
-                AND genus_name IS NOT NULL
-                AND oc.countrycode = @country_code
-                {{conservation_status_filter}}
-            GROUP BY genus_name, species_name, family_name, conservation_status, url
-            ORDER BY species_name
-        """
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        params = {
+            'where_clause': "AND oc.countrycode = @country_code",
+            'conservation_status': conservation_status
+        }
         return self.query_builder.build_query(
-            base_query,
+            self.query_builder.SPECIES_QUERY_TEMPLATE,
             project_id,
-            conservation_status=conservation_status
+            **params
         )
 
     def _get_country_query_parameters(
