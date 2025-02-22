@@ -31,11 +31,11 @@ class FunctionHandler:
 
     Attributes:
         logger (Logger): Class-specific logger instance
+        handlers (dict): Contains handler instances (endangered_handler, query_builder)
         declarations (dict): Dictionary of function declarations for Vertex AI
         function_handler (dict): Mapping of function names to their implementations
-        world_gdf (dict): Cached GeoJSON data for world geographical features
         search (GoogleSearchAPIWrapper): Instance of Google Search API wrapper
-        query_builder (BaseQueryBuilder): Instance of BaseQueryBuilder for query building
+        world_data (dict): Contains world_gdf and world_geojson_url for geographical features
     """
 
     def __init__(self):
@@ -49,15 +49,23 @@ class FunctionHandler:
         try:
             self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
             self.logger.info("Initializing FunctionHandler")
-            self.endangered_handler = EndangeredSpeciesHandler()
-            self.query_builder = BaseQueryBuilder()
+
+            # Combine handlers into a single dictionary
+            self.handlers = {
+                'endangered': EndangeredSpeciesHandler(),
+                'query': BaseQueryBuilder()
+            }
+
+            # Combine world data into a single dictionary
+            self.world_data = {
+                'gdf': None,
+                'geojson_url': "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+                              "master/geojson/ne_110m_admin_0_countries.geojson"
+            }
+
             self.setup_function_declarations()
             self.search = GoogleSearchAPIWrapper()
-            self.world_gdf = None
-            self.world_geojson_url = (
-                "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
-                "master/geojson/ne_110m_admin_0_countries.geojson"
-            )
+
         except Exception as e:
             self.logger.error("Initialization error: %s", str(e), exc_info=True)
             raise
@@ -77,19 +85,18 @@ class FunctionHandler:
                 "get_occurences": self.get_occurrences,
                 "get_species_info": self.get_species_info_from_api,
                 "endangered_species_for_family":
-                    self.endangered_handler.endangered_species_for_family,
+                    self.handlers['endangered'].endangered_species_for_family,
                 "endangered_classes_for_kingdom":
-                    self.endangered_handler.endangered_classes_for_kingdom,
+                    self.handlers['endangered'].endangered_classes_for_kingdom,
                 "endangered_families_for_order":
-                    self.endangered_handler.endangered_families_for_order,
+                    self.handlers['endangered'].endangered_families_for_order,
                 "endangered_orders_for_class":
-                    self.endangered_handler.endangered_orders_for_class,
+                    self.handlers['endangered'].endangered_orders_for_class,
                 "endangered_species_for_country":
-                    self.endangered_handler.endangered_species_for_country,
-                "get_protected_areas_geojson":
-                    self.get_protected_areas_geojson,
+                    self.handlers['endangered'].endangered_species_for_country,
+                "get_protected_areas_geojson": self.get_protected_areas_geojson,
                 "number_of_endangered_species_by_conservation_status":
-                self.endangered_handler.number_of_endangered_species_by_conservation_status,
+                self.handlers['endangered'].number_of_endangered_species_by_conservation_status,
                 "google_search": self.google_search,
                 "get_endangered_species_in_protected_area":
                     self.get_endangered_species_in_protected_area,
@@ -356,13 +363,17 @@ class FunctionHandler:
             self.load_world_geojson()
             country_data = None
             if country_code is not None:
-                country_data = next((feature for feature in  self.world_gdf.get("features", [])
-                                     if feature["properties"]["ISO_A2"].lower()
-                                        == country_code.lower()), None)
+                country_data = next(
+                    (feature for feature in self.world_data['gdf'].get("features", [])
+                     if feature["properties"]["ISO_A2"].lower() == country_code.lower()),
+                    None
+                )
             elif country_name is not None:
-                country_data = next((feature for feature in self.world_gdf.get("features", [])
-                                     if feature["properties"]["NAME_EN"].lower()
-                                        == country_name.lower()), None)
+                country_data = next(
+                    (feature for feature in self.world_data['gdf'].get("features", [])
+                     if feature["properties"]["NAME_EN"].lower() == country_name.lower()),
+                    None
+                )
             if country_data is None or len(country_data) == 0:
                 country_identifier = country_name if country_name is not None else country_code
                 self.logger.warning("Country not found: %s", country_identifier)
@@ -391,11 +402,11 @@ class FunctionHandler:
             json.JSONDecodeError: If GeoJSON is malformed
         """
         try:
-            if 'world_gdf' not in st.session_state or st.session_state.world_gdf is None:
-                response = requests.get(self.world_geojson_url, timeout=30)
+            if 'gdf' not in st.session_state or st.session_state.gdf is None:
+                response = requests.get(self.world_data['geojson_url'], timeout=30)
                 response.raise_for_status()
-                self.world_gdf = response.json()
-                st.session_state.world_gdf = self.world_gdf
+                self.world_data['gdf'] = response.json()
+                st.session_state.gdf = self.world_data['gdf']
         except requests.RequestException as e:
             self.logger.error("Failed to download GeoJSON: %s", str(e), exc_info=True)
             raise
@@ -676,13 +687,13 @@ class FunctionHandler:
                   )
             """
 
-            query = self.query_builder.build_query(
+            query = self.handlers['query'].build_query(
                 base_query,
                 project_id,
                 where_clause=""
             )
 
-            parameters = self.query_builder.get_parameters(
+            parameters = self.handlers['query'].get_parameters(
                 protected_area_name=protected_area_name,
                 species_name=species_name
             )
@@ -717,8 +728,8 @@ class FunctionHandler:
 
     def _build_protected_area_query(self, conservation_status: Optional[str] = None) -> str:
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        return self.query_builder.build_query(
-            self.query_builder.SPECIES_QUERY_TEMPLATE,
+        return self.handlers['query'].build_query(
+            self.handlers['query'].SPECIES_QUERY_TEMPLATE,
             project_id,
             where_clause="AND pa.name = @protected_area_name",
             conservation_status=conservation_status
@@ -729,7 +740,7 @@ class FunctionHandler:
             protected_area_name: str,
             conservation_status: Optional[str] = None
     ) -> List[bigquery.ScalarQueryParameter]:
-        return self.query_builder.get_parameters(
+        return self.handlers['query'].get_parameters(
             protected_area_name=protected_area_name,
             conservation_status=conservation_status
         )

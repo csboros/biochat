@@ -533,9 +533,9 @@ class ChartHandler:
 
             circum_r = self._calculate_circumradius(pa, pb, pc)
             if circum_r < 1.0 / alpha:
-                self._add_edge(edges, edge_points, points, ia, ib)
-                self._add_edge(edges, edge_points, points, ib, ic)
-                self._add_edge(edges, edge_points, points, ic, ia)
+                self._add_edge(edges, edge_points, (pa, ia, ib))
+                self._add_edge(edges, edge_points, (pb, ib, ic))
+                self._add_edge(edges, edge_points, (pc, ic, ia))
 
         m = MultiPoint(points)
         polygon = Polygon(m.convex_hull)
@@ -563,17 +563,18 @@ class ChartHandler:
             }
         }
 
-    # pylint: disable=too-many-arguments
-    def _add_edge(self, edges, edge_points, coords, i, j):
+    def _add_edge(self, edges: set, edge_points: list, point_data: tuple) -> None:
         """Helper method to add edges.
         
         Args:
             edges (set): Set of existing edges
             edge_points (list): List of edge point coordinates
-            coords (np.array): Array of all coordinates
-            i (int): First vertex index
-            j (int): Second vertex index
+            point_data (tuple): Tuple containing (coords, i, j) where:
+                - coords: Array of coordinates
+                - i: First vertex index
+                - j: Second vertex index
         """
+        coords, i, j = point_data
         if (i, j) in edges or (j, i) in edges:
             return
         edges.add((i, j))
