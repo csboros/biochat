@@ -7,6 +7,7 @@ import google.api_core.exceptions
 from google.cloud import bigquery
 from .query_builder import BaseQueryBuilder
 
+# pylint: disable=duplicate-code
 class EndangeredSpeciesHandler:
     """Handles queries related to endangered species."""
 
@@ -412,6 +413,7 @@ class EndangeredSpeciesHandler:
         results = query_job.result()
         return [(row['conservation_status'], row['species_count']) for row in results]
 
+    # pylint: enable=duplicate-code
     def _build_conservation_count_query(self, country_code: str = None) -> str:
         """Build the BigQuery query string for conservation status counts."""
         base_query = """
