@@ -39,17 +39,21 @@ class EndangeredSpeciesHandler:
             )
             query = """
                 SELECT class, count(class) as cnt 
-                FROM `{}.biodiversity.endangered_species` 
+                FROM `{project_id}.biodiversity.endangered_species` 
                 WHERE LOWER(kingdom) = LOWER(@kingdom) AND class IS NOT NULL 
                 GROUP BY class ORDER BY class
             """
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-            query = query.format(project_id)
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("kingdom", "STRING", kingdom_name)
-                ]
+
+            query = self.query_builder.build_query(
+                query,
+                where_clause=""
             )
+
+            parameters = self.query_builder.get_parameters(
+                kingdom=kingdom_name
+            )
+
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(
                 query,
                 job_config=job_config
@@ -93,19 +97,23 @@ class EndangeredSpeciesHandler:
             )
             query = """
                 SELECT order_name, count(order_name) as cnt 
-                FROM `{}.biodiversity.endangered_species` 
+                FROM `{project_id}.biodiversity.endangered_species` 
                 WHERE LOWER(class) = LOWER(@class) 
                     AND order_name IS NOT NULL 
                 GROUP BY order_name 
                 ORDER BY order_name
             """
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-            query = query.format(project_id)
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("class", "STRING", clazz)
-                ]
+
+            query = self.query_builder.build_query(
+                query,
+                where_clause=""
             )
+
+            parameters = self.query_builder.get_parameters(
+                class_name=clazz
+            )
+
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(
                 query,
                 job_config=job_config
@@ -148,19 +156,23 @@ class EndangeredSpeciesHandler:
             )
             query = """
                 SELECT family_name, count(family_name) as cnt 
-                FROM `{}.biodiversity.endangered_species` 
-                WHERE LOWER(order_name) = LOWER(@order_name) 
-                    AND family_name IS NOT NULL 
+                FROM `{project_id}.biodiversity.endangered_species` 
+                {where_clause}
                 GROUP BY family_name 
                 ORDER BY family_name
             """
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-            query = query.format(project_id)
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("order_name", "STRING", order_name)
-                ]
+
+            query = self.query_builder.build_query(
+                query,
+                where_clause=("WHERE LOWER(order_name) = LOWER(@order_name) "
+                            "AND family_name IS NOT NULL")
             )
+
+            parameters = self.query_builder.get_parameters(
+                order_name=order_name
+            )
+
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(
                 query,
                 job_config=job_config
@@ -220,7 +232,10 @@ class EndangeredSpeciesHandler:
         """Execute BigQuery to fetch endangered species data."""
         client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
         query = self._build_species_query(conservation_status)
-        parameters = self._get_query_parameters(family_name, conservation_status)
+        parameters = self.query_builder.get_parameters(
+            family_name=family_name,
+            conservation_status=conservation_status
+        )
         job_config = bigquery.QueryJobConfig(query_parameters=parameters)
         query_job = client.query(query, job_config=job_config)
         return [(row['species_header'], row['urls']) for row in query_job]
@@ -248,18 +263,6 @@ class EndangeredSpeciesHandler:
             base_query,
             conservation_status_filter=conservation_status_filter
         )
-
-    def _get_query_parameters(self, family_name: str,
-                            conservation_status: str = None) -> list:
-        """Create query parameters for BigQuery."""
-        parameters = [
-            bigquery.ScalarQueryParameter("family_name", "STRING", family_name)
-        ]
-        if conservation_status:
-            parameters.append(
-                bigquery.ScalarQueryParameter("conservation_status", "STRING", conservation_status)
-            )
-        return parameters
 
     def _format_species_results(self, results_data: list) -> str:
         """Format the species results into a readable string."""
@@ -401,36 +404,33 @@ class EndangeredSpeciesHandler:
         """Execute BigQuery to fetch conservation status counts."""
         client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
         query = self._build_conservation_count_query(country_code)
-        parameters = self._get_conservation_count_parameters(country_code)
+        parameters = self.query_builder.get_parameters(
+            country_code=country_code
+        )
         job_config = bigquery.QueryJobConfig(query_parameters=parameters)
         query_job = client.query(query, job_config=job_config)
         results = query_job.result()
-        return [(row.conservation_status, row.species_count) for row in results]
+        return [(row['conservation_status'], row['species_count']) for row in results]
 
     def _build_conservation_count_query(self, country_code: str = None) -> str:
         """Build the BigQuery query string for conservation status counts."""
         base_query = """
             SELECT conservation_status, 
                    COUNT(DISTINCT CONCAT(genus_name, ' ', species_name)) as species_count
-            FROM `{0}.biodiversity.endangered_species` sp
-            JOIN `{0}.biodiversity.occurances_endangered_species_mammals` oc 
+            FROM `{project_id}.biodiversity.endangered_species` sp
+            JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
                 ON CONCAT(genus_name, ' ', species_name) = oc.species 
             WHERE species_name IS NOT NULL 
                 AND genus_name IS NOT NULL 
-                {country_code_filter}
+                {where_clause}
             GROUP BY conservation_status
             ORDER BY species_count DESC
         """
-        country_code_filter = "AND oc.countrycode = @country_code" if country_code else ""
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        return base_query.format(project_id, country_code_filter=country_code_filter)
-
-    def _get_conservation_count_parameters(self,
-                            country_code: str = None) -> list:
-        """Create query parameters for conservation count query."""
-        if not country_code:
-            return []
-        return [bigquery.ScalarQueryParameter("country_code", "STRING", country_code)]
+        where_clause = "AND oc.countrycode = @country_code" if country_code else ""
+        return self.query_builder.build_query(
+            base_query,
+            where_clause=where_clause
+        )
 
     def _format_conservation_counts(self, results: list) -> str:
         """Format the conservation status counts into a readable string."""
