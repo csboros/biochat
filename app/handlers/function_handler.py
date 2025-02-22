@@ -155,16 +155,12 @@ class FunctionHandler:
         """
         start_time = time.time()
         try:
-            # Translation timing
-            translation_start = time.time()
             species_name = content['species_name']
             scientific_name = _self.translate_to_scientific_name_from_api({'name': species_name})
             if scientific_name:
                 species_name = json.loads(scientific_name).get('scientific_name')
-            _self.logger.info("Translation took %.2f seconds", time.time() - translation_start)
 
             # Query setup timing
-            query_setup_start = time.time()
             if 'country_code' in content:
                 country_code = content['country_code']
                 _self.logger.info("Fetching occurrences for species: %s and country: %s",
@@ -192,7 +188,6 @@ class FunctionHandler:
                 base_query,
                 where_clause=where_clause
             )
-            _self.logger.info("Query setup took %.2f seconds", time.time() - query_setup_start)
 
             # Query execution timing
             query_start = time.time()
@@ -459,21 +454,9 @@ class FunctionHandler:
 
     def _build_country_species_query(self, conservation_status: str = None) -> str:
         """Build the BigQuery query string for country species."""
-        base_query = """
-            SELECT DISTINCT CONCAT(genus_name, ' ', species_name) as species_name, 
-                   family_name as family, conservation_status as status, url
-            FROM `{project_id}.biodiversity.endangered_species` sp
-            JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
-                ON CONCAT(genus_name, ' ', species_name) = oc.species 
-            WHERE species_name IS NOT NULL 
-                AND genus_name IS NOT NULL 
-                AND oc.countrycode = @country_code
-                {conservation_status_filter}
-            GROUP BY genus_name, species_name, family_name, conservation_status, url
-            ORDER BY species_name
-        """
         return self.handlers['query'].build_query(
-            base_query,
+            self.handlers['query'].SPECIES_QUERY_TEMPLATE,
+            where_clause="",
             conservation_status=conservation_status
         )
 
