@@ -7,12 +7,22 @@ view state adjustment based on data bounds.
 
 """
 
+import json
 import logging
 
 import numpy as np
 import pandas as pd
 import pydeck as pdk
+try:
+    from scipy.spatial import Delaunay
+except ImportError:
+    Delaunay = None
+from shapely.geometry import Polygon, MultiPoint
 import streamlit as st
+try:
+    from sklearn.cluster import DBSCAN
+except ImportError:
+    DBSCAN = None
 
 class ChartHandler:
     """
@@ -57,6 +67,14 @@ class ChartHandler:
             pd.errors.EmptyDataError: If DataFrame is empty
         """
         try:
+            if chart_type.lower() == "geojson":
+                 with st.spinner("Rendering geojson map..."): #pylint: disable=no-member
+                    self.draw_geojson_map(df, parameters)
+                    return
+            elif chart_type.lower() == "json":
+                with st.spinner("Rendering json data..."):  #pylint: disable=no-member
+                    self.draw_json_data(df, parameters)
+                    return
             if not isinstance(df, pd.DataFrame):
                 raise TypeError("Data must be a pandas DataFrame")
             if df.empty:
@@ -113,7 +131,8 @@ class ChartHandler:
                             "color": "white"
                         }
                     },
-                )
+                ),
+                height=700  # Set the height in pixels
             )
         except (ValueError, TypeError) as e:
             self.logger.error("Error creating heatmap: %s", str(e), exc_info=True)
@@ -134,12 +153,16 @@ class ChartHandler:
             logging.debug("Drawing hexagon map with parameters: %s", parameters)
             bounds = self._get_bounds_from_data(data)
 
+            # Calculate concave hull
+            points = data[['decimallongitude', 'decimallatitude']].values
+            hull_geojson = self._calculate_alpha_shape(points, alpha=0.5)  # Already in GeoJSON format
+
             if bounds is not None:
                 view_state = pdk.ViewState(
-                        latitude=sum(coord[0] for coord in bounds)/len(bounds),
-                        longitude=sum(coord[1] for coord in bounds)/len(bounds),
-                        zoom=3,
-                        pitch=30
+                    latitude=sum(coord[0] for coord in bounds)/len(bounds),
+                    longitude=sum(coord[1] for coord in bounds)/len(bounds),
+                    zoom=3,
+                    pitch=30
                 )
             else:
                 view_state = self.default_view_state
@@ -157,19 +180,29 @@ class ChartHandler:
                             elevation_range=[0, 1000],
                             pickable=True,
                             extruded=True,
+                        ),
+                        pdk.Layer(
+                            "GeoJsonLayer",
+                            data=hull_geojson,  # Use the GeoJSON directly
+                            stroked=True,
+                            filled=False,
+                            line_width_min_pixels=2,
+                            get_line_color=[255, 255, 0],
+                            get_line_width=3
                         )
                     ],
-                        tooltip={
-                            "html": (
-                                f"{parameters.get('species_name', '')}"
-                                "<br/>Occurrences: {elevationValue}"
-                            ) if parameters.get('species_name') else None,
-                            "style": {
-                            "backgroundColor": "steelblue", 
+                    tooltip={
+                        "html": (
+                            f"{parameters.get('species_name', '')}"
+                            "<br/>Occurrences: {elevationValue}"
+                        ) if parameters.get('species_name') else None,
+                        "style": {
+                            "backgroundColor": "steelblue",
                             "color": "white"
                         } if parameters.get('species_name') else None
                     },
-                )
+                ),
+                height=700  # Set the height in pixels
             )
         except (ValueError, TypeError) as e:
             self.logger.error("Error creating hexagon map: %s", str(e), exc_info=True)
@@ -337,3 +370,193 @@ class ChartHandler:
             return None
 
         return [[min_lat, min_lon], [max_lat, max_lon]]
+
+    def draw_geojson_map(self, data, parameters):
+        """
+        Draws a geojson map.
+
+        Args:
+            data (str): JSON string containing array of GeoJSON features
+            parameters (dict): Additional visualization parameters
+        """
+        try:
+            geojson_data = json.loads(data)
+            bounds = self._get_bounds_from_geojson(geojson_data)
+
+            if bounds is not None:
+                view_state = pdk.ViewState(
+                        latitude=sum(coord[0] for coord in bounds)/len(bounds),
+                        longitude=sum(coord[1] for coord in bounds)/len(bounds),
+                        zoom=5,
+                        pitch=30
+                )
+            else:
+                view_state = self.default_view_state
+            # Extract just the GeoJSON features
+            features = [
+                {
+                    "type": "Feature",
+                    "geometry": item["geojson"],
+                    "properties": {
+                        "name": item["name"],
+                        "category": item["category"]
+                    }
+                }
+                for item in geojson_data
+            ]
+            geojson_layer = {
+                "type": "FeatureCollection",
+                "features": features
+            }
+            # pylint: disable=no-member
+            st.pydeck_chart(
+                pdk.Deck(
+                    initial_view_state=view_state,
+                    layers=[
+                        pdk.Layer(
+                            "GeoJsonLayer",
+                            data=geojson_layer,
+                            get_fill_color=[0, 256, 0],
+                            stroked=True,
+                            filled=True,
+                            pickable=True,
+                            line_width_min_pixels=1,
+                            get_line_color=[0, 0, 0],
+                            get_tooltip=["properties.name", "properties.category"]
+                        )
+                    ],
+                    tooltip={"text": "Name: {name}\nIUCN Category: {category}"}
+                ),
+                height=700  # Set the height in pixels
+            )
+        except Exception as e:
+            self.logger.error("Error creating geojson map: %s", str(e), exc_info=True)
+            raise
+
+    def _get_bounds_from_geojson(self, geojson_data):
+        """Calculate bounds from GeoJSON features.
+        
+        Args:
+            geojson_data (list): List of dictionaries containing GeoJSON features
+            
+        Returns:
+            list: [[min_lat, min_lon], [max_lat, max_lon]] or None if invalid
+        """
+        try:
+            all_coords = []
+            for feature in geojson_data:
+                geometry = feature["geojson"]
+                if geometry["type"] == "Polygon":
+                    coords = geometry["coordinates"][0]  # First ring of polygon
+                    all_coords.extend(coords)
+                elif geometry["type"] == "MultiPolygon":
+                    for polygon in geometry["coordinates"]:
+                        all_coords.extend(polygon[0])  # First ring of each polygon
+            if not all_coords:
+                return None
+            # Convert to lat/lon pairs and find min/max
+            lons, lats = zip(*all_coords)
+            return [[min(lats), min(lons)], [max(lats), max(lons)]]
+        except (KeyError, ValueError, TypeError) as e:
+            self.logger.error("Error calculating GeoJSON bounds: %s", str(e))
+            return None
+
+    def draw_json_data(self, data: str, parameters: dict = None) -> None:
+        """Draw JSON data as a table.
+        
+        Args:
+            data (str): JSON string containing array of dictionaries
+            parameters (dict, optional): Additional visualization parameters
+        """
+        try:
+            # Parse JSON string to DataFrame
+            df = pd.DataFrame(json.loads(data))
+
+            # Display the table with formatting
+            # pylint: disable=no-member
+            st.dataframe(df)
+        except (json.JSONDecodeError, pd.errors.EmptyDataError) as e:
+            self.logger.error("Error parsing JSON data: %s", str(e))
+            raise
+        except Exception as e:
+            self.logger.error("Error creating table: %s", str(e))
+            raise
+
+    def _calculate_alpha_shape(self, points, alpha):
+        """Calculate clustered alpha shapes for point distributions."""
+        if len(points) < 4:
+            return MultiPoint(points).convex_hull
+
+        # Perform DBSCAN clustering
+        clustering = DBSCAN(eps=2, min_samples=3).fit(points)
+        labels = clustering.labels_
+
+        # Create hulls for each cluster
+        hulls = []
+        for label in set(labels):
+            if label == -1:  # Skip noise points
+                continue
+                
+            cluster_points = points[labels == label]
+            if len(cluster_points) < 4:
+                hull = MultiPoint(cluster_points).convex_hull
+                # Add buffer to smooth edges (0.5 degrees ≈ 55km at equator)
+                hull = hull.buffer(0.5, resolution=16)
+                hulls.append(hull)
+                continue
+
+            try:
+                # Try to calculate alpha shape
+                tri = Delaunay(cluster_points)
+                edges = set()
+                edge_points = []
+
+                for ia, ib, ic in tri.simplices:
+                    pa = cluster_points[ia]
+                    pb = cluster_points[ib]
+                    pc = cluster_points[ic]
+
+                    a = np.sqrt((pa[0] - pb[0])**2 + (pa[1] - pb[1])**2)
+                    b = np.sqrt((pb[0] - pc[0])**2 + (pb[1] - pc[1])**2)
+                    c = np.sqrt((pc[0] - pa[0])**2 + (pc[1] - pa[1])**2)
+                    s = (a + b + c) / 2.0
+                    area = np.sqrt(s * (s - a) * (s - b) * (s - c))
+                    circum_r = a * b * c / (4.0 * area) if area > 0 else float('inf')
+
+                    if circum_r < 1.0 / alpha:
+                        self._add_edge(edges, edge_points, cluster_points, ia, ib)
+                        self._add_edge(edges, edge_points, cluster_points, ib, ic)
+                        self._add_edge(edges, edge_points, cluster_points, ic, ia)
+
+                m = MultiPoint(cluster_points)
+                polygon = Polygon(m.convex_hull)
+                if polygon.is_valid:
+                    # Add buffer to smooth edges
+                    polygon = polygon.buffer(0.5, resolution=16)
+                    hulls.append(polygon)
+                else:
+                    hull = m.convex_hull.buffer(0.5, resolution=16)
+                    hulls.append(hull)
+            except Exception:  # Removed 'as e'
+                # Fallback to convex hull if alpha shape fails
+                m = MultiPoint(cluster_points)
+                hull = m.convex_hull.buffer(0.5, resolution=16)
+                hulls.append(hull)
+
+        # Convert hulls to GeoJSON format
+        hull_geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "MultiPolygon",
+                "coordinates": [[[list(p) for p in hull.exterior.coords]] for hull in hulls if hasattr(hull, 'exterior')]
+            }
+        }
+        
+        return hull_geojson
+
+    def _add_edge(self, edges, edge_points, coords, i, j):
+        """Helper method to add edges."""
+        if (i, j) in edges or (j, i) in edges:
+            return
+        edges.add((i, j))
+        edge_points.append(coords[[i, j]])

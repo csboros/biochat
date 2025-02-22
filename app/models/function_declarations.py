@@ -42,7 +42,7 @@ FUNCTION_DECLARATIONS = [
         description=(
             "Get occurences, distribution for a given species, "
             "show where species is found, where species live. Answer to questions like: "
-            "Where do species live? Where is species found? Where is species found?"
+            "Where do species live? Where are species found?"
         ),
         parameters={
             "type": "object",
@@ -50,7 +50,7 @@ FUNCTION_DECLARATIONS = [
                 "species_name": {
                     "type": "string",
                     "description": (
-                        "name of the species to get occurences for, "
+                        "name of the species to get occurences, distribution for, "
                         "if it is a common name, use the scientific name. "
                         "If you do not know the scientific name, translate it to scientific name "
                         "using the translate_to_scientific_name function."
@@ -133,7 +133,8 @@ FUNCTION_DECLARATIONS = [
             "properties": {
                 "order_name": {
                     "type": "string",
-                    "description": "name of the order to get endangered families for",
+                    "description": "name of the order to get endangered families for "
+                    "(e.g., Primates, Carnivora, etc.)",
                 }
             },
         },
@@ -211,6 +212,64 @@ FUNCTION_DECLARATIONS = [
                     ),
                 },
             },
+        },
+    ),
+    FunctionDeclaration(
+        name="get_protected_areas_geojson",
+        description=(
+            "Get GeoJSON data for protected areas in a country "
+            "with three letter country code"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "country_code": {
+                    "type": "string",
+                    "description": "three letter country code to get protected areas for, "
+                    "if you do not know the three letter country code, "
+                    "use google_search function to find it",
+                }
+            },
+        },
+    ),
+    FunctionDeclaration(
+        name="get_endangered_species_in_protected_area",
+        description=(
+            "Get list of endangered species in a protected area, please use the name "
+            "the user provided, do not append anything to it, like National Park, "
+            "or Protected Area, etc."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "protected_area_name": {
+                    "type": "string",
+                    "description": "name of the protected area to get endangered species for, "
+                    "please use the name the user provided, do not append anything to it",
+                }
+            },
+        },
+    ),
+    FunctionDeclaration(
+        name="get_species_occurrences_in_protected_area",
+        description=(
+            "Get occurrence data (coordinates) for a specific species within a protected area. "
+            "Shows where a particular species is found within the protected area."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "protected_area_name": {
+                    "type": "string",
+                    "description": "name of the protected area to search within, "
+                    "please use the name as provided, do not append anything to it",
+                },
+                "species_name": {
+                    "type": "string",
+                    "description": "scientific name of the species to find occurrences for",
+                }
+            },
+            "required": ["protected_area_name", "species_name"]
         },
     ),
 ]
