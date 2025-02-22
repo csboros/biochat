@@ -1,5 +1,6 @@
 """Module for handling BigQuery query building."""
 
+import os
 from typing import List
 from google.cloud import bigquery
 
@@ -21,6 +22,10 @@ class BaseQueryBuilder:
         ORDER BY species_name
     """
 
+    def __init__(self):
+        """Initialize the query builder."""
+        self.project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+
     def _build_filters(self, **kwargs) -> dict:
         """Build query filters based on parameters."""
         filters = {'conservation_status_filter': ''}
@@ -32,11 +37,11 @@ class BaseQueryBuilder:
 
         return filters
 
-    def build_query(self, base_query: str, project_id: str, **kwargs) -> str:
+    def build_query(self, base_query: str, **kwargs) -> str:
         """Build a query with proper formatting and filters."""
         # Prepare all parameters
         params = {
-            'project_id': project_id,
+            'project_id': self.project_id,
             'where_clause': kwargs.get('where_clause', ''),
             'conservation_status_filter': ''
         }

@@ -658,7 +658,6 @@ class FunctionHandler:
             google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
         """
         try:
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
             protected_area_name = content.get('protected_area_name')
             species_name = content.get('species_name')
 
@@ -689,7 +688,6 @@ class FunctionHandler:
 
             query = self.handlers['query'].build_query(
                 base_query,
-                project_id,
                 where_clause=""
             )
 
@@ -698,7 +696,7 @@ class FunctionHandler:
                 species_name=species_name
             )
 
-            client = bigquery.Client(project=project_id)
+            client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(query, job_config=job_config)
 

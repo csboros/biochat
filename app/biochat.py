@@ -201,7 +201,7 @@ class BioChat:
                     - Show the distribution of Common Hamster
                     - Give me more details about the Common Hamster such as conservation status and threats based on the IUCN website
                     - Show all protected areas in Kenya
-                    - List all endangered species in Massai Mara
+                    - List all endangered species in Masai Mara
                     - Show the distribution of lions in Masai Mara     
                 ''')
             # Core functionality
