@@ -458,36 +458,6 @@ class FunctionHandler(BaseHandler):
             self.logger.error("BigQuery error: %s", str(e))
             raise
 
-    def normalize_protected_area_name(self, name: str) -> str:
-        """
-        Normalize protected area name by removing common suffixes and extra spaces.
-        Args:
-            name (str): Name of protected area to normalize
-
-        Returns:
-            str: Normalized name
-        """
-        suffixes = [
-            "national park",
-            "national reserve",
-            "game reserve",
-            "conservation area",
-            "marine park",
-            "wildlife sanctuary",
-            "nature reserve",
-            "park",
-            "reserve",
-        ]
-
-        name = name.lower().strip()
-
-        for suffix in suffixes:
-            if name.endswith(suffix):
-                name = name[: -(len(suffix))].strip()
-                break
-
-        return name
-
     def build_geojson_query(self) -> str:
         """Build the BigQuery query string for geojson query."""
         query = """
