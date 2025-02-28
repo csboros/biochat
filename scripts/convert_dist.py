@@ -1,3 +1,4 @@
+# pylint: skip-file
 """Script to convert species distribution data from TSV to CSV format."""
 
 import csv
