@@ -25,6 +25,7 @@ import streamlit as st
 from app.utils.logging_config import setup_logging
 from app.handlers.function_handler import FunctionHandler
 from app.handlers.chart_handler import ChartHandler
+from typing import Union
 
 # Setup logging configuration at application startup
 setup_logging()
@@ -302,42 +303,40 @@ class BioChat:
         start_time = time.time()
         self.logger.info("Starting to process assistant response")
         try:
-            # Send initial message
+            # Send initial message with explicit function calling configuration
             message_start = time.time()
-            response = self.chat.send_message(content=prompt)
+            response = self.chat.send_message(
+                content=prompt,
+                generation_config=GenerationConfig(
+                    temperature=0,  # Keep temperature low for consistent function calling
+                    candidate_count=1,
+                )
+            )
             self.logger.info("Initial message sent in %.2f seconds",
                            time.time() - message_start)
-            while True:
-                try:
-                    # Process response parts
-                    parts_start = time.time()
-                    parts = response.candidates[0].content.parts
-                    function_calls = self.collect_function_calls(parts)
-                    self.logger.info("Response parts processed in %.2f seconds",
-                                   time.time() - parts_start)
-                    if not function_calls:
-                        final_start = time.time()
-                        self.handle_final_response(response)
-                        self.logger.info("Final response handled in %.2f seconds",
-                                       time.time() - final_start)
+
+            # Reset chat if we get a non-function response
+            if not response.candidates[0].content.parts[0].function_call:
+                self.handle_final_response(response)
+                # Reinforce function calling behavior
+                self.chat.send_message(
+                    "Remember to use the provided functions when appropriate for queries about species distribution, occurrences, and biodiversity data."
+                )
+            else:
+                # Process function calls as normal
+                while True:
+                    try:
+                        parts = response.candidates[0].content.parts
+                        function_calls = self.collect_function_calls(parts)
+                        if not function_calls:
+                            self.handle_final_response(response)
+                            break
+                        response = self.process_function_calls(function_calls)
+                        if response is None:
+                            break
+                    except IndexError as e:
+                        self.logger.error("Invalid response format: %s", str(e))
                         break
-                    # Process function calls
-                    func_start = time.time()
-                    response = self.process_function_calls(function_calls)
-                    self.logger.info("Function calls processed in %.2f seconds",
-                                   time.time() - func_start)
-                    if response is None:
-                        break
-                except IndexError as e:
-                    self.logger.error("Invalid response format (took %.2f seconds): %s",
-                                    time.time() - start_time, str(e), exc_info=True)
-                    st.error("Received an invalid response format. Please try again.")
-                    break
-                except (ValueError, AttributeError) as e:
-                    self.logger.error("Missing response attributes (took %.2f seconds): %s",
-                                    time.time() - start_time, str(e), exc_info=True)
-                    st.error("Received an incomplete response. Please try again.")
-                    break
         except (google_exceptions.ResourceExhausted,
                 google_exceptions.TooManyRequests) as e:
             self.logger.error("API quota exceeded (took %.2f seconds): %s",
@@ -393,12 +392,22 @@ class BioChat:
             self.logger.info("Processing function call: %s", call['name'])
             self.logger.info("Processing function call with parameters: %s", call['params'])
             try:
-                if call['name'] in ('get_occurences', 'get_species_occurrences_in_protected_area'):
+                if call['name'] == 'get_yearly_occurrences':
+                    self.process_yearly_observations(call['response'], call['params'])
+                elif call['name'] in (
+                    'get_occurences',
+                    'get_species_occurrences_in_protected_area'
+                ):
                     self.process_occurrences_data(call['response'], call['params'])
                 elif call['name'] == "get_protected_areas_geojson":
                     self.process_geojson_data(call['response'], call['params'])
                 elif call['name'] == "get_endangered_species_in_protected_area":
                     self.process_json_data(call['response'], call['params'])
+                elif call['name'] in (
+                    'read_terrestrial_hci',
+                    'read_population_density'
+                ):
+                    self.process_indicator_data(call['response'], call['params'])
                 elif call['name'] in ('endangered_species_for_country',
                                   'number_of_endangered_species_by_conservation_status',
                                   'endangered_species_for_family', 
@@ -465,15 +474,64 @@ class BioChat:
     def process_json_data(self, data_response, parameters):
         """
         Processes and visualizes JSON data for protected areas.
+        
+        Args:
+            data_response (Union[dict, list, None]): The response data
+            parameters (dict): Parameters for visualization
         """
-        st.session_state.messages.append({
+        try:
+            # Check if data_response is None or empty
+            if not data_response:
+                st.session_state.messages.append({
                     "role": "assistant",
-                    "content": {
-                        "chart_data": data_response,
-                        "type": "json",
-                        "parameters": parameters
-                    }
+                    "content": {"text": "No data available for this query."}
                 })
+                return
+
+            # Handle dictionary responses
+            if isinstance(data_response, dict):
+                if data_response.get("error"):
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": {"text": str(data_response.get("error", "Unknown error occurred"))}
+                    })
+                else:
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": {
+                            "chart_data": data_response,
+                            "type": "json",
+                            "parameters": parameters
+                        }
+                    })
+            # Handle list responses
+            elif isinstance(data_response, list):
+                if not data_response:  # Empty list
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": {"text": "No results found for this query."}
+                    })
+                else:
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": {
+                            "chart_data": data_response,
+                            "type": "json",
+                            "parameters": parameters
+                        }
+                    })
+            else:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {"text": f"Unexpected data format received: {type(data_response)}"}
+                })
+
+        except Exception as e:
+            self.logger.error("Error processing JSON data: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": "An error occurred while processing the data."}
+            })
 
     def process_occurrences_data(self, data_response, parameters):
         """
@@ -495,10 +553,10 @@ class BioChat:
         try:
             # Data normalization timing
             norm_start = time.time()
-            df = pd.json_normalize(data_response)
+#            df = pd.json_normalize(data_response)
             self.logger.debug("Data normalization took %.2f seconds",
                             time.time() - norm_start)
-            if df.empty:
+            if data_response.get("occurrences") is None or len(data_response.get("occurrences")) == 0:
                 self.logger.info("No data to display (took %.2f seconds)",
                                time.time() - start_time)
 #                st.markdown("No data to display")
@@ -519,7 +577,7 @@ class BioChat:
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": {
-                        "chart_data": df,
+                        "chart_data": data_response,
                         "type": chart_type,
                         "parameters": parameters
                     }
@@ -539,4 +597,56 @@ class BioChat:
         except AttributeError as e:
             self.logger.error("Missing required attribute (took %.2f seconds): %s",
                             time.time() - start_time, str(e), exc_info=True)
+            raise
+
+    def process_indicator_data(self, data_response, parameters):
+        """
+        Processes and visualizes terrestrial human coexistence index data.
+        """
+        self.logger.debug("Processing terrestrial HCI data")
+        try:
+            chart_type = parameters.get("chart_type", "3d_scatterplot")
+            if data_response.get("error"):
+                st.session_state.messages.append({"role": "assistant",
+                                    "content": {"text": data_response.get("error")}})
+            else:
+                st.session_state.messages.append({"role": "assistant",
+                                    "content": {"chart_data": data_response, "type": chart_type,
+                                    "parameters": parameters}})
+        except Exception as e:
+            self.logger.error("Error processing occurrences data: %s",
+                                str(e), exc_info=True)
+            raise
+
+    def process_yearly_observations(self, data_response, parameters):
+        """
+        Processes yearly observation data and adds it to session state.
+        
+        Args:
+            data_response (list): List of dictionaries containing year and count
+            parameters (dict): Parameters including species name
+        """
+        try:
+            # Check if DataFrame is empty
+            if not data_response.get("yearly_data") or len(data_response.get("yearly_data")) == 0:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "text": (f"No yearly observations found for "
+                                f"{parameters.get('species_name', 'Unknown')}")
+                    }
+                })
+            else:
+                # Add chart data to session state
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": "yearly_observations",
+                        "parameters": parameters
+                    }
+                })
+
+        except Exception as e:
+            self.logger.error("Error processing yearly observations: %s", str(e), exc_info=True)
             raise

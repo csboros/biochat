@@ -5,14 +5,14 @@ import logging
 from typing import List, Optional
 import google.api_core.exceptions
 from google.cloud import bigquery
-from .query_builder import BaseQueryBuilder
+from .base_handler import BaseHandler
 
-class EndangeredSpeciesHandler:
+class EndangeredSpeciesHandler(BaseHandler):
     """Handles queries related to endangered species."""
 
     def __init__(self):
+        super().__init__()
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
-        self.query_builder = BaseQueryBuilder()
 
     def endangered_classes_for_kingdom(self, content) -> str:
         """
@@ -44,12 +44,12 @@ class EndangeredSpeciesHandler:
                 GROUP BY class ORDER BY class
             """
 
-            query = self.query_builder.build_query(
+            query = self.build_query(
                 query,
                 where_clause=""
             )
 
-            parameters = self.query_builder.get_parameters(
+            parameters = self.get_parameters(
                 kingdom=kingdom_name
             )
 
@@ -104,12 +104,12 @@ class EndangeredSpeciesHandler:
                 ORDER BY order_name
             """
 
-            query = self.query_builder.build_query(
+            query = self.build_query(
                 query,
                 where_clause=""
             )
 
-            parameters = self.query_builder.get_parameters(
+            parameters = self.get_parameters(
                 class_name=clazz
             )
 
@@ -162,13 +162,13 @@ class EndangeredSpeciesHandler:
                 ORDER BY family_name
             """
 
-            query = self.query_builder.build_query(
+            query = self.build_query(
                 query,
                 where_clause=("WHERE LOWER(order_name) = LOWER(@order_name) "
                             "AND family_name IS NOT NULL")
             )
 
-            parameters = self.query_builder.get_parameters(
+            parameters = self.get_parameters(
                 order_name=order_name
             )
 
@@ -232,7 +232,7 @@ class EndangeredSpeciesHandler:
         """Execute BigQuery to fetch endangered species data."""
         client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
         query = self._build_species_query(conservation_status)
-        parameters = self.query_builder.get_parameters(
+        parameters = self.get_parameters(
             family_name=family_name,
             conservation_status=conservation_status
         )
@@ -259,7 +259,7 @@ class EndangeredSpeciesHandler:
             if conservation_status
             else ""
         )
-        return self.query_builder.build_query(
+        return self.build_query(
             base_query,
             conservation_status_filter=conservation_status_filter
         )
@@ -304,13 +304,10 @@ class EndangeredSpeciesHandler:
         try:
             self.logger.info("Fetching species for country from BigQuery")
             country_code = content['country_code']
-            if 'conservation_status' in content:
-                conservation_status = content['conservation_status']
-            else:
-                conservation_status = None
+            conservation_status = content.get('conservation_status')
 
             results_data = self._query_country_species(country_code, conservation_status)
-            return self._format_country_species_results(results_data)
+            return self._format_country_species_results(results_data, country_code)
         except google.api_core.exceptions.GoogleAPIError as e:
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
@@ -319,7 +316,7 @@ class EndangeredSpeciesHandler:
             raise
 
     def _query_country_species(self, country_code: str,
-                                conservation_status: str = None) -> list:
+                             conservation_status: Optional[str] = None) -> list:
         """Execute BigQuery to fetch country's endangered species data."""
         client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
         query = self._build_country_species_query(conservation_status)
@@ -330,8 +327,9 @@ class EndangeredSpeciesHandler:
         return [(row.species_name, row.family, row.status, row.url) for row in results]
 
     def _build_country_species_query(self, conservation_status: Optional[str] = None) -> str:
-        return self.query_builder.build_query(
-            self.query_builder.SPECIES_QUERY_TEMPLATE,
+        """Build the BigQuery query string for country species."""
+        return self.build_query(
+            self.SPECIES_QUERY_TEMPLATE,
             where_clause="AND oc.countrycode = @country_code",
             conservation_status=conservation_status
         )
@@ -342,25 +340,35 @@ class EndangeredSpeciesHandler:
             conservation_status: Optional[str] = None
     ) -> List[bigquery.ScalarQueryParameter]:
         """Create query parameters for country species query."""
-        return self.query_builder.get_parameters(
+        return self.get_parameters(
             country_code=country_code,
             conservation_status=conservation_status
         )
 
-    def _format_country_species_results(self, results: list) -> str:
-        """Format the country species results into a readable string."""
-        output = ["**Only Mammals are included in the list.**\n"]
-        # Group species by family
-        families = {}
-        for species_name, family, status, url in results:
-            if family not in families:
-                families[family] = []
-            families[family].append(f"* **{species_name}** ({status})\n    * {url}")
-        # Format output
-        for family, species_list in sorted(families.items()):
-            output.append(f"\n**Family: {family}**")
-            output.extend(species_list)
-        return "\n".join(output) + "\n"
+    def _format_country_species_results(self, results_data: list, country_code: str) -> str:
+        """Format the country species results into a readable string, grouped by family."""
+        result = (
+            f"**These are the endangered species in the {country_code} "
+            "(only mammals are included).**\n\n"
+        )
+        # Group results by family
+        family_groups = {}
+        for scientific_name, family, status, url in sorted(results_data, key=lambda x: x[1]):
+            if family not in family_groups:
+                family_groups[family] = []
+            family_groups[family].append((scientific_name, status, url))
+
+        # Format each family group
+        for family in sorted(family_groups.keys()):
+            result += f"**Family: {family}**\n"
+            for scientific_name, status, url in sorted(family_groups[family]):
+                result += self._format_country_species_entry(scientific_name, status, url)
+            result += "\n"
+        return result
+
+    def _format_country_species_entry(self, scientific_name: str, status: str, url: str) -> str:
+        """Format a single country species entry."""
+        return f"* **{scientific_name}** ({status}):\n  {url}\n"
 
     def number_of_endangered_species_by_conservation_status(self, content) -> str:
         """
@@ -392,7 +400,7 @@ class EndangeredSpeciesHandler:
                 # If either country_code or conservation_status is provided,
                 #  return statistics for the specified country
                 results = self._query_conservation_status_counts(country_code)
-            return self._format_conservation_counts(results)
+            return self._format_conservation_counts(results, country_code)
         except google.api_core.exceptions.GoogleAPIError as e:
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
@@ -404,7 +412,7 @@ class EndangeredSpeciesHandler:
         """Execute BigQuery to fetch conservation status counts."""
         client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
         query = self._build_conservation_count_query(country_code)
-        parameters = self.query_builder.get_parameters(
+        parameters = self.get_parameters(
             country_code=country_code
         )
         job_config = bigquery.QueryJobConfig(query_parameters=parameters)
@@ -428,15 +436,19 @@ class EndangeredSpeciesHandler:
             ORDER BY species_count DESC
         """
         where_clause = "AND oc.countrycode = @country_code" if country_code else ""
-        return self.query_builder.build_query(
+        return self.build_query(
             base_query,
             where_clause=where_clause
         )
         # pylint: enable=duplicate-code
 
-    def _format_conservation_counts(self, results: list) -> str:
+    def _format_conservation_counts(self, results: list, country_code: str) -> str:
         """Format the conservation status counts into a readable string."""
-        output = ["**Only Mammals are included in the list.**\n"]
+        output = [
+            f"**These are the endangered species in the {country_code}. "
+            "(Only Mammals are included in the list)**\n"
+        ]
+
         for status, count in results:
             output.append(f"* {status}: {count} species")
         return "\n".join(output)

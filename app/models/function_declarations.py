@@ -9,52 +9,79 @@ from vertexai.generative_models import FunctionDeclaration
 FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="translate_to_scientific_name",
-        description="Translate a given species name to a scientific name",
+        description=(
+            "IMPORTANT: This is step 1 for any species query using common names. "
+            "Translates a common/English name to scientific name, which must then be used with get_species_info. "
+            "Examples: 'Tell me about Bengal Tiger' requires: "
+            "1. First call this to convert 'Bengal Tiger' → 'Panthera tigris tigris' "
+            "2. Then call get_species_info with the result"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "common/English name of the species that needs translation to scientific name",
+                },
+            },
+            "required": ["name"],
+        },
+    ),
+    FunctionDeclaration(
+        name="get_species_info",
+        description=(
+            "IMPORTANT: This is step 2 - must be called after translate_to_scientific_name for common names. "
+            "Gets conservation status, habitat, and other details using scientific name. "
+            "Example workflow for 'Tell me about Bengal Tiger': "
+            "1. First translate_to_scientific_name('Bengal Tiger') → 'Panthera tigris tigris' "
+            "2. Then call this function with 'Panthera tigris tigris'"
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "name": {
                     "type": "string",
                     "description": (
-                        "english name of the species to be translated into scientific name"
+                        "SCIENTIFIC NAME of the species (obtained from translate_to_scientific_name). "
+                        "For queries like 'Tell me about Bengal Tiger', you must: "
+                        "1. First get scientific name from translate_to_scientific_name "
+                        "2. Then use that result here"
                     ),
-                },
-            },
-            "required": ["name"]
-        },
-    ),
-   FunctionDeclaration(
-        name="get_species_info",
-        description="Get info about a given species, get taxonomy of a given species",
-        parameters={
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "get taxonomy of a given species",
                 }
             },
-            "required": ["name"]
+            "required": ["name"],
         },
     ),
     FunctionDeclaration(
         name="get_occurences",
         description=(
-            "Get occurences, distribution for a given species, "
-            "show where species is found, where species live. Answer to questions like: "
-            "Where do species live? Where are species found?"
+            "Get geographic distribution and occurrence data for a species GLOBALLY or in a specific country. "
+            "IMPORTANT: For common names, first use translate_to_scientific_name, then use the result here. "
+            "Example workflow for 'Show habitat of Mountain Gorillas': "
+            "1. First translate_to_scientific_name('Mountain Gorilla') → scientific name "
+            "2. Then call this function with the result. "
+            "\n\n"
+            "Use this function for ANY questions about: "
+            "- where species live or can be found "
+            "- which countries have specific species "
+            "- presence/absence of species in locations "
+            "- questions like 'Are there X in Y?' "
+            "\n\n"
+            "Examples: "
+            "'Where do lions live?', 'Where can I find pandas?', "
+            "'In which countries can I find Giant Pandas?', "
+            "'Which countries have tigers?', "
+            "'Are there any lions in Africa?', "
+            "'Show me where tigers are found globally', "
+            "'Where are orangutans in the wild?', "
+            "'Can I find elephants in Kenya?'"
         ),
         parameters={
             "type": "object",
             "properties": {
                 "species_name": {
                     "type": "string",
-                    "description": (
-                        "name of the species to get occurences, distribution for, "
-                        "if it is a common name, use the scientific name. "
-                        "If you do not know the scientific name, translate it to scientific name "
-                        "using the translate_to_scientific_name function."
-                    ),
+                    "description": "name of the species (e.g., 'Lion', 'Panda')",
                 },
                 "country_code": {
                     "type": "string",
@@ -65,7 +92,7 @@ FUNCTION_DECLARATIONS = [
                     "description": "type of chart to display",
                 },
             },
-#            "required": ["species_name"]
+            "required": ["species_name"],
         },
     ),
     FunctionDeclaration(
@@ -79,7 +106,7 @@ FUNCTION_DECLARATIONS = [
                     "description": "name of the country to get GeoJSON data for",
                 }
             },
-            "required": ["country_name"]
+            "required": ["country_name"],
         },
     ),
     FunctionDeclaration(
@@ -170,23 +197,39 @@ FUNCTION_DECLARATIONS = [
     ),
     FunctionDeclaration(
         name="endangered_species_for_country",
-        description="Get list of endangered species for a given country code",
+        description=(
+            "Get list of endangered species in a country using TWO LETTER country code ONLY. "
+            "Examples: 'Show endangered species in Kenya' → use 'KE', "
+            "'List endangered animals in Tanzania' → use 'TZ', "
+            "'What endangered species are in Uganda' → use 'UG'. "
+            "IMPORTANT: Must use 2-letter ISO country codes (e.g., KE, TZ, UG, US, GB), "
+            "3-letter codes will not work!"
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "country_code": {
                     "type": "string",
-                    "description": "country code to get endangered species for",
+                    "description": (
+                        "TWO LETTER country code ONLY (e.g., 'KE' for Kenya, 'TZ' for Tanzania). "
+                        "DO NOT use three letter codes. Examples: "
+                        "Kenya → 'KE' (not 'KEN'), "
+                        "Tanzania → 'TZ' (not 'TZA'), "
+                        "Uganda → 'UG' (not 'UGA'). "
+                        "If unsure, use google_search to find the correct 2-letter code."
+                    ),
+                    "pattern": "^[A-Z]{2}$",  # Enforce exactly 2 uppercase letters
                 },
                 "conservation_status": {
                     "type": "string",
                     "description": (
                         "optional conservation status to filter by, possible values are: "
                         "Least Concern, Endangered, Near Threatened, Vulnerable, Data Deficient, "
-                         "Critically Endangered, Extinct,"
+                        "Critically Endangered, Extinct"
                     ),
                 },
             },
+            "required": ["country_code"],
         },
     ),
     FunctionDeclaration(
@@ -217,45 +260,61 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_protected_areas_geojson",
         description=(
-            "Get GeoJSON data for protected areas in a country "
-            "with three letter country code"
+            "Get GeoJSON data for protected areas in a country using THREE LETTER country code ONLY. "
+            "Examples: 'Show protected areas in Kenya' → use 'KEN', "
+            "'Map reserves in Tanzania' → use 'TZA', "
+            "'Display parks in Uganda' → use 'UGA'. "
+            "IMPORTANT: Must use 3-letter ISO country codes (e.g., KEN, TZA, UGA, USA, GBR), "
+            "2-letter codes will not work!"
         ),
         parameters={
             "type": "object",
             "properties": {
                 "country_code": {
                     "type": "string",
-                    "description": "three letter country code to get protected areas for, "
-                    "(KEN for Kenya, USA for United States of America, etc.) "
-                    "if you do not know the three letter country code, "
-                    "use google_search function to find it",
+                    "description": (
+                        "THREE LETTER country code ONLY (e.g., 'KEN' for Kenya, 'TZA' for Tanzania). "
+                        "DO NOT use two letter codes. Examples: "
+                        "Kenya → 'KEN' (not 'KE'), "
+                        "Tanzania → 'TZA' (not 'TZ'), "
+                        "Uganda → 'UGA' (not 'UG'). "
+                        "If unsure, use google_search to find the correct 3-letter code."
+                    ),
+                    "pattern": "^[A-Z]{3}$",  # Enforce exactly 3 uppercase letters
                 }
             },
+            "required": ["country_code"],
         },
     ),
     FunctionDeclaration(
         name="get_endangered_species_in_protected_area",
         description=(
-            "Get list of endangered species in a protected area, please use the name "
-            "the user provided, do not append anything to it, like National Park, "
-            "or Protected Area, etc."
+            "Get list of endangered species in a protected area. Use this function to answer questions like: "
+            "'What endangered species live in Serengeti?', 'Show me species in Yellowstone', "
+            "'List endangered animals in Kruger National Park'. Note: The function will automatically handle "
+            "variations of protected area names (with or without 'National Park', 'Reserve', etc.)"
         ),
         parameters={
             "type": "object",
             "properties": {
                 "protected_area_name": {
                     "type": "string",
-                    "description": "name of the protected area to get endangered species for, "
-                    "please use the name the user provided, do not append anything to it",
+                    "description": (
+                        "name of the protected area (e.g., 'Serengeti', 'Yellowstone', 'Kruger'). "
+                        "The function will work with or without suffixes like 'National Park'"
+                    ),
                 }
             },
+            "required": ["protected_area_name"],
         },
     ),
     FunctionDeclaration(
         name="get_species_occurrences_in_protected_area",
         description=(
             "Get occurrence data (coordinates) for a specific species within a protected area. "
-            "Shows where a particular species is found within the protected area."
+            "Shows where a particular species is found within the protected area. "
+            "Use this for questions like: 'Where are elephants in Kruger?', "
+            "'Show me lions in Serengeti', 'Find tigers in Ranthambore'"
         ),
         parameters={
             "type": "object",
@@ -267,10 +326,104 @@ FUNCTION_DECLARATIONS = [
                 },
                 "species_name": {
                     "type": "string",
-                    "description": "scientific name of the species to find occurrences for",
-                }
+                    "description": "name of the species to find occurrences for (common name or scientific name)",
+                },
             },
-            "required": ["protected_area_name", "species_name"]
+            "required": ["protected_area_name", "species_name"],
+        },
+    ),
+    FunctionDeclaration(
+        name="read_terrestrial_hci",
+        description=(
+            "Read and compare terrestrial human coexistence index (HCI) data between countries. "
+            "IMPORTANT: Use this function for ANY questions about: "
+            "- terrestrial HCI data "
+            "- human impact on wildlife "
+            "- human-wildlife coexistence comparisons "
+            "- wildlife impact between countries. "
+            "Examples: "
+            "'What is the terrestrial HCI data for Kenya and Uganda?', "
+            "'Compare human impact on wildlife between Kenya and Uganda', "
+            "'Show me the human coexistence index for Tanzania and Kenya', "
+            "'How does human impact on wildlife compare in East Africa', "
+            "'What is the human-wildlife coexistence situation in Kenya vs Tanzania'"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "country_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of country names to compare. For queries about HCI data, "
+                        "human impact on wildlife, or coexistence comparisons between countries."
+                    ),
+                },
+                "country_codes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of three letter country codes (e.g., ['KEN', 'UGA'])",
+                },
+            },
+            "required": ["country_names"],
+        },
+    ),
+    FunctionDeclaration(
+        name="get_yearly_occurrences",
+        description=(
+            "Get yearly occurrence counts for a species to show how sightings have changed over time. "
+            "Use this for questions about temporal trends, historical sightings, or changes in species observations "
+            "in specific countries or regions. "
+            "Examples: 'How have Lion sightings changed over time?', "
+            "'Show elephant sightings in Kenya', 'What is the trend of rhino observations in Tanzania?', "
+            "'Compare gorilla populations between Uganda and Rwanda', "
+            "'Show yearly data for tiger sightings in India', "
+            "'How have elephant numbers changed in Kenya over the years?'"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "species_name": {
+                    "type": "string",
+                    "description": (
+                        "Name of the species to analyze (e.g., 'Lion', 'Elephant'). "
+                        "Common names will be automatically translated to scientific names."
+                    ),
+                },
+                "country_codes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of 2 or 3-letter country codes to filter observations. "
+                        "For example: ['KE'] for Kenya, ['TZ'] for Tanzania, ['UG', 'RW'] for Uganda and Rwanda. "
+                        "Leave empty to get global data."
+                    ),
+                },
+            },
+            "required": ["species_name"],
+        },
+    ),
+    FunctionDeclaration(
+        name="read_population_density",
+        description="Read population density data for a specified country",
+        parameters={
+            "type": "object",
+            "properties": {
+                "country_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of country names to compare (e.g., ['Kenya', 'Uganda']). "
+                        "For single country queries, provide just one country name."
+                    ),
+                },
+                "country_codes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of three letter country codes (e.g., ['KEN', 'UGA'])",
+                },
+            },
+            "required": ["country_names"],  # At least country names are required
         },
     ),
 ]
