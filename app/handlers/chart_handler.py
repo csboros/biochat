@@ -81,7 +81,7 @@ class ChartHandler:
                 with st.spinner(  # pylint: disable=no-member
                     "Rendering yearly observations..."
                 ):  # pylint: disable=no-member
-                    self.draw_yearly_observations(df, parameters)
+                    self.draw_yearly_observations(df)
                     return
 
             if isinstance(df, pd.DataFrame):
@@ -678,7 +678,6 @@ class ChartHandler:
             for point in all_points:
                 point["formatted_long"] = f"{point['decimallongitude']:.2f}"
                 point["formatted_lat"] = f"{point['decimallatitude']:.2f}"
-                point["formatted_value"] = f"{point[property_name]:.2f}"
             layer = self._create_column_layer(all_points, property_name, global_min, global_max)
             view_state = self._calculate_view_state(all_points)
 
@@ -843,13 +842,11 @@ class ChartHandler:
             # Convert HSV to RGB
             rgb = colorsys.hsv_to_rgb(hue, saturation, value)
             # Convert RGB to hex
-            hex_color = "#{:02x}{:02x}{:02x}".format(
-                int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
-            )
+            hex_color = f"#{int(rgb[0] * 255):02x}{int(rgb[1] * 255):02x}{int(rgb[2] * 255):02x}"
             colors.append(hex_color)
         return colors
 
-    def draw_yearly_observations(self, data, parameters=None):
+    def draw_yearly_observations(self, data):
         """Draws a visualization of yearly observation data with distinct colors per country."""
         try:
             if "error" in data:

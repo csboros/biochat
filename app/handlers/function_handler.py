@@ -48,7 +48,7 @@ class FunctionHandler(BaseHandler):
             FileNotFoundError: If required files cannot be loaded
             ValueError: If configuration is invalid
         """
-        super().__init__()  # Call parent class's __init__
+        super().__init__()  # Call parent class initialization
         try:
             self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
             self.logger.info("Initializing FunctionHandler")
@@ -165,7 +165,6 @@ class FunctionHandler(BaseHandler):
             TypeError: If content is not in expected format
             KeyError: If required fields are missing from the response
         """
-        start_time = time.time()
         try:
             species_name = content["species_name"]
             scientific_name = _self.translate_to_scientific_name_from_api(
@@ -230,9 +229,6 @@ class FunctionHandler(BaseHandler):
             query = _self.build_query(
                 base_query, where_clause=where_clause
             )
-
-            # Query execution timing
-            query_start = time.time()
             parameters = _self.get_parameters(
                 species_name=species_name, country_code=country_code
             )
@@ -247,17 +243,6 @@ class FunctionHandler(BaseHandler):
                 }
                 for row in query_job
             ]
-            _self.logger.info(
-                "Query execution took %.2f seconds", time.time() - query_start
-            )
-
-            _self.logger.info(
-                "Successfully fetched %d occurrences for species %s%s in %.2f seconds",
-                len(total_occurrences),
-                species_name,
-                " and country " + country_code if country_code else "",
-                time.time() - start_time,
-            )
             return {
                 "species": species_name,
                 "occurrence_count": len(total_occurrences),
@@ -266,24 +251,21 @@ class FunctionHandler(BaseHandler):
 
         except google.api_core.exceptions.GoogleAPIError as e:
             _self.logger.error(
-                "BigQuery error (took %.2f seconds): %s",
-                time.time() - start_time,
+                "BigQuery error: %s",
                 str(e),
                 exc_info=True,
             )
             raise
         except KeyError as e:
             _self.logger.error(
-                "Missing required field (took %.2f seconds): %s",
-                time.time() - start_time,
+                "Missing required field: %s",
                 str(e),
                 exc_info=True,
             )
             raise
         except (TypeError, ValueError) as e:
             _self.logger.error(
-                "Invalid input (took %.2f seconds): %s",
-                time.time() - start_time,
+                "Invalid input: %s",
                 str(e),
                 exc_info=True,
             )

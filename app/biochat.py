@@ -10,7 +10,6 @@
 
 import logging
 import time
-import pandas as pd
 import vertexai
 from vertexai.generative_models import (
     GenerationConfig,
@@ -25,7 +24,6 @@ import streamlit as st
 from app.utils.logging_config import setup_logging
 from app.handlers.function_handler import FunctionHandler
 from app.handlers.chart_handler import ChartHandler
-from typing import Union
 
 # Setup logging configuration at application startup
 setup_logging()
@@ -320,7 +318,8 @@ class BioChat:
                 self.handle_final_response(response)
                 # Reinforce function calling behavior
                 self.chat.send_message(
-                    "Remember to use the provided functions when appropriate for queries about species distribution, occurrences, and biodiversity data."
+                    "Remember to use the provided functions when appropriate for queries "
+                    "about species distribution, occurrences, and biodiversity data."
                 )
             else:
                 # Process function calls as normal
@@ -493,7 +492,8 @@ class BioChat:
                 if data_response.get("error"):
                     st.session_state.messages.append({
                         "role": "assistant",
-                        "content": {"text": str(data_response.get("error", "Unknown error occurred"))}
+                        "content": {"text":
+                                    str(data_response.get("error", "Unknown error occurred"))}
                     })
                 else:
                     st.session_state.messages.append({
@@ -526,7 +526,7 @@ class BioChat:
                     "content": {"text": f"Unexpected data format received: {type(data_response)}"}
                 })
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             self.logger.error("Error processing JSON data: %s", str(e), exc_info=True)
             st.session_state.messages.append({
                 "role": "assistant",
@@ -556,7 +556,8 @@ class BioChat:
 #            df = pd.json_normalize(data_response)
             self.logger.debug("Data normalization took %.2f seconds",
                             time.time() - norm_start)
-            if data_response.get("occurrences") is None or len(data_response.get("occurrences")) == 0:
+            if data_response.get("occurrences") is None \
+                or len(data_response.get("occurrences")) == 0:
                 self.logger.info("No data to display (took %.2f seconds)",
                                time.time() - start_time)
 #                st.markdown("No data to display")
