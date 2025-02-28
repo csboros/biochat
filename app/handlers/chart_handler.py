@@ -4,12 +4,11 @@ Chart Handler Module for Biodiversity Application
 This module provides visualization capabilities for biodiversity data using PyDeck.
 It supports various chart types including heatmaps and hexagon maps, with automatic
 view state adjustment based on data bounds.
-
 """
 
 import json
 import logging
-
+import colorsys
 import numpy as np
 import pandas as pd
 import pydeck as pdk
@@ -40,27 +39,22 @@ class ChartHandler:
     def __init__(self):
         """
         Initializes the ChartHandler with default view state settings.
-        
+
         The default view provides a global perspective centered slightly east of
         Greenwich (30° longitude) to show most landmasses.
         """
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
         self.default_view_state = pdk.ViewState(
-            latitude=0.0,
-            longitude=30,
-            zoom=2,
-            pitch=30
+            latitude=0.0, longitude=30, zoom=2, pitch=30
         )
 
     def draw_chart(self, df, chart_type, parameters):
         """
         Main entry point for creating visualizations.
-
         Args:
             data (pd.DataFrame): DataFrame containing coordinate data
             chart_type (str): Type of visualization to create
             params (dict): Additional parameters for visualization
-
         Raises:
             ValueError: If chart_type is invalid or data format is incorrect
             TypeError: If arguments are of wrong type
@@ -68,72 +62,144 @@ class ChartHandler:
         """
         try:
             if chart_type.lower() == "geojson":
-                with st.spinner("Rendering geojson map..."): #pylint: disable=no-member
+                with st.spinner(  # pylint: disable=no-member
+                    "Rendering geojson map..."
+                ):  # pylint: disable=no-member
                     self.draw_geojson_map(df)
                     return
             elif chart_type.lower() == "json":
-                with st.spinner("Rendering json data..."):  #pylint: disable=no-member
+                with st.spinner("Rendering json data..."):  # pylint: disable=no-member
                     self.draw_json_data(df)
                     return
-            if not isinstance(df, pd.DataFrame):
-                raise TypeError("Data must be a pandas DataFrame")
-            if df.empty:
-                raise pd.errors.EmptyDataError("Empty DataFrame provided")
-            # Downsample data for large datasets
-            if len(df) > 1000:
-                df = df.sample(n=1000, random_state=42)
+            elif chart_type.lower() == "3d_scatterplot":
+                with st.spinner(  # pylint: disable=no-member
+                    "Rendering 3d scatterplot..."
+                ):  # pylint: disable=no-member
+                    self._draw_3d_scatterplot(df)
+                    return
+            elif chart_type.lower() == "yearly_observations":
+                with st.spinner(  # pylint: disable=no-member
+                    "Rendering yearly observations..."
+                ):  # pylint: disable=no-member
+                    self.draw_yearly_observations(df, parameters)
+                    return
+
+            if isinstance(df, pd.DataFrame):
+                if df.empty:
+                    raise pd.errors.EmptyDataError("Empty DataFrame provided")
+                # Downsample data for large datasets
+                if len(df) > 1000:
+                    df = df.sample(n=1000, random_state=42)
             if chart_type.lower() == "heatmap":
-                with st.spinner("Rendering heatmap..."): #pylint: disable=no-member
-                    self.draw_heatmap(df)
+                with st.spinner("Rendering heatmap..."):  # pylint: disable=no-member
+                    self.draw_heatmap(parameters, df)
             # hexagon is default chart type
             else:
-                with st.spinner("Rendering distribution map..."):  #pylint: disable=no-member
+                with st.spinner(  # pylint: disable=no-member
+                    "Rendering distribution map..."
+                ):  # pylint: disable=no-member
                     self.draw_hexagon_map(df, parameters)
         except (TypeError, ValueError, pd.errors.EmptyDataError) as e:
             self.logger.error("Error creating visualization: %s", str(e), exc_info=True)
             raise
 
-    def draw_heatmap(self, df):
-        """
-        Creates a heatmap visualization using PyDeck's HeatmapLayer.
-
-        Raises:
-            ValueError: If coordinate data is invalid
-            TypeError: If DataFrame columns are of wrong type
-        """
+    def draw_heatmap(self, parameters, data):
+        """Creates a heatmap visualization using PyDeck's HeatmapLayer."""
         try:
+            df = pd.DataFrame(data["occurrences"])
             bounds = self._get_bounds_from_data(df)
             view_state = self.default_view_state
             if bounds:
                 view_state = pdk.ViewState(
-                    latitude=sum(coord[0] for coord in bounds)/2,
-                    longitude=sum(coord[1] for coord in bounds)/2,
+                    latitude=sum(coord[0] for coord in bounds) / 2,
+                    longitude=sum(coord[1] for coord in bounds) / 2,
                     zoom=3,
-                    pitch=30
+                    pitch=30,
                 )
-    # pylint: disable=no-member
-            st.pydeck_chart(
-                pdk.Deck(
-                    initial_view_state=view_state,
-                    layers=[
-                        pdk.Layer(
-                            "HeatmapLayer",
-                            data=df,
-                            get_position=["decimallongitude", "decimallatitude"],
-                            pickable=True,
-                            auto_highlight=True,
-                        )
-                    ],
-                    tooltip={
-                        "html": "Species: {parameters['species_name']}",
-                        "style": {
-                            "backgroundColor": "steelblue",
-                            "color": "white"
-                        }
-                    },
-                ),
-                height=700  # Set the height in pixels
-            )
+            # pylint: disable=no-member
+            col1, col2 = st.columns([3, 1])  # 3:1 ratio for map:legend
+            with col1:
+                st.pydeck_chart(
+                    pdk.Deck(
+                        initial_view_state=view_state,
+                        layers=[
+                            pdk.Layer(
+                                "HeatmapLayer",
+                                data=df,
+                                get_position=["decimallongitude", "decimallatitude"],
+                                pickable=False,
+                                opacity=0.7,
+                                get_weight=1,
+                            ),
+                            pdk.Layer(
+                                "HexagonLayer",
+                                data=df,
+                                get_position=["decimallongitude", "decimallatitude"],
+                                radius=10000,
+                                elevation_scale=1,
+                                pickable=True,
+                                opacity=0,
+                                auto_highlight=False,
+                                highlight_color=[0, 0, 0, 0],
+                                extruded=True,
+                                get_fill_color=[0, 0, 0, 0],
+                            ),
+                        ],
+                        tooltip={
+                            "html": (
+                                f"<b>{parameters.get('species_name', 'Unknown')}</b><br/>"
+                                "Observations: {elevationValue}<br/>"
+                                "Latitude: {decimallatitude}<br/>"
+                                "Longitude: {decimallongitude}"
+                            ),
+                            "style": {"backgroundColor": "steelblue", "color": "white"},
+                        },
+                    ),
+                    height=700,
+                )
+            # Add legend in the second column
+            with col2:
+                st.markdown("### Heatmap")
+                st.markdown(f"**Species**: {parameters.get('species_name', 'Unknown')}")
+
+                # Add explanation of visualization
+                st.markdown(
+                    """
+                    This heatmap shows species distribution:
+                    
+                    - Areas with more observations appear hotter (red)
+                    - Areas with fewer observations appear cooler (yellow)
+                    - Intensity indicates density of observations
+                    
+                    ### Color Scale
+                """
+                )
+                # Create a gradient legend for density
+                st.markdown(
+                    """
+                    <div style="margin-top: 10px; display: flex; align-items: stretch;">
+                        <div style="
+                            height: 200px;
+                            width: 40px;
+                            background: linear-gradient(
+                                to bottom,
+                                rgb(139, 0, 0),    /* Dark red (very high density) */
+                                rgb(255, 0, 0),     /* Red (high density) */
+                                rgb(255, 128, 0),   /* Orange (medium density) */
+                                rgb(255, 255, 0)    /* Yellow (low density) */
+                            );
+                            margin-right: 10px;
+                            border: 1px solid black;
+                        "></div>
+                        <div style="display: flex; flex-direction: column;
+                            justify-content: space-between;">
+                            <span>High</span>
+                            <span>Low</span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
         except (ValueError, TypeError) as e:
             self.logger.error("Error creating heatmap: %s", str(e), exc_info=True)
             raise
@@ -141,7 +207,6 @@ class ChartHandler:
     def draw_hexagon_map(self, data, parameters):
         """
         Creates a 3D hexagon bin visualization.
-
         Raises:
             ValueError: If coordinate data is invalid
             TypeError: If parameters are of wrong type
@@ -151,155 +216,120 @@ class ChartHandler:
             if not isinstance(parameters, dict):
                 raise TypeError("Parameters must be a dictionary")
             logging.debug("Drawing hexagon map with parameters: %s", parameters)
-            bounds = self._get_bounds_from_data(data)
+            occurrences = data["occurrences"]
+            # Convert the JSON array to a DataFrame
+            df = pd.DataFrame(occurrences)
+            bounds = self._get_bounds_from_data(df)
 
             # Calculate concave hull
-            points = data[['decimallongitude', 'decimallatitude']].values
+            points = df[["decimallongitude", "decimallatitude"]].values
             hull_geojson = self._calculate_alpha_shape(points, alpha=0.5)
             if bounds is not None:
                 view_state = pdk.ViewState(
-                    latitude=sum(coord[0] for coord in bounds)/len(bounds),
-                    longitude=sum(coord[1] for coord in bounds)/len(bounds),
+                    latitude=sum(coord[0] for coord in bounds) / len(bounds),
+                    longitude=sum(coord[1] for coord in bounds) / len(bounds),
                     zoom=3,
-                    pitch=30
+                    pitch=30,
                 )
             else:
                 view_state = self.default_view_state
             # pylint: disable=no-member
-            st.pydeck_chart(
-                pdk.Deck(
-                    initial_view_state=view_state,
-                    layers=[
-                        pdk.Layer(
-                            "HexagonLayer",
-                            data=data,
-                            get_position=["decimallongitude", "decimallatitude"],
-                            radius=10000,
-                            elevation_scale=5000,
-                            elevation_range=[0, 1000],
-                            pickable=True,
-                            extruded=True,
-                        ),
-                        pdk.Layer(
-                            "GeoJsonLayer",
-                            data=hull_geojson,  # Use the GeoJSON directly
-                            stroked=True,
-                            filled=False,
-                            line_width_min_pixels=2,
-                            get_line_color=[255, 255, 0],
-                            get_line_width=3
-                        )
-                    ],
-                    tooltip={
-                        "html": (
-                            f"{parameters.get('species_name', '')}"
-                            "<br/>Occurrences: {elevationValue}"
-                        ) if parameters.get('species_name') else None,
-                        "style": {
-                            "backgroundColor": "steelblue",
-                            "color": "white"
-                        } if parameters.get('species_name') else None
-                    },
-                ),
-                height=700  # Set the height in pixels
-            )
-        except (ValueError, TypeError) as e:
+            col1, col2 = st.columns([3, 1])  # 3:1 ratio for map:legend
+            with col1:
+                st.pydeck_chart(
+                    pdk.Deck(
+                        initial_view_state=view_state,
+                        layers=[
+                            pdk.Layer(
+                                "HexagonLayer",
+                                data=df,
+                                get_position=["decimallongitude", "decimallatitude"],
+                                radius=10000,
+                                elevation_scale=5000,
+                                elevation_range=[0, 1000],
+                                pickable=True,
+                                extruded=True,
+                            ),
+                            pdk.Layer(
+                                "GeoJsonLayer",
+                                data=hull_geojson,
+                                stroked=True,
+                                filled=False,
+                                line_width_min_pixels=2,
+                                get_line_color=[255, 255, 0],
+                                get_line_width=3,
+                            ),
+                        ],
+                        tooltip={
+                            "html": (
+                                f"{parameters.get('species_name', '')}<br/>"
+                                "Occurrences: {elevationValue}"
+                            ),
+                            "style": {"backgroundColor": "steelblue", "color": "white"},
+                        },
+                    ),
+                    height=700,
+                )
+            # Add legend in the second column
+            with col2:
+                st.markdown("### Distribution Map")
+                st.markdown(f"**Species**: {parameters.get('species_name', 'Unknown')}")
+
+                # Add explanation of visualization
+                st.markdown(
+                    """
+                    This map shows species distribution using:                    
+                    **Hexagons**
+                    - Each hexagon represents a geographic area
+                    - Height indicates number of observations
+                    - Darker color means more observations
+                    - Hover over hexagons to see exact counts
+                    
+                    **Yellow Outline**
+                    - Shows the species' range boundary
+                    - Calculated using alpha shape algorithm
+                    - Connects outermost observation points
+                    
+                    **Color Scale**
+                """
+                )
+
+                # Create a gradient legend for density
+                st.markdown(
+                    """
+                    <div style="margin-top: 10px; display: flex; align-items: stretch;">
+                        <div style="
+                            height: 200px;
+                            width: 40px;
+                            background: linear-gradient(
+                                to bottom,
+                                rgb(139, 0, 0),    /* Dark red (very high density) */
+                                rgb(255, 0, 0),     /* Red (high density) */
+                                rgb(255, 128, 0),   /* Orange (medium density) */
+                                rgb(255, 255, 0)    /* Yellow (low density) */
+                            );
+                            margin-right: 10px;
+                            border: 1px solid black;
+                        "></div>
+                        <div style="display: flex; flex-direction: column;
+                            justify-content: space-between;">
+                            <span>High</span>
+                            <span>Low</span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        except Exception as e:
             self.logger.error("Error creating hexagon map: %s", str(e), exc_info=True)
             raise
-        except Exception as e:
-            self.logger.error("Streamlit chart error: %s", str(e), exc_info=True)
-            raise
-
-    def draw_chart_client_side_rendering(self, df):
-        """
-        Draws a chart using client-side rendering. Experimental and not yet working.
-        """
-        mapbox_token = "YOUR_MAXPOX_TOKEN"  # Replace with your token
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <title>Deck.gl Map</title>
-            <script defer src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
-            <script defer src="https://unpkg.com/@deck.gl/core@8.9.33/dist.min.js"></script>
-            <script defer src="https://unpkg.com/@deck.gl/layers@8.9.33/dist.min.js"></script>
-            <script defer src="https://unpkg.com/@deck.gl/mapbox@8.9.33/dist.min.js"></script>
-            <script defer src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
-            <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
-        </head>
-        <body>
-            <div id="deck-container" style="width: 100%; height: 600px; position: relative;"></div>
-            <script>
-                document.addEventListener('DOMContentLoaded', function() {{
-                    console.log('DOM loaded, checking for libraries...');
-                    const checkLibraries = setInterval(() => {{
-                        if (window.deck && window.mapboxgl) {{
-                            console.log('Libraries loaded, initializing...');
-                            clearInterval(checkLibraries);
-                            initMap();
-                        }}
-                    }}, 100);
-
-                    function initMap() {{
-                        const MAPBOX_ACCESS_TOKEN = '{mapbox_token}';
-                        mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
-                        const data = {df.to_json(orient='records')};
-                        
-                        try {{
-                            const map = new mapboxgl.Map({{
-                                container: 'deck-container',
-                                style: 'mapbox://styles/mapbox/dark-v10',
-                                interactive: false,
-                                center: [0, 0],
-                                zoom: 2,
-                                pitch: 30
-                            }});
-                            map.on('load', () => {{
-                                console.log('Map loaded, initializing deck.gl...');
-                                const deck = new deck.DeckGL({{
-                                    container: 'deck-container',
-                                    mapboxApiAccessToken: MAPBOX_ACCESS_TOKEN,
-                                    mapStyle: 'mapbox://styles/mapbox/dark-v10',
-                                    initialViewState: {{
-                                        longitude: 0,
-                                        latitude: 0,
-                                        zoom: 2,
-                                        pitch: 30
-                                    }},
-                                    controller: true,
-                                    layers: [
-                                        new deck.HexagonLayer({{
-                                            id: 'hexagon',
-                                            data: data,
-                                            getPosition:
-                                                d => [d.decimallongitude, d.decimallatitude],
-                                            radius: 10000,
-                                            elevationScale: 5000,
-                                            pickable: true,
-                                            extruded: true,
-                                        }})
-                                    ]
-                                }});
-                            }});
-                        }} catch (error) {{
-                            console.error('Error initializing map:', error);
-                        }}
-                    }}
-                }});
-            </script>
-        </body>
-        </html>
-        """
-        print(html_content)
-#        html(html_content, height=600)
 
     def _get_bounds_from_data(self, df, percentile_cutoff=2.5, min_points=10):
         """Calculates appropriate map bounds from coordinate data with outlier filtering."""
         try:
             if not self._has_valid_coordinates(df):
                 return None
-
             filtered_df = self._apply_percentile_filtering(df, percentile_cutoff)
             filtered_df = self._apply_density_filtering(filtered_df, min_points)
             return self._calculate_bounds(filtered_df)
@@ -309,7 +339,11 @@ class ChartHandler:
 
     def _has_valid_coordinates(self, df):
         """Check if DataFrame has valid coordinate data."""
-        if df.empty or df['decimallatitude'].isna().all() or df['decimallongitude'].isna().all():
+        if (
+            df.empty
+            or df["decimallatitude"].isna().all()
+            or df["decimallongitude"].isna().all()
+        ):
             logging.warning("No valid coordinates in dataset")
             return False
         return True
@@ -318,22 +352,22 @@ class ChartHandler:
         """Apply percentile-based filtering to remove extreme outliers."""
         if not 0 <= percentile_cutoff <= 50:
             raise ValueError("Percentile cutoff must be between 0 and 50")
-        lat_lower = np.percentile(df['decimallatitude'], percentile_cutoff)
-        lat_upper = np.percentile(df['decimallatitude'], 100 - percentile_cutoff)
-        lon_lower = np.percentile(df['decimallongitude'], percentile_cutoff)
-        lon_upper = np.percentile(df['decimallongitude'], 100 - percentile_cutoff)
+        lat_lower = np.percentile(df["decimallatitude"], percentile_cutoff)
+        lat_upper = np.percentile(df["decimallatitude"], 100 - percentile_cutoff)
+        lon_lower = np.percentile(df["decimallongitude"], percentile_cutoff)
+        lon_upper = np.percentile(df["decimallongitude"], 100 - percentile_cutoff)
         return df[
-            (df['decimallatitude'] >= lat_lower) &
-            (df['decimallatitude'] <= lat_upper) &
-            (df['decimallongitude'] >= lon_lower) &
-            (df['decimallongitude'] <= lon_upper)
+            (df["decimallatitude"] >= lat_lower)
+            & (df["decimallatitude"] <= lat_upper)
+            & (df["decimallongitude"] >= lon_lower)
+            & (df["decimallongitude"] <= lon_upper)
         ]
 
     def _apply_density_filtering(self, df, min_points):
         """Apply density-based filtering to focus on areas of interest."""
         try:
-            lat_bins = pd.qcut(df['decimallatitude'], q=15, duplicates='drop')
-            lon_bins = pd.qcut(df['decimallongitude'], q=15, duplicates='drop')
+            lat_bins = pd.qcut(df["decimallatitude"], q=15, duplicates="drop")
+            lon_bins = pd.qcut(df["decimallongitude"], q=15, duplicates="drop")
             grid_counts = df.groupby([lat_bins, lon_bins]).size()
 
             density_threshold = max(min_points, np.percentile(grid_counts, 25))
@@ -341,34 +375,60 @@ class ChartHandler:
 
             if not dense_cells.empty:
                 filtered_df = df[
-                    df.apply(lambda x:
-                        (pd.qcut([x['decimallatitude']], q=15, duplicates='drop')[0],
-                         pd.qcut([x['decimallongitude']], q=15, duplicates='drop')[0])
-                        in dense_cells, axis=1)
+                    df.apply(
+                        lambda x: (
+                            pd.qcut([x["decimallatitude"]], q=15, duplicates="drop")[0],
+                            pd.qcut([x["decimallongitude"]], q=15, duplicates="drop")[
+                                0
+                            ],
+                        ) in dense_cells, axis=1,)
                 ]
-                if len(filtered_df) < len(df) * 0.1:  # If we've removed more than 90% of points
-                    logging.warning("Density filtering too aggressive. "
-                                        "Using percentile-filtered dataset.")
+                if (
+                    len(filtered_df) < len(df) * 0.1
+                ):  # If we've removed more than 90% of points
+                    logging.warning(
+                        "Density filtering too aggressive. "
+                        "Using percentile-filtered dataset."
+                    )
                     return df
                 return filtered_df
 
             return df
         except ValueError as e:
-            logging.warning("Density-based filtering failed: %s. Using original dataset.", e)
+            logging.warning(
+                "Density-based filtering failed: %s. Using original dataset.", e
+            )
             return df
 
     def _calculate_bounds(self, df):
         """Calculate the final bounds from the filtered dataset."""
-        min_lat = df['decimallatitude'].min()
-        max_lat = df['decimallatitude'].max()
-        min_lon = df['decimallongitude'].min()
-        max_lon = df['decimallongitude'].max()
+        min_lat = df["decimallatitude"].min()
+        max_lat = df["decimallatitude"].max()
+        min_lon = df["decimallongitude"].min()
+        max_lon = df["decimallongitude"].max()
 
-        if np.isnan(min_lat) or np.isnan(min_lon) or np.isnan(max_lat) or np.isnan(max_lon):
+        if (np.isnan(min_lat) or np.isnan(min_lon) or np.isnan(max_lat) or np.isnan(max_lon)):
             logging.warning("Invalid bounds calculated")
             return None
 
         return [[min_lat, min_lon], [max_lat, max_lon]]
+
+    def _get_iucn_color(self, category):
+        """Return color for IUCN category."""
+        # IUCN color scheme based on standard Protected Area colors
+        iucn_colors = {
+            "Ia": [0, 68, 27],  # Dark Green - Strict Nature Reserve
+            "Ib": [0, 109, 44],  # Forest Green - Wilderness Area
+            "II": [35, 139, 69],  # Green - National Park
+            "III": [65, 171, 93],  # Light Green - Natural Monument
+            "IV": [116, 196, 118],  # Pale Green - Habitat/Species Management
+            "V": [161, 217, 155],  # Very Light Green - Protected Landscape
+            "VI": [199, 233, 192],  # Lightest Green - Sustainable Use
+            "Not Reported": [189, 189, 189],  # Gray
+            "Not Applicable": [224, 224, 224],  # Light Gray
+            "Not Assigned": [242, 242, 242],  # Very Light Gray
+        }
+        return iucn_colors.get(category, [150, 150, 150])  # Default gray for unknown
 
     def draw_geojson_map(self, data):
         """
@@ -381,63 +441,91 @@ class ChartHandler:
         try:
             geojson_data = json.loads(data)
             bounds = self._get_bounds_from_geojson(geojson_data)
-
             if bounds is not None:
                 view_state = pdk.ViewState(
-                        latitude=sum(coord[0] for coord in bounds)/len(bounds),
-                        longitude=sum(coord[1] for coord in bounds)/len(bounds),
-                        zoom=5,
-                        pitch=30
+                    latitude=sum(coord[0] for coord in bounds) / len(bounds),
+                    longitude=sum(coord[1] for coord in bounds) / len(bounds),
+                    zoom=5,
+                    pitch=30,
                 )
             else:
                 view_state = self.default_view_state
-            # Extract just the GeoJSON features
+
+            # Extract features with IUCN category
             features = [
                 {
                     "type": "Feature",
                     "geometry": item["geojson"],
                     "properties": {
                         "name": item["name"],
-                        "category": item["category"]
-                    }
+                        "category": item["category"],
+                        "color": self._get_iucn_color(item["category"]),
+                    },
                 }
                 for item in geojson_data
             ]
-            geojson_layer = {
-                "type": "FeatureCollection",
-                "features": features
-            }
+            geojson_layer = {"type": "FeatureCollection", "features": features}
             # pylint: disable=no-member
-            st.pydeck_chart(
-                pdk.Deck(
-                    initial_view_state=view_state,
-                    layers=[
-                        pdk.Layer(
-                            "GeoJsonLayer",
-                            data=geojson_layer,
-                            get_fill_color=[0, 256, 0],
-                            stroked=True,
-                            filled=True,
-                            pickable=True,
-                            line_width_min_pixels=1,
-                            get_line_color=[0, 0, 0],
-                            get_tooltip=["properties.name", "properties.category"]
-                        )
-                    ],
-                    tooltip={"text": "Name: {name}\nIUCN Category: {category}"}
-                ),
-                height=700  # Set the height in pixels
-            )
+            col1, col2 = st.columns([3, 1])  # 3:1 ratio for map:legend
+
+            with col1:
+                st.pydeck_chart(
+                    pdk.Deck(
+                        initial_view_state=view_state,
+                        layers=[
+                            pdk.Layer(
+                                "GeoJsonLayer",
+                                data=geojson_layer,
+                                get_fill_color="properties.color",
+                                stroked=True,
+                                filled=True,
+                                pickable=True,
+                                line_width_min_pixels=1,
+                                get_line_color=[0, 0, 0],
+                                opacity=0.8,
+                                get_tooltip=["properties.name", "properties.category"],
+                            )
+                        ],
+                        tooltip={"text": "Name: {name}\nIUCN Category: {category}"},
+                    ),
+                    height=700,
+                )
+
+            # Add legend in the second column
+            with col2:
+                st.markdown("### IUCN Categories")
+                st.markdown("Only areas with an IUCN category are shown.")
+                categories = {
+                    "Ia": "Strict Nature Reserve",
+                    "Ib": "Wilderness Area",
+                    "II": "National Park",
+                    "III": "Natural Monument",
+                    "IV": "Habitat/Species Management",
+                    "V": "Protected Landscape",
+                    "VI": "Sustainable Use",
+                }
+                for cat, desc in categories.items():
+                    color = self._get_iucn_color(cat)
+                    st.markdown(
+                        f"""
+                        <div style="display: flex; align-items: center; margin: 5px 0;">
+                            <div style="width: 20px; height: 20px; background:
+                              rgb({color[0]},{color[1]},{color[2]});
+                                      margin-right: 5px; border: 1px solid black;"></div>
+                            <span><b>{cat}</b> - {desc}</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
         except Exception as e:
             self.logger.error("Error creating geojson map: %s", str(e), exc_info=True)
             raise
 
     def _get_bounds_from_geojson(self, geojson_data):
         """Calculate bounds from GeoJSON features.
-        
         Args:
             geojson_data (list): List of dictionaries containing GeoJSON features
-            
         Returns:
             list: [[min_lat, min_lon], [max_lat, max_lon]] or None if invalid
         """
@@ -462,16 +550,12 @@ class ChartHandler:
 
     def draw_json_data(self, data: str) -> None:
         """Draw JSON data as a table.
-        
         Args:
             data (str): JSON string containing array of dictionaries
             parameters (dict, optional): Additional visualization parameters
         """
         try:
-            # Parse JSON string to DataFrame
-            df = pd.DataFrame(json.loads(data))
-
-            # Display the table with formatting
+            df = pd.DataFrame(data)
             # pylint: disable=no-member
             st.dataframe(df)
         except (json.JSONDecodeError, pd.errors.EmptyDataError) as e:
@@ -485,14 +569,11 @@ class ChartHandler:
         """Calculate clustered alpha shapes for point distributions."""
         if len(points) < 4:
             return MultiPoint(points).convex_hull
-
         # Perform DBSCAN clustering
         clustering = DBSCAN(eps=2, min_samples=3).fit(points)
         labels = clustering.labels_
-
         # Process each cluster
         hulls = self._process_clusters(points, labels, alpha)
-
         # Convert hulls to GeoJSON format
         return self._convert_hulls_to_geojson(hulls)
 
@@ -513,7 +594,6 @@ class ChartHandler:
         if len(cluster_points) < 4:
             hull = MultiPoint(cluster_points).convex_hull
             return hull.buffer(0.5, resolution=16)
-
         try:
             return self._create_alpha_shape(cluster_points, alpha)
         except Exception:  # pylint: disable=broad-except
@@ -545,12 +625,12 @@ class ChartHandler:
 
     def _calculate_circumradius(self, pa, pb, pc):
         """Calculate circumradius of triangle."""
-        a = np.sqrt((pa[0] - pb[0])**2 + (pa[1] - pb[1])**2)
-        b = np.sqrt((pb[0] - pc[0])**2 + (pb[1] - pc[1])**2)
-        c = np.sqrt((pc[0] - pa[0])**2 + (pc[1] - pa[1])**2)
+        a = np.sqrt((pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2)
+        b = np.sqrt((pb[0] - pc[0]) ** 2 + (pb[1] - pc[1]) ** 2)
+        c = np.sqrt((pc[0] - pa[0]) ** 2 + (pc[1] - pa[1]) ** 2)
         s = (a + b + c) / 2.0
         area = np.sqrt(s * (s - a) * (s - b) * (s - c))
-        return a * b * c / (4.0 * area) if area > 0 else float('inf')
+        return a * b * c / (4.0 * area) if area > 0 else float("inf")
 
     def _convert_hulls_to_geojson(self, hulls):
         """Convert hulls to GeoJSON format."""
@@ -558,14 +638,16 @@ class ChartHandler:
             "type": "Feature",
             "geometry": {
                 "type": "MultiPolygon",
-                "coordinates": [[[list(p) for p in hull.exterior.coords]]
-                              for hull in hulls if hasattr(hull, 'exterior')]
-            }
+                "coordinates": [
+                    [[list(p) for p in hull.exterior.coords]]
+                    for hull in hulls
+                    if hasattr(hull, "exterior")
+                ],
+            },
         }
 
     def _add_edge(self, edges: set, edge_points: list, point_data: tuple) -> None:
         """Helper method to add edges.
-        
         Args:
             edges (set): Set of existing edges
             edge_points (list): List of edge point coordinates
@@ -579,3 +661,335 @@ class ChartHandler:
             return
         edges.add((i, j))
         edge_points.append(coords[[i, j]])
+
+    def _draw_3d_scatterplot(self, data):
+        """Draws a 3D scatter visualization using PyDeck's ColumnLayer."""
+        try:
+            property_name = data.get("property_name", "")
+            countries_data = data.get("countries", {})
+            if not countries_data:
+                raise ValueError("No country data provided")
+            # pylint: disable=no-member
+            col1, col2 = st.columns([3, 1])  # 3:1 ratio for map:legend
+            all_points, country_stats = self._process_country_data(countries_data, property_name)
+            if not all_points:
+                raise ValueError("No valid data points found")
+            global_min, global_max = self._get_global_bounds(all_points, property_name)
+            for point in all_points:
+                point["formatted_long"] = f"{point['decimallongitude']:.2f}"
+                point["formatted_lat"] = f"{point['decimallatitude']:.2f}"
+                point["formatted_value"] = f"{point[property_name]:.2f}"
+            layer = self._create_column_layer(all_points, property_name, global_min, global_max)
+            view_state = self._calculate_view_state(all_points)
+
+            viz_config = {
+                "property_name": property_name,
+                "country_stats": country_stats,
+                "global_min": global_min,
+                "global_max": global_max
+            }
+            self._render_visualization((col1, col2), layer, view_state, viz_config)
+
+        except Exception as e:
+            self.logger.error("Error creating 3D visualization: %s", str(e), exc_info=True)
+            raise
+
+    def _process_country_data(self, countries_data, property_name):
+        """Process country data and return points and stats."""
+        all_points = []
+        country_stats = {}
+        for country_name, country_info in countries_data.items():
+            if "error" in country_info or not country_info.get("data"):
+                continue
+            country_data = country_info["data"]
+            values = [point[property_name] for point in country_data]
+            country_stats[country_name] = {
+                "min": min(values), "max": max(values),
+                "mean": sum(values) / len(values), "count": len(values)
+            }
+            all_points.extend(country_data)
+        return all_points, country_stats
+
+    def _get_global_bounds(self, points, property_name):
+        """Calculate global min/max values."""
+        values = [point[property_name] for point in points]
+        return min(values), max(values)
+
+    def _create_column_layer(self, points, property_name, global_min, global_max):
+        """Create PyDeck column layer."""
+        # Ensure we have a valid range
+        value_range = global_max - global_min
+        return pdk.Layer(
+            "ColumnLayer",
+            data=points,
+            get_position=["decimallongitude", "decimallatitude"],
+            get_elevation=f"[{property_name}]",
+            elevation_scale=5000,
+            radius=8000,
+            get_fill_color=f"[255, 255 * ({global_max} - {property_name})/({value_range}), 0, 150]",
+            pickable=True,
+            auto_highlight=True,
+            extruded=True,
+        )
+
+    def _calculate_view_state(self, points):
+        """Calculate view state from points."""
+        lats = [p["decimallatitude"] for p in points]
+        lons = [p["decimallongitude"] for p in points]
+        return pdk.ViewState(
+            latitude=sum(lats) / len(lats),
+            longitude=sum(lons) / len(lons),
+            zoom=4,
+            pitch=45,
+        )
+
+    def _render_visualization(self, columns, layer, view_state, viz_config):
+        """Render the visualization."""
+        col1, col2 = columns
+        with col1:
+            # pylint: disable=no-member
+            st.pydeck_chart(
+                pdk.Deck(
+                    initial_view_state=view_state,
+                    layers=[layer],
+                    tooltip={
+                        "html": (
+                            "<b>Value:</b> {formatted_value}<br/>"
+                            "<b>Location:</b> {formatted_long}, {formatted_lat}"
+                        ),
+                        "style": {"backgroundColor": "steelblue", "color": "white"},
+                    },
+                ),
+                height=700,
+            )
+
+        with col2:
+            # pylint: disable=no-member
+            st.markdown(f"### {viz_config['property_name'].replace('_', ' ').title()}")
+            st.markdown("### Country Statistics")
+
+            for country_name, stats in viz_config["country_stats"].items():
+                st.markdown(
+                    f"""
+                    <div style="margin-bottom: 20px;">
+                        <div style="margin-bottom: 10px;">
+                            <strong>{country_name}</strong>
+                        </div>
+                        <div style="margin-left: 10px;">
+                            <p style="margin: 0;">Points: {stats['count']:,}</p>
+                            <p style="margin: 0;">Mean: {stats['mean']:.2f}</p>
+                            <p style="margin: 0;">Range: {stats['min']:.2f}
+                                - {stats['max']:.2f}</p>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            # Add color gradient legend
+            st.markdown("### Color Scale")
+            st.markdown(
+                f"""
+                <div style="margin-top: 10px; display: flex; align-items: stretch;">
+                    <div style="
+                        height: 200px;
+                        width: 40px;
+                        background: linear-gradient(
+                            to bottom,
+                            rgb(139, 0, 0),    /* Dark red (very high density) */
+                            rgb(255, 0, 0),     /* Red (high density) */
+                            rgb(255, 128, 0),   /* Orange (medium density) */
+                            rgb(255, 255, 0)    /* Yellow (low density) */
+                        );
+                        margin-right: 10px;
+                        border: 1px solid black;
+                    "></div>
+                    <div style="display: flex; flex-direction: column; justify-content: space-between;">
+                        <span>{viz_config['global_max']:.2f}</span>
+                        <span>{(viz_config['global_max'] * 2/3 +
+                                    viz_config['global_min'] * 1/3):.2f}</span>
+                        <span>{(viz_config['global_max'] * 1/3 +
+                                    viz_config['global_min'] * 2/3):.2f}</span>
+                        <span>{viz_config['global_min']:.2f}</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                """
+                ### How to Read
+                - Each column represents a data point
+                - Height indicates value
+                - Color indicates value (red=high, yellow=low)
+                - Hover over points for exact values
+            """
+            )
+
+    def _get_distinct_colors(self, n: int) -> list:
+        """
+        Generate n visually distinct colors using HSV color space.
+        Args:
+            n (int): Number of distinct colors needed
+        Returns:
+            list: List of hex color codes
+        """
+        colors = []
+        for i in range(n):
+            hue = i / n
+            # High saturation and value for vivid, distinct colors
+            saturation = 0.8
+            value = 0.9
+            # Convert HSV to RGB
+            rgb = colorsys.hsv_to_rgb(hue, saturation, value)
+            # Convert RGB to hex
+            hex_color = "#{:02x}{:02x}{:02x}".format(
+                int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
+            )
+            colors.append(hex_color)
+        return colors
+
+    def draw_yearly_observations(self, data, parameters=None):
+        """Draws a visualization of yearly observation data with distinct colors per country."""
+        try:
+            if "error" in data:
+                raise ValueError(data["error"])
+
+            names = {"common": data.get("common_name", "Unknown"),
+                    "scientific": data.get("scientific_name", "Unknown")}
+            yearly_data = data.get("yearly_data", {})
+
+            # pylint: disable=no-member
+            col1, col2 = st.columns([3, 1])
+
+            with col1:
+                self._draw_observation_chart(yearly_data, names["common"])
+            with col2:
+                self._display_observation_summary(yearly_data, names)
+
+        except Exception as e:
+            self.logger.error("Error drawing yearly observations: %s", str(e), exc_info=True)
+            raise
+
+    def _draw_observation_chart(self, yearly_data, title):
+        """Creates and displays the observation chart."""
+        if isinstance(yearly_data, dict):
+            self._draw_country_chart(yearly_data, title)
+        else:
+            self._draw_global_chart(yearly_data)
+
+    def _display_observation_summary(self, yearly_data, names):
+        """Displays the observation summary sidebar."""
+        # pylint: disable=no-member
+        st.markdown("### Species Information")
+        st.markdown(f"**Common Name**: {names['common']}")
+        st.markdown(f"**Scientific Name**: {names['scientific']}")
+        st.markdown("### Observation Summary")
+
+        if isinstance(yearly_data, dict):
+            self._display_country_summary(yearly_data)
+        else:
+            self._display_global_summary(pd.DataFrame(yearly_data))
+
+    def _draw_country_chart(self, yearly_data, title):
+        """Creates and displays the country-specific observation chart."""
+        # pylint: disable=no-member
+        st.markdown(f"### Yearly Observations: {title}")
+        chart_data = pd.DataFrame()
+        for country in yearly_data.keys():
+            country_data = pd.DataFrame(yearly_data[country])
+            chart_data[country] = country_data.set_index('year')['count']
+        max_val = chart_data.max().max()
+        min_val = chart_data.min().min()
+
+        view_state = pdk.ViewState(
+            latitude=0,
+            longitude=0,
+            zoom=2,
+            pitch=45
+        )
+
+        layer = pdk.Layer(
+            "LineLayer",
+            data=chart_data.reset_index(),
+            get_source_position=["year", "value", 0],
+            get_target_position=["year + 1", "next_value", 0],
+            get_color=[
+                "255",
+                f"255 * (1 - (value - {min_val})/{max_val - min_val})",
+                "0",
+                "150"
+            ],
+            width_scale=20,
+            width_min_pixels=2,
+            pickable=True
+        )
+
+        st.pydeck_chart(
+            pdk.Deck(
+                initial_view_state=view_state,
+                layers=[layer],
+                tooltip={
+                    "html": "<b>Year:</b> {year}<br/><b>Value:</b> {value}",
+                    "style": {"backgroundColor": "steelblue", "color": "white"},
+                },
+            ),
+            height=700
+        )
+
+    def _draw_global_chart(self, yearly_data):
+        """Creates and displays the global observation chart."""
+        df = pd.DataFrame(yearly_data)
+        # Normalize values for color gradient
+        max_val = df['count'].max()
+        min_val = df['count'].min()
+        view_state = pdk.ViewState(
+            latitude=0,
+            longitude=0,
+            zoom=2,
+            pitch=45
+        )
+        layer = pdk.Layer(
+            "LineLayer",
+            data=df,
+            get_source_position=["year", "count", 0],
+            get_target_position=["year + 1", "next_count", 0],
+            get_color=["255",f"255 * (1 - (count - {min_val})/{max_val - min_val})","0","150"],
+            width_scale=20,
+            width_min_pixels=2,
+            pickable=True
+        )
+        # pylint: disable=no-member
+        st.pydeck_chart(
+            pdk.Deck(
+                initial_view_state=view_state,
+                layers=[layer],
+                tooltip={
+                    "html": "<b>Year:</b> {year}<br/><b>Count:</b> {count}",
+                    "style": {"backgroundColor": "steelblue", "color": "white"},
+                },
+            ),
+            height=700
+        )
+
+    def _display_country_summary(self, yearly_data):
+        """Displays the country-specific observation summary."""
+        total_observations = 0
+        # pylint: disable=no-member
+        for country, data in yearly_data.items():
+            country_total = sum(item['count'] for item in data)
+            total_observations += country_total
+            st.markdown(f"**{country}**")
+            st.markdown(f"- Total observations: {country_total:,}")
+            if data:
+                years = [item['year'] for item in data]
+                st.markdown(f"- Year range: {min(years)} - {max(years)}")
+
+        st.markdown(f"**Total Observations**: {total_observations:,}")
+
+    def _display_global_summary(self, df):
+        """Displays the global observation summary."""
+        total_observations = df['count'].sum()
+        # pylint: disable=no-member
+        st.markdown(f"**Total Observations**: {total_observations:,}")
+        st.markdown(f"**Year Range**: {df['year'].min()} - {df['year'].max()}")
