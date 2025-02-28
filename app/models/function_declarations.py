@@ -11,7 +11,8 @@ FUNCTION_DECLARATIONS = [
         name="translate_to_scientific_name",
         description=(
             "IMPORTANT: This is step 1 for any species query using common names. "
-            "Translates a common/English name to scientific name, which must then be used with get_species_info. "
+            "Translates a common/English name to scientific name, "
+            "which must then be used with get_species_info. "
             "Examples: 'Tell me about Bengal Tiger' requires: "
             "1. First call this to convert 'Bengal Tiger' → 'Panthera tigris tigris' "
             "2. Then call get_species_info with the result"
@@ -21,7 +22,8 @@ FUNCTION_DECLARATIONS = [
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "common/English name of the species that needs translation to scientific name",
+                    "description": "common/English name of the species that needs "
+                    "translation to scientific name",
                 },
             },
             "required": ["name"],
@@ -30,7 +32,8 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_species_info",
         description=(
-            "IMPORTANT: This is step 2 - must be called after translate_to_scientific_name for common names. "
+            "IMPORTANT: This is step 2 - must be called after translate_to_scientific_name "
+            "for common names. "
             "Gets conservation status, habitat, and other details using scientific name. "
             "Example workflow for 'Tell me about Bengal Tiger': "
             "1. First translate_to_scientific_name('Bengal Tiger') → 'Panthera tigris tigris' "
@@ -42,7 +45,8 @@ FUNCTION_DECLARATIONS = [
                 "name": {
                     "type": "string",
                     "description": (
-                        "SCIENTIFIC NAME of the species (obtained from translate_to_scientific_name). "
+                        "SCIENTIFIC NAME of the species (obtained from "
+                        "translate_to_scientific_name). "
                         "For queries like 'Tell me about Bengal Tiger', you must: "
                         "1. First get scientific name from translate_to_scientific_name "
                         "2. Then use that result here"
@@ -55,8 +59,10 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_occurences",
         description=(
-            "Get geographic distribution and occurrence data for a species GLOBALLY or in a specific country. "
-            "IMPORTANT: For common names, first use translate_to_scientific_name, then use the result here. "
+            "Get geographic distribution and occurrence data for a species GLOBALLY "
+            "or in a specific country. "
+            "IMPORTANT: For common names, first use translate_to_scientific_name, "
+            "then use the result here. "
             "Example workflow for 'Show habitat of Mountain Gorillas': "
             "1. First translate_to_scientific_name('Mountain Gorilla') → scientific name "
             "2. Then call this function with the result. "
@@ -260,7 +266,8 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_protected_areas_geojson",
         description=(
-            "Get GeoJSON data for protected areas in a country using THREE LETTER country code ONLY. "
+            "Get GeoJSON data for protected areas in a country using THREE LETTER "
+            "country code ONLY. "
             "Examples: 'Show protected areas in Kenya' → use 'KEN', "
             "'Map reserves in Tanzania' → use 'TZA', "
             "'Display parks in Uganda' → use 'UGA'. "
@@ -273,7 +280,8 @@ FUNCTION_DECLARATIONS = [
                 "country_code": {
                     "type": "string",
                     "description": (
-                        "THREE LETTER country code ONLY (e.g., 'KEN' for Kenya, 'TZA' for Tanzania). "
+                        "THREE LETTER country code ONLY (e.g., 'KEN' for Kenya, "
+                        "'TZA' for Tanzania). "
                         "DO NOT use two letter codes. Examples: "
                         "Kenya → 'KEN' (not 'KE'), "
                         "Tanzania → 'TZA' (not 'TZ'), "
@@ -289,10 +297,12 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_endangered_species_in_protected_area",
         description=(
-            "Get list of endangered species in a protected area. Use this function to answer questions like: "
+            "Get list of endangered species in a protected area. Use this function "
+            "to answer questions like: "
             "'What endangered species live in Serengeti?', 'Show me species in Yellowstone', "
-            "'List endangered animals in Kruger National Park'. Note: The function will automatically handle "
-            "variations of protected area names (with or without 'National Park', 'Reserve', etc.)"
+            "'List endangered animals in Kruger National Park'. Note: The function will "
+            "automatically handle variations of protected area names (with or without "
+            "'National Park', 'Reserve', etc.)"
         ),
         parameters={
             "type": "object",
@@ -326,7 +336,8 @@ FUNCTION_DECLARATIONS = [
                 },
                 "species_name": {
                     "type": "string",
-                    "description": "name of the species to find occurrences for (common name or scientific name)",
+                    "description": "name of the species to find occurrences for "
+                    "(common name or scientific name)",
                 },
             },
             "required": ["protected_area_name", "species_name"],
@@ -371,12 +382,13 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_yearly_occurrences",
         description=(
-            "Get yearly occurrence counts for a species to show how sightings have changed over time. "
-            "Use this for questions about temporal trends, historical sightings, or changes in species observations "
-            "in specific countries or regions. "
+            "Get yearly occurrence counts for a species to show how sightings have "
+            "changed over time. "
+            "Use this for questions about temporal trends, historical sightings, or "
+            "changes in species observations in specific countries or regions. "
             "Examples: 'How have Lion sightings changed over time?', "
-            "'Show elephant sightings in Kenya', 'What is the trend of rhino observations in Tanzania?', "
-            "'Compare gorilla populations between Uganda and Rwanda', "
+            "'Show elephant sightings in Kenya', 'What is the trend of rhino observations "
+            "in Tanzania?', 'Compare gorilla populations between Uganda and Rwanda', "
             "'Show yearly data for tiger sightings in India', "
             "'How have elephant numbers changed in Kenya over the years?'"
         ),
@@ -395,7 +407,8 @@ FUNCTION_DECLARATIONS = [
                     "items": {"type": "string"},
                     "description": (
                         "List of 2 or 3-letter country codes to filter observations. "
-                        "For example: ['KE'] for Kenya, ['TZ'] for Tanzania, ['UG', 'RW'] for Uganda and Rwanda. "
+                        "For example: ['KE'] for Kenya, ['TZ'] for Tanzania, ['UG', 'RW'] "
+                        "for Uganda and Rwanda. "
                         "Leave empty to get global data."
                     ),
                 },

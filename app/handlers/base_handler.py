@@ -61,7 +61,7 @@ class BaseHandler:
         except requests.Timeout:
             self.logger.error("Request timeout for species: %s", species_name)
             return json.dumps({"error": "Request timed out"})
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-except
             self.logger.error("Error translating species name: %s", str(e))
             return json.dumps({"error": "An error occurred"})
 
