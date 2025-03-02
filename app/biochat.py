@@ -39,21 +39,25 @@ class BioChat:
     SYSTEM_MESSAGE = """You are a biodiversity expert assistant. Your primary role is to help users 
     understand endangered species, their conservation status, and global biodiversity patterns.
 
-    IMPORTANT: For EVERY user query about endangered species and countries:
+    IMPORTANT: For EVERY user query:
 
-    1. For SINGLE country queries:
+    1. For protected area queries (e.g. "What species live in X park/reserve?"):
+       - ALWAYS use get_endangered_species_in_protected_area
+       Example: "What endangered species live in Serengeti?" → use get_endangered_species_in_protected_area("Serengeti National Park")
+
+    2. For SINGLE country queries:
        - Use endangered_species_for_country with TWO-letter country code
        Example: 'Show endangered species in Kenya' → use endangered_species_for_country with 'KE'
 
-    2. For MULTIPLE country comparisons:
+    3. For MULTIPLE country comparisons:
        - Use endangered_species_for_countries with list of TWO-letter country codes
        Example: 'Compare endangered species between Kenya and Tanzania' → use endangered_species_for_countries with ['KE', 'TZ']
 
-    3. For species information:
+    4. For species information:
        - First use translate_to_scientific_name for common names
        - Then use get_species_info with the result
 
-    4. For species distribution:
+    5. For species distribution:
        - Use get_occurences for location data
        - Use get_yearly_occurrences for temporal trends
 
@@ -207,7 +211,8 @@ class BioChat:
             # Main UI setup
             st.title("Biodiversity Chat")
             # Example queries section
-            st.write("See for examples queries: https://github.com/csboros/biochat/blob/main/prompts.md")
+            st.write("See for examples queries: "
+                     "https://github.com/csboros/biochat/blob/main/prompts.md")
             # Core functionality
             self.handle_user_input()
             self.display_message_history()
@@ -333,7 +338,7 @@ class BioChat:
                         candidate_count=1,
                     )
                 )
-                
+
                 # If still no function call, then handle as final response
                 if not response.candidates[0].content.parts[0].function_call:
                     self.handle_final_response(response)
@@ -405,50 +410,69 @@ class BioChat:
         """
         func_parts = []
         for call in function_calls:
-            self.logger.info("Processing function call: %s", call['name'])
-            self.logger.info("Processing function call with parameters: %s", call['params'])
+            self.logger.info("Processing function call: %s with parameters: %s",
+                           call['name'], call['params'])
             try:
-                if call['name'] == 'get_yearly_occurrences':
-                    self.process_yearly_observations(call['response'], call['params'])
-                elif call['name'] in (
-                    'get_occurences',
-                    'get_species_occurrences_in_protected_area'
-                ):
-                    self.process_occurrences_data(call['response'], call['params'])
-                elif call['name'] == "get_protected_areas_geojson":
-                    self.process_geojson_data(call['response'], call['params'])
-                elif call['name'] == "get_endangered_species_in_protected_area":
-                    self.process_json_data(call['response'], call['params'])
-                elif call['name'] == "endangered_species_hci_correlation":
-                    self.process_endangered_species_hci_correlation(call['response'],
-                                                                    call['params'])
-                elif call['name'] in (
-                    'read_terrestrial_hci',
-                    'read_population_density'
-                ):
-                    self.process_indicator_data(call['response'], call['params'])
-                elif call['name'] in ('endangered_species_for_country',
-                                  'endangered_species_for_countries',
-                                  'number_of_endangered_species_by_conservation_status',
-                                  'endangered_species_for_family', 
-                                  'endangered_families_for_order',
-                                  'endangered_orders_for_class',
-                                  'endangered_classes_for_kingdom'):
-                    self.add_message_to_history("assistant", {"text": call['response']})
-                else:
-                    func_parts.append(Part.from_function_response(
-                        name=call['name'],
-                        response={"content": {"text": call['response']}},
-                    ))
+                response = self._handle_function_call(call)
+                if response:
+                    func_parts.append(response)
             except (TypeError, ValueError, AttributeError) as e:
                 self.logger.error("Error processing function call %s: %s",
-                                    call['name'], str(e), exc_info=True)
+                                call['name'], str(e), exc_info=True)
                 st.error(f"Error processing data for {call['name']}. Please try a different query.")
-                continue  # Skip this function call but continue processing others
+                continue
 
         if func_parts:
             self.logger.debug("Sending function responses back to Gemini")
             return self.chat.send_message(func_parts)
+        return None
+
+    def _handle_function_call(self, call):
+        """Helper method to handle different function call types."""
+        handlers = {
+            'get_yearly_occurrences': lambda c:
+                self.process_yearly_observations(c['response'], c['params']),
+            'get_occurences': self._handle_occurrences,
+            'get_species_occurrences_in_protected_area': self._handle_occurrences,
+            'get_protected_areas_geojson': lambda c:
+                self.process_geojson_data(c['response'], c['params']),
+            'get_endangered_species_in_protected_area': lambda c:
+                self.process_json_data(c['response'], c['params']),
+            'endangered_species_hci_correlation': lambda c:
+                self.process_endangered_species_hci_correlation(c['response'], c['params']),
+            'get_species_images': lambda c:
+                self.process_species_images(c['response'], c['params']),
+            'read_terrestrial_hci': lambda c:
+                self.process_indicator_data(c['response'], c['params']),
+            'read_population_density': lambda c:
+                self.process_indicator_data(c['response'], c['params'])
+        }
+
+        if call['name'] in handlers:
+            handlers[call['name']](call)
+            return None
+
+        # Handle simple text response functions
+        if call['name'] in ('endangered_species_for_country', 'endangered_species_for_countries',
+                          'number_of_endangered_species_by_conservation_status',
+                          'endangered_species_for_family', 'endangered_families_for_order',
+                          'endangered_orders_for_class', 'endangered_classes_for_kingdom'):
+            self.add_message_to_history("assistant", {"text": call['response']})
+            return None
+
+        return Part.from_function_response(
+            name=call['name'],
+            response={"content": {"text": call['response']}},
+        )
+
+    def _handle_occurrences(self, call):
+        """Helper method to handle occurrence data."""
+        if not call['response'].get("occurrences"):
+            return Part.from_function_response(
+                name=call['name'],
+                response={"content": {"text": call['response']}},
+            )
+        self.process_occurrences_data(call['response'], call['params'])
         return None
 
     def handle_final_response(self, response):
@@ -460,13 +484,13 @@ class BioChat:
                 response_text = response.candidates[0].content.parts[0].text
                 self.logger.info("Received final response from Gemini")
                 self.add_message_to_history("assistant", {"text": response_text})
-                
+
                 # Reinforce the system message without reinitializing the chat
                 self.chat.send_message(
                     "Remember: You must use the provided functions for queries about "
                     "species, countries, or biodiversity data. Do not rely on general knowledge."
                 )
-                
+
         except (ValueError, AttributeError) as e:
             self.logger.error("Final response error: %s", str(e), exc_info=True)
             raise
@@ -712,4 +736,21 @@ class BioChat:
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": {"text": f"Error processing correlation data: {str(e)}"}
+            })
+
+    def process_species_images(self, images_data, parameters):
+        """Display species images in the Streamlit interface."""
+        if images_data["image_count"] > 0:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {
+                    "chart_data": images_data,
+                    "type": "images",
+                    "parameters": parameters
+                }
+            })
+        else:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": "No images found for this species."}
             })

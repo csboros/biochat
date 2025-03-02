@@ -48,4 +48,4 @@
 - Show me endangered primates in African countries with high population density
 - What's the correlation between human coexistence index and endangered species count?
   ![Screenshot](screenshots/screenshot_7.png)
-    
+  

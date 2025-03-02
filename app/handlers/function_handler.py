@@ -6,6 +6,7 @@ and occurrence data management.
 
 import json.scanner
 import json
+import urllib.parse
 import os
 import time
 import logging
@@ -117,7 +118,8 @@ class FunctionHandler(BaseHandler):
                 "endangered_species_hci_correlation":
                 self.handlers["endangered"].endangered_species_hci_correlation,
                 "endangered_species_for_countries":
-                self.handlers["endangered"].endangered_species_for_countries
+                self.handlers["endangered"].endangered_species_for_countries,
+                "get_species_images": self.get_species_images,
             }
         except (ValueError, ImportError) as e:
             self.logger.error("Setup error: %s", str(e), exc_info=True)
@@ -190,32 +192,45 @@ class FunctionHandler(BaseHandler):
                 if isinstance(content["country_code"], str):
                     country_codes = [code.strip() for code in content["country_code"].split(',')]
                 elif isinstance(content["country_code"], list):
-                    country_codes = content["country_code"]
+                    # Filter out None values and empty strings
+                    country_codes = [code for code in content["country_code"] if code]
                 else:
                     country_codes = [content["country_code"]]
-                
-                _self.logger.info(
-                    "Fetching occurrences for species: %s and countries: %s (type: %s)",
-                    species_name,
-                    country_codes,
-                    type(country_codes)
-                )
+
+                # Only proceed with country filter if we have valid codes
+                if country_codes:
+                    _self.logger.info(
+                        "Fetching occurrences for species: %s and countries: %s (type: %s)",
+                        species_name,
+                        country_codes,
+                        type(country_codes)
+                    )
+                else:
+                    country_codes = None
+                    _self.logger.info("Fetching occurrences for species: %s", species_name)
             else:
                 country_codes = None
                 _self.logger.info("Fetching occurrences for species: %s", species_name)
+
             scientific_name = _self.translate_to_scientific_name_from_api(
                 {"name": species_name}
             )
 
             # Parse the JSON response and check for errors
             translated_result = json.loads(scientific_name)
-            if "error" in translated_result or "scientific_name" not in translated_result or not translated_result["scientific_name"]:
+            if ("error" in translated_result or
+                    "scientific_name" not in translated_result or 
+                    not translated_result["scientific_name"]):
                 _self.logger.warning(
                     "Could not translate species name: %s - %s",
                     species_name,
                     translated_result["error"],
                 )
-                return []
+                return {
+                    "species": species_name,
+                    "occurrence_count": 0,
+                    "occurrences": [],
+                }
 
             species_name = translated_result["scientific_name"]
 
@@ -799,3 +814,90 @@ class FunctionHandler(BaseHandler):
                 bigquery.ArrayQueryParameter("country_codes", "STRING", kwargs["country_codes"])
             )
         return parameters
+
+    def get_species_images(_self, content):  # pylint: disable=no-self-argument
+        """
+        Retrieves images for a species from GBIF API.
+        
+        Args:
+            content (dict): Dictionary containing:
+                - species_name (str): Name of the species
+
+        Returns:
+            list: List of image URLs and metadata
+        """
+        try:
+            species_name = content["species_name"]
+
+            # First get the GBIF taxon key using the species name
+            scientific_name = _self.translate_to_scientific_name_from_api(
+                {"name": species_name}
+            )
+            translated_result = json.loads(scientific_name)
+
+            if "error" in translated_result:
+                _self.logger.warning(
+                    "Could not translate species name: %s",
+                    species_name
+                )
+                return {"species": species_name, "image_count": 0, "images": []}
+
+            species_name = translated_result["scientific_name"]
+
+            # GBIF API endpoint for species search
+            url = f"https://api.gbif.org/v1/species/search?q={urllib.parse.quote(species_name)}"
+
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("results"):
+                return {"species": species_name, "image_count": 0, "images": []}
+
+            taxon_key = data["results"][0]["key"]
+
+            # Get media items for this taxon
+            media_url = (
+                f"https://api.gbif.org/v1/occurrence/search?"
+                f"taxonKey={taxon_key}&mediaType=StillImage&limit=5"
+            )
+            print(media_url)
+
+            response = requests.get(media_url, timeout=10)
+            response.raise_for_status()
+            media_data = response.json()
+
+            images = []
+            for result in media_data.get("results", []):
+                media = result.get("media", [])
+                for item in media:
+                    if item.get("type") == "StillImage":
+                        images.append({
+                            "url": item.get("identifier"),
+                            "title": result.get("scientificName", species_name),
+                            "creator": item.get("creator", "Unknown"),
+                            "license": item.get("license", "Unknown"),
+                            "publisher": result.get("publisher", "GBIF")
+                        })
+                        break  # Only get first image from each occurrence
+
+            return {
+                "species": species_name,
+                "image_count": len(images),
+                "images": images
+            }
+
+        except requests.RequestException as e:
+            _self.logger.error(
+                "Error fetching from GBIF API: %s",
+                str(e),
+                exc_info=True
+            )
+            raise
+        except Exception as e:
+            _self.logger.error(
+                "Error processing species images: %s",
+                str(e),
+                exc_info=True
+            )
+            raise
