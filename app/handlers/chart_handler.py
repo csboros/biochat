@@ -68,33 +68,40 @@ class ChartHandler:
             pd.errors.EmptyDataError: If DataFrame is empty
         """
         try:
+            # pylint: disable=no-member
             if chart_type.lower() == "geojson":
-                with st.spinner(  # pylint: disable=no-member
+                with st.spinner(
                     "Rendering geojson map..."
-                ):  # pylint: disable=no-member
+                ):
                     self.draw_geojson_map(df)
                     return
             elif chart_type.lower() == "json":
-                with st.spinner("Rendering json data..."):  # pylint: disable=no-member
+                with st.spinner("Rendering json data..."):
                     self.draw_json_data(df)
                     return
             elif chart_type.lower() == "3d_scatterplot":
-                with st.spinner(  # pylint: disable=no-member
+                with st.spinner(
                     "Rendering 3d scatterplot..."
-                ):  # pylint: disable=no-member
+                ):
                     self._draw_3d_scatterplot(df)
                     return
             elif chart_type.lower() == "yearly_observations":
-                with st.spinner(  # pylint: disable=no-member
+                with st.spinner(
                     "Rendering yearly observations..."
-                ):  # pylint: disable=no-member
+                ):
                     self.draw_yearly_observations(df)
                     return
             elif chart_type.lower() == "correlation_scatter":
-                with st.spinner(  # pylint: disable=no-member
+                with st.spinner(
                     "Rendering correlation scatterplot..."
-                ):  # pylint: disable=no-member
+                ):
                     self.draw_correlation_scatter(df, parameters)
+                    return
+            elif chart_type.lower() == "images":
+                with st.spinner(
+                    "Rendering images..."
+                ):
+                    self.display_species_images(df)
                     return
 
             if isinstance(df, pd.DataFrame):
@@ -1097,3 +1104,24 @@ class ChartHandler:
                 "Error creating correlation scatter plot: %s", str(e), exc_info=True
             )
             raise
+
+    def display_species_images(self, images_data):
+        """Display species images in the Streamlit interface."""
+        # pylint: disable=no-member
+        if images_data["image_count"] > 0:
+            st.subheader(f"Images of {images_data['species']}")
+            cols = st.columns(min(images_data["image_count"], 3))  # Up to 3 columns
+
+            for idx, img in enumerate(images_data["images"]):
+                with cols[idx % 3]:
+                    try:
+                        st.image(
+                            img["url"],
+                            use_column_width=True,
+                            caption=f"Source: {img['publisher']}\nBy: {img['creator']}\n"
+                            f"License: {img['license']}"
+                        )
+                    except Exception:  # pylint: disable=broad-except
+                        st.warning("Could not load image")
+        else:
+            st.info(f"No images found for {images_data['species']}")

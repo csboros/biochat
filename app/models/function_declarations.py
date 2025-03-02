@@ -253,7 +253,10 @@ FUNCTION_DECLARATIONS = [
             "properties": {
                 "country_codes": {
                     "type": "array",
-                    "description": "List of country codes to get data for (e.g., ['DE', 'FR', 'IT'])",
+                    "description": (
+                        "List of country codes to get data for "
+                        "(e.g., ['DE', 'FR', 'IT'])"
+                    ),
                     "items": {
                         "type": "string"
                     }
@@ -325,17 +328,22 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_endangered_species_in_protected_area",
         description=(
-            "Get list of endangered species in a protected area. For questions like: "
-            "'What endangered species live in Serengeti?', 'Show me species in Yellowstone', "
-            "'List endangered animals in Kruger National Park'"
+            "ALWAYS USE THIS FUNCTION for any questions about species "
+            "in protected areas/parks/reserves. "
+            "Examples that should use this function:\n"
+            "- 'What endangered species live in Serengeti?'\n"
+            "- 'What animals are in Yellowstone?'\n"
+            "- 'Show me species in Kruger National Park'\n"
+            "- 'Tell me about wildlife in Masai Mara'\n"
+            "The function will return a list of endangered species found in the specified area."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "protected_area_name": {
                     "type": "string",
-                    "description": "name of the protected area (e.g., 'Serengeti', "
-                    "'Yellowstone', 'Kruger')",
+                    "description": "name of the protected area "
+                    "(e.g., 'Serengeti', 'Yellowstone', 'Kruger')",
                 }
             },
             "required": ["protected_area_name"],
@@ -477,5 +485,13 @@ FUNCTION_DECLARATIONS = [
                 "continent": {"type": "string", "default": "Africa"},
             }
         }
-    )
+    ),
+    FunctionDeclaration(
+        name="get_species_images",
+        description="Get images of a species",
+        parameters={
+            "type": "object",
+            "properties": {"species_name": {"type": "string"}},
+        },
+    ),
 ]
