@@ -169,9 +169,10 @@ class FunctionHandler(BaseHandler):
 
         Args:
             content (dict): Dictionary containing:
-                - species_name (str): Name of the species to query
-                - country_code (str, optional): Two-letter country code to filter results
-
+                - species_name (str): Name of the species
+                - country_code (str): Single country code or comma-separated list of country codes
+                - chart_type (str): Type of visualization
+                
         Returns:
             list: List of dictionaries containing occurrence data with latitude and longitude
 
@@ -183,48 +184,41 @@ class FunctionHandler(BaseHandler):
         """
         try:
             species_name = content["species_name"]
+              # Query setup timing
+            if "country_code" in content:
+                # Handle both string and list inputs
+                if isinstance(content["country_code"], str):
+                    country_codes = [code.strip() for code in content["country_code"].split(',')]
+                elif isinstance(content["country_code"], list):
+                    country_codes = content["country_code"]
+                else:
+                    country_codes = [content["country_code"]]
+                
+                _self.logger.info(
+                    "Fetching occurrences for species: %s and countries: %s (type: %s)",
+                    species_name,
+                    country_codes,
+                    type(country_codes)
+                )
+            else:
+                country_codes = None
+                _self.logger.info("Fetching occurrences for species: %s", species_name)
             scientific_name = _self.translate_to_scientific_name_from_api(
                 {"name": species_name}
             )
 
             # Parse the JSON response and check for errors
             translated_result = json.loads(scientific_name)
-            if "error" in translated_result:
+            if "error" in translated_result or "scientific_name" not in translated_result or not translated_result["scientific_name"]:
                 _self.logger.warning(
                     "Could not translate species name: %s - %s",
                     species_name,
                     translated_result["error"],
                 )
-                return []  # or return {"error": f"Species not found: {species_name}"}
-
-            if "scientific_name" not in translated_result:
-                _self.logger.warning(
-                    "No scientific name in translation response for: %s", species_name
-                )
-                return (
-                    []
-                )  # or return {"error": f"Translation response invalid for: {species_name}"}
+                return []
 
             species_name = translated_result["scientific_name"]
-            if not species_name:  # Check if the value is empty string or None
-                _self.logger.warning(
-                    "Empty scientific name returned for: %s", species_name
-                )
-                return (
-                    []
-                )  # or return {"error": f"Empty scientific name returned for: {species_name}"}
 
-            # Query setup timing
-            if "country_code" in content:
-                country_code = content["country_code"]
-                _self.logger.info(
-                    "Fetching occurrences for species: %s and country: %s",
-                    species_name,
-                    country_code,
-                )
-            else:
-                country_code = None
-                _self.logger.info("Fetching occurrences for species: %s", species_name)
             client = bigquery.Client(
                 project=os.getenv("GOOGLE_CLOUD_PROJECT"),
             )
@@ -241,12 +235,23 @@ class FunctionHandler(BaseHandler):
                     {where_clause}
             """
 
-            where_clause = "AND countrycode = @country_code" if country_code else ""
+            if country_codes:
+                where_clause = "AND countrycode IN UNNEST(@country_codes)"
+                # Ensure country_codes is a list of strings
+                country_codes = [str(code) for code in country_codes]
+                _self.logger.info("Query parameters - country_codes: %s", country_codes)
+                parameters = [
+                    bigquery.ScalarQueryParameter("species_name", "STRING", species_name),
+                    bigquery.ArrayQueryParameter("country_codes", "STRING", country_codes)
+                ]
+            else:
+                where_clause = ""
+                parameters = [
+                    bigquery.ScalarQueryParameter("species_name", "STRING", species_name)
+                ]
+
             query = _self.build_query(
                 base_query, where_clause=where_clause
-            )
-            parameters = _self.get_parameters(
-                species_name=species_name, country_code=country_code
             )
 
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
@@ -301,7 +306,7 @@ class FunctionHandler(BaseHandler):
             self.logger.info("Fetching species info for: %s", species_name)
             # GBIF API call timing
             api_call_start = time.time()
-            species_info = species.name_backbone(species_name)
+            species_info = species.name_suggest(species_name)
             self.logger.info(
                 "GBIF API call took %.2f seconds", time.time() - api_call_start
             )
@@ -314,6 +319,7 @@ class FunctionHandler(BaseHandler):
             self.logger.info(
                 "Total get_species_info took %.2f seconds", time.time() - start_time
             )
+            print(result)
             return result
         except KeyError as e:
             self.logger.error(
@@ -780,3 +786,16 @@ class FunctionHandler(BaseHandler):
                 "Error getting yearly occurrences: %s", str(e), exc_info=True
             )
             raise
+
+    def get_parameters(self, **kwargs):
+        """Get query parameters with correct types for BigQuery."""
+        parameters = []
+        if "species_name" in kwargs:
+            parameters.append(
+                bigquery.ScalarQueryParameter("species_name", "STRING", kwargs["species_name"])
+            )
+        if "country_codes" in kwargs:
+            parameters.append(
+                bigquery.ArrayQueryParameter("country_codes", "STRING", kwargs["country_codes"])
+            )
+        return parameters

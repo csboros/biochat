@@ -6,6 +6,7 @@
 - List all families for primates with the number of endangered species 
 - Show all endangered species in the family of HOMINIDAE with link to IUCN
 - Show the taxonomy of Bornean Orangutans
+- Tell me about Bengal Tiger
 
 ## Geographic Distribution Queries
 - Where can I find Orangutans in the wild?
@@ -34,7 +35,6 @@
 - Show me the human coexistence index for Tanzania
   ![Screenshot](screenshots/screenshot_5.png)
 - What's the human coexistence index around Masai Mara?
-- How does population density correlate with endangered species in Indonesia?
 - Compare human impact on wildlife between Kenya and Zambia
 
 ## Temporal Analysis
@@ -49,15 +49,3 @@
 - What's the correlation between human coexistence index and endangered species count?
   ![Screenshot](screenshots/screenshot_7.png)
     
-
-## Edge Cases and Error Testing
-- Show me dinosaurs in New York (non-existent species)
-- What's the population density of Atlantis (non-existent location)
-- Compare endangered species between Mars and Venus (invalid locations)
-- Show me the distribution of unicorns (mythical creatures)
-
-## Data Validation Queries
-- Are there any Polar Bears in Africa?
-- Show me marine species in the Sahara Desert
-- Find penguins in the Amazon rainforest
-- List desert species in Antarctica

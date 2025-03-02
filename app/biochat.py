@@ -36,6 +36,35 @@ class BioChat:
     Handles user interactions, function calls, and visualization of biodiversity data.
     """
 
+    SYSTEM_MESSAGE = """You are a biodiversity expert assistant. Your primary role is to help users 
+    understand endangered species, their conservation status, and global biodiversity patterns.
+
+    IMPORTANT: For EVERY user query about endangered species and countries:
+
+    1. For SINGLE country queries:
+       - Use endangered_species_for_country with TWO-letter country code
+       Example: 'Show endangered species in Kenya' → use endangered_species_for_country with 'KE'
+
+    2. For MULTIPLE country comparisons:
+       - Use endangered_species_for_countries with list of TWO-letter country codes
+       Example: 'Compare endangered species between Kenya and Tanzania' → use endangered_species_for_countries with ['KE', 'TZ']
+
+    3. For species information:
+       - First use translate_to_scientific_name for common names
+       - Then use get_species_info with the result
+
+    4. For species distribution:
+       - Use get_occurences for location data
+       - Use get_yearly_occurrences for temporal trends
+
+    Remember: Always use the appropriate function based on whether the query is about a single country or multiple countries.
+
+    IMPORTANT: You must use the provided functions for any queries about species, countries, or biodiversity data. 
+    If no function matches the user's query or if you need additional general information, use the google_search function 
+    to find relevant information. Do not rely on your general knowledge alone - either use the provided functions or 
+    perform a Google search.
+    """
+
     # pylint: disable=no-member
     @st.cache_resource(show_spinner=False)
     def initialize_app_resources(_self):  # pylint: disable=no-self-argument
@@ -103,29 +132,7 @@ class BioChat:
             chat_start = time.time()
             with st.spinner("Setting up chat..."):
                 chat = model.start_chat()
-                system_message = """You are a biodiversity expert assistant. Your primary role is to help users understand endangered species, their conservation status, and global biodiversity patterns.
-
-                IMPORTANT: For EVERY user query about endangered species and countries:
-
-                1. For SINGLE country queries:
-                   - Use endangered_species_for_country with TWO-letter country code
-                   Example: 'Show endangered species in Kenya' → use endangered_species_for_country with 'KE'
-
-                2. For MULTIPLE country comparisons:
-                   - Use endangered_species_for_countries with list of TWO-letter country codes
-                   Example: 'Compare endangered species between Kenya and Tanzania' → use endangered_species_for_countries with ['KE', 'TZ']
-
-                3. For species information:
-                   - First use translate_to_scientific_name for common names
-                   - Then use get_species_info with the result
-
-                4. For species distribution:
-                   - Use get_occurences for location data
-                   - Use get_yearly_occurrences for temporal trends
-
-                Remember: Always use the appropriate function based on whether the query is about a single country or multiple countries.
-                """
-                chat.send_message(system_message)
+                chat.send_message(_self.SYSTEM_MESSAGE)
                 logger.info("Chat session initialized in %.2f seconds",
                           time.time() - chat_start)
 
@@ -200,20 +207,7 @@ class BioChat:
             # Main UI setup
             st.title("Biodiversity Chat")
             # Example queries section
-            with st.expander("Examples Queries"):
-                st.write('''
-                    - Show all families for primates as list with the number of endangered species 
-                    - Show all endangered species in the family of HOMINIDAE with link to IUCN
-                    - Where do Bornean Orangutans live?
-                    - Show Bornean Orangutans distribution as heatmap
-                    - List the number of endangered species per conservation status for Germany
-                    - List the endangered species for Germany with status Critically Endangered
-                    - Show the distribution of Common Hamster
-                    - Give me more details about the Common Hamster such as conservation status and threats based on the IUCN website
-                    - Show all protected areas in Kenya
-                    - List all endangered species in Masai Mara
-                    - Show the distribution of lions in Masai Mara     
-                ''')
+            st.write("See for examples queries: https://github.com/csboros/biochat/blob/main/prompts.md")
             # Core functionality
             self.handle_user_input()
             self.display_message_history()
@@ -324,14 +318,25 @@ class BioChat:
             self.logger.info("Initial message sent in %.2f seconds",
                            time.time() - message_start)
 
-            # Reset chat if we get a non-function response
+            # If we get a non-function response, try again with a stronger prompt
             if not response.candidates[0].content.parts[0].function_call:
-                self.handle_final_response(response)
-                # Reinforce function calling behavior
-                self.chat.send_message(
-                    "Remember to use the provided functions when appropriate for queries "
-                    "about species distribution, occurrences, and biodiversity data."
+                self.logger.info("No function call detected, trying again with reinforced prompt")
+                reinforced_prompt = (
+                    "Please use the appropriate function to answer this query. "
+                    "Remember to use the provided functions for any data about species, "
+                    "countries, or biodiversity. Query: " + prompt
                 )
+                response = self.chat.send_message(
+                    content=reinforced_prompt,
+                    generation_config=GenerationConfig(
+                        temperature=0,
+                        candidate_count=1,
+                    )
+                )
+                
+                # If still no function call, then handle as final response
+                if not response.candidates[0].content.parts[0].function_call:
+                    self.handle_final_response(response)
             else:
                 # Process function calls as normal
                 while True:
@@ -347,6 +352,7 @@ class BioChat:
                     except IndexError as e:
                         self.logger.error("Invalid response format: %s", str(e))
                         break
+
         except (google_exceptions.ResourceExhausted,
                 google_exceptions.TooManyRequests) as e:
             self.logger.error("API quota exceeded (took %.2f seconds): %s",
@@ -447,17 +453,20 @@ class BioChat:
 
     def handle_final_response(self, response):
         """
-        Handles the final response.
-        
-        Raises:
-            ValueError: If response format is invalid
-            AttributeError: If required attributes are missing
+        Handles the final response from the assistant.
         """
         try:
             if response is not None:
                 response_text = response.candidates[0].content.parts[0].text
                 self.logger.info("Received final response from Gemini")
                 self.add_message_to_history("assistant", {"text": response_text})
+                
+                # Reinforce the system message without reinitializing the chat
+                self.chat.send_message(
+                    "Remember: You must use the provided functions for queries about "
+                    "species, countries, or biodiversity data. Do not rely on general knowledge."
+                )
+                
         except (ValueError, AttributeError) as e:
             self.logger.error("Final response error: %s", str(e), exc_info=True)
             raise
