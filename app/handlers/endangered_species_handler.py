@@ -98,7 +98,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             query = """
                 SELECT order_name, count(order_name) as cnt 
                 FROM `{project_id}.biodiversity.endangered_species` 
-                WHERE LOWER(class) = LOWER(@class) 
+                WHERE LOWER(class) = LOWER(@class_name) 
                     AND order_name IS NOT NULL 
                 GROUP BY order_name 
                 ORDER BY order_name
