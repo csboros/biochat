@@ -31,56 +31,6 @@ class SpeciesHandler(BaseHandler):
             self.logger.error("GBIF API error: %s", str(e))
             raise
 
-    def get_yearly_occurrences(self, content: Dict) -> Dict:
-        """Get yearly occurrence counts for a species."""
-        if not content.get("species_name"):
-            return {"error": "Species name is required"}
-
-        try:
-            translated = json.loads(
-                self.translate_to_scientific_name_from_api(
-                    {"name": content["species_name"]}
-                )
-            )
-
-            if "error" in translated:
-                return {"error": f"Invalid species name: {content['species_name']}"}
-
-            query = f"""
-                SELECT 
-                    EXTRACT(YEAR FROM eventdate) as year,
-                    COUNT(*) as count
-                FROM `{self.project_id}.biodiversity.occurances_endangered_species_mammals`
-                WHERE LOWER(species) = LOWER(@species_name)
-                AND eventdate IS NOT NULL 
-                AND eventdate > '1980-01-01'
-                GROUP BY year
-                ORDER BY year
-            """
-
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter(
-                        "species_name", "STRING", translated["scientific_name"]
-                    )
-                ]
-            )
-
-            results = [
-                {"year": row.year, "count": row.count}
-                for row in self.client.query(query, job_config=job_config)
-            ]
-
-            return {
-                "common_name": content["species_name"],
-                "scientific_name": translated["scientific_name"],
-                "yearly_data": results,
-                "type": "temporal",
-            }
-
-        except Exception as e:
-            self.logger.error("Error getting yearly occurrences: %s", str(e))
-            raise
 
     def normalize_protected_area_name(self, name: str) -> str:
         """Normalize protected area name by removing common suffixes and extra spaces."""

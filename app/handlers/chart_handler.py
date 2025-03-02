@@ -12,16 +12,23 @@ import colorsys
 import numpy as np
 import pandas as pd
 import pydeck as pdk
+
 try:
     from scipy.spatial import Delaunay
 except ImportError:
     Delaunay = None
 from shapely.geometry import Polygon, MultiPoint
 import streamlit as st
+
 try:
     from sklearn.cluster import DBSCAN
 except ImportError:
     DBSCAN = None
+try:
+    import plotly.graph_objects as go
+except ImportError:
+    go = None
+
 
 class ChartHandler:
     """
@@ -82,6 +89,12 @@ class ChartHandler:
                     "Rendering yearly observations..."
                 ):  # pylint: disable=no-member
                     self.draw_yearly_observations(df)
+                    return
+            elif chart_type.lower() == "correlation_scatter":
+                with st.spinner(  # pylint: disable=no-member
+                    "Rendering correlation scatterplot..."
+                ):  # pylint: disable=no-member
+                    self.draw_correlation_scatter(df, parameters)
                     return
 
             if isinstance(df, pd.DataFrame):
@@ -381,7 +394,10 @@ class ChartHandler:
                             pd.qcut([x["decimallongitude"]], q=15, duplicates="drop")[
                                 0
                             ],
-                        ) in dense_cells, axis=1,)
+                        )
+                        in dense_cells,
+                        axis=1,
+                    )
                 ]
                 if (
                     len(filtered_df) < len(df) * 0.1
@@ -407,7 +423,12 @@ class ChartHandler:
         min_lon = df["decimallongitude"].min()
         max_lon = df["decimallongitude"].max()
 
-        if (np.isnan(min_lat) or np.isnan(min_lon) or np.isnan(max_lat) or np.isnan(max_lon)):
+        if (
+            np.isnan(min_lat)
+            or np.isnan(min_lon)
+            or np.isnan(max_lat)
+            or np.isnan(max_lon)
+        ):
             logging.warning("Invalid bounds calculated")
             return None
 
@@ -671,26 +692,33 @@ class ChartHandler:
                 raise ValueError("No country data provided")
             # pylint: disable=no-member
             col1, col2 = st.columns([3, 1])  # 3:1 ratio for map:legend
-            all_points, country_stats = self._process_country_data(countries_data, property_name)
+            all_points, country_stats = self._process_country_data(
+                countries_data, property_name
+            )
             if not all_points:
                 raise ValueError("No valid data points found")
             global_min, global_max = self._get_global_bounds(all_points, property_name)
             for point in all_points:
                 point["formatted_long"] = f"{point['decimallongitude']:.2f}"
                 point["formatted_lat"] = f"{point['decimallatitude']:.2f}"
-            layer = self._create_column_layer(all_points, property_name, global_min, global_max)
+                point["formatted_value"] = f"{point[property_name]:.2f}"
+            layer = self._create_column_layer(
+                all_points, property_name, global_min, global_max
+            )
             view_state = self._calculate_view_state(all_points)
 
             viz_config = {
                 "property_name": property_name,
                 "country_stats": country_stats,
                 "global_min": global_min,
-                "global_max": global_max
+                "global_max": global_max,
             }
             self._render_visualization((col1, col2), layer, view_state, viz_config)
 
         except Exception as e:
-            self.logger.error("Error creating 3D visualization: %s", str(e), exc_info=True)
+            self.logger.error(
+                "Error creating 3D visualization: %s", str(e), exc_info=True
+            )
             raise
 
     def _process_country_data(self, countries_data, property_name):
@@ -703,8 +731,10 @@ class ChartHandler:
             country_data = country_info["data"]
             values = [point[property_name] for point in country_data]
             country_stats[country_name] = {
-                "min": min(values), "max": max(values),
-                "mean": sum(values) / len(values), "count": len(values)
+                "min": min(values),
+                "max": max(values),
+                "mean": sum(values) / len(values),
+                "count": len(values),
             }
             all_points.extend(country_data)
         return all_points, country_stats
@@ -852,8 +882,10 @@ class ChartHandler:
             if "error" in data:
                 raise ValueError(data["error"])
 
-            names = {"common": data.get("common_name", "Unknown"),
-                    "scientific": data.get("scientific_name", "Unknown")}
+            names = {
+                "common": data.get("common_name", "Unknown"),
+                "scientific": data.get("scientific_name", "Unknown"),
+            }
             yearly_data = data.get("yearly_data", {})
 
             # pylint: disable=no-member
@@ -865,11 +897,14 @@ class ChartHandler:
                 self._display_observation_summary(yearly_data, names)
 
         except Exception as e:
-            self.logger.error("Error drawing yearly observations: %s", str(e), exc_info=True)
+            self.logger.error(
+                "Error drawing yearly observations: %s", str(e), exc_info=True
+            )
             raise
 
     def _draw_observation_chart(self, yearly_data, title):
         """Creates and displays the observation chart."""
+        print(yearly_data)
         if isinstance(yearly_data, dict):
             self._draw_country_chart(yearly_data, title)
         else:
@@ -890,103 +925,175 @@ class ChartHandler:
 
     def _draw_country_chart(self, yearly_data, title):
         """Creates and displays the country-specific observation chart."""
-        # pylint: disable=no-member
-        st.markdown(f"### Yearly Observations: {title}")
-        chart_data = pd.DataFrame()
-        for country in yearly_data.keys():
-            country_data = pd.DataFrame(yearly_data[country])
-            chart_data[country] = country_data.set_index('year')['count']
-        max_val = chart_data.max().max()
-        min_val = chart_data.min().min()
+        try:
+            # Create DataFrame for plotting
+            colors = self._get_distinct_colors(len(yearly_data))
 
-        view_state = pdk.ViewState(
-            latitude=0,
-            longitude=0,
-            zoom=2,
-            pitch=45
-        )
+            fig = go.Figure()
 
-        layer = pdk.Layer(
-            "LineLayer",
-            data=chart_data.reset_index(),
-            get_source_position=["year", "value", 0],
-            get_target_position=["year + 1", "next_value", 0],
-            get_color=[
-                "255",
-                f"255 * (1 - (value - {min_val})/{max_val - min_val})",
-                "0",
-                "150"
-            ],
-            width_scale=20,
-            width_min_pixels=2,
-            pickable=True
-        )
+            for (country, data), color in zip(yearly_data.items(), colors):
+                df = pd.DataFrame(data)
+                fig.add_trace(go.Scatter(
+                    x=df['year'],
+                    y=df['count'],
+                    name=country,
+                    line=dict(color=color),
+                    mode='lines+markers'
+                ))
 
-        st.pydeck_chart(
-            pdk.Deck(
-                initial_view_state=view_state,
-                layers=[layer],
-                tooltip={
-                    "html": "<b>Year:</b> {year}<br/><b>Value:</b> {value}",
-                    "style": {"backgroundColor": "steelblue", "color": "white"},
-                },
-            ),
-            height=700
-        )
+            fig.update_layout(
+                title=f"Yearly Observations: {title}",
+                xaxis_title="Year",
+                yaxis_title="Number of Observations",
+                height=700,
+                hovermode='x unified',
+                showlegend=True,
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01
+                )
+            )
+            # pylint: disable=no-member
+            st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            self.logger.error("Error creating country chart: %s", str(e))
+            raise
 
     def _draw_global_chart(self, yearly_data):
         """Creates and displays the global observation chart."""
-        df = pd.DataFrame(yearly_data)
-        # Normalize values for color gradient
-        max_val = df['count'].max()
-        min_val = df['count'].min()
-        view_state = pdk.ViewState(
-            latitude=0,
-            longitude=0,
-            zoom=2,
-            pitch=45
-        )
-        layer = pdk.Layer(
-            "LineLayer",
-            data=df,
-            get_source_position=["year", "count", 0],
-            get_target_position=["year + 1", "next_count", 0],
-            get_color=["255",f"255 * (1 - (count - {min_val})/{max_val - min_val})","0","150"],
-            width_scale=20,
-            width_min_pixels=2,
-            pickable=True
-        )
-        # pylint: disable=no-member
-        st.pydeck_chart(
-            pdk.Deck(
-                initial_view_state=view_state,
-                layers=[layer],
-                tooltip={
-                    "html": "<b>Year:</b> {year}<br/><b>Count:</b> {count}",
-                    "style": {"backgroundColor": "steelblue", "color": "white"},
-                },
-            ),
-            height=700
-        )
+        try:
+            df = pd.DataFrame(yearly_data)
+
+            fig = go.Figure()
+
+            fig.add_trace(go.Scatter(
+                x=df['year'],
+                y=df['count'],
+                mode='lines+markers',
+                name='Global Observations',
+                line=dict(color='#1f77b4')
+            ))
+
+            fig.update_layout(
+                title="Global Yearly Observations",
+                xaxis_title="Year",
+                yaxis_title="Number of Observations",
+                height=700,
+                hovermode='x',
+                showlegend=False
+            )
+            # pylint: disable=no-member
+            st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            self.logger.error("Error creating global chart: %s", str(e))
+            raise
 
     def _display_country_summary(self, yearly_data):
         """Displays the country-specific observation summary."""
         total_observations = 0
         # pylint: disable=no-member
         for country, data in yearly_data.items():
-            country_total = sum(item['count'] for item in data)
+            country_total = sum(item["count"] for item in data)
             total_observations += country_total
             st.markdown(f"**{country}**")
             st.markdown(f"- Total observations: {country_total:,}")
             if data:
-                years = [item['year'] for item in data]
+                years = [item["year"] for item in data]
                 st.markdown(f"- Year range: {min(years)} - {max(years)}")
-
         st.markdown(f"**Total Observations**: {total_observations:,}")
 
     def _display_global_summary(self, df):
         """Displays the global observation summary."""
-        total_observations = df['count'].sum()
+        total_observations = df["count"].sum()
         # pylint: disable=no-member
         st.markdown(f"**Total Observations**: {total_observations:,}")
         st.markdown(f"**Year Range**: {df['year'].min()} - {df['year'].max()}")
+
+    def draw_correlation_scatter(self, data, parameters):
+        """Draw a scatter plot showing correlation between HCI and species counts."""
+        try:
+            # pylint: disable=no-member
+            col1, col2 = st.columns([3, 1])  # 3:1 ratio for plot:legend
+            with col1:
+                countries = data.get("countries", [])
+                if not countries:
+                    raise ValueError("No correlation data available")
+
+                df = pd.DataFrame([{
+                    'Country': country['iso3'],
+                    'HCI': country['hci'],
+                    'Species': country['species_count']
+                } for country in countries])
+
+                fig = go.Figure(data=go.Scatter(
+                    x=df['HCI'],
+                    y=df['Species'],
+                    mode='markers',
+                    marker=dict(
+                        size=15,
+                        color='#FF4B4B'
+                    ),
+                    text=df['Country'],
+                    hovertemplate=(
+                        "Country: %{text}<br>"
+                        "HCI: %{x:.2f}<br>"
+                        "Species: %{y}<br>"
+                        "<extra></extra>"
+                    )
+                ))
+
+                fig.update_layout(
+                    height=700,
+                    showlegend=False,
+                    xaxis_title="Human Coexistence Index (HCI)",
+                    yaxis_title="Number of Endangered Species",
+                    yaxis_type="log",
+                    paper_bgcolor='rgb(50, 50, 50)',
+                    plot_bgcolor='rgb(50, 50, 50)',
+                    font=dict(
+                        color='white',
+                        size=16  # Increased base font size
+                    ),
+                    xaxis=dict(
+                        gridcolor='rgba(255, 255, 255, 0.2)',
+                        zerolinecolor='rgba(255, 255, 255, 0.2)',
+                        title_font=dict(size=20),  # Larger axis title
+                        tickfont=dict(size=14)     # Larger tick labels
+                    ),
+                    yaxis=dict(
+                        gridcolor='rgba(255, 255, 255, 0.2)',
+                        zerolinecolor='rgba(255, 255, 255, 0.2)',
+                        title_font=dict(size=22),  # Larger axis title
+                        tickfont=dict(size=16)     # Larger tick labels
+                    ),
+                    hoverlabel=dict(font_size=16)  # Larger hover text
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                st.markdown(f"### Correlation Analysis for {parameters.get('continent', 'Africa')}")
+                st.markdown("""
+                    This scatter plot shows the relationship between:
+                    - Human Coexistence Index (HCI)
+                    - Number of Endangered Species (all categories)
+                    
+                    **How to Read:**
+                    - Each point represents a country
+                    - X-axis: HCI value
+                    - Y-axis: Number of Endangered species (log scale)
+                    
+                    **Interpretation:**
+                    - Upward trend: Positive correlation
+                    - Downward trend: Negative correlation
+                    - Scattered points: Weak/no correlation
+                    """)
+        except Exception as e:
+            self.logger.error(
+                "Error creating correlation scatter plot: %s", str(e), exc_info=True
+            )
+            raise

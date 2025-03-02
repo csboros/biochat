@@ -204,10 +204,11 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="endangered_species_for_country",
         description=(
-            "Get list of endangered species in a country using TWO LETTER country code ONLY. "
+            "Get list of endangered species in a SINGLE country using "
+            "TWO LETTER country code ONLY. "
+            "For comparing multiple countries, use endangered_species_for_countries instead. "
             "Examples: 'Show endangered species in Kenya' → use 'KE', "
-            "'List endangered animals in Tanzania' → use 'TZ', "
-            "'What endangered species are in Uganda' → use 'UG'. "
+            "'List endangered animals in Tanzania' → use 'TZ'. "
             "IMPORTANT: Must use 2-letter ISO country codes (e.g., KE, TZ, UG, US, GB), "
             "3-letter codes will not work!"
         ),
@@ -237,6 +238,33 @@ FUNCTION_DECLARATIONS = [
             },
             "required": ["country_code"],
         },
+    ),
+    FunctionDeclaration(
+        name="endangered_species_for_countries",
+        description=(
+            "Get endangered species information for MULTIPLE countries at once. "
+            "Use this function for comparing species across countries. "
+            "Examples: 'Compare endangered species between Kenya and Tanzania', "
+            "'Show endangered species in both Uganda and Rwanda'. "
+            "For single country queries, use endangered_species_for_country instead."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "country_codes": {
+                    "type": "array",
+                    "description": "List of country codes to get data for (e.g., ['DE', 'FR', 'IT'])",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "conservation_status": {
+                    "type": "string",
+                    "description": "Filter by conservation status (e.g., 'Critically Endangered')"
+                }
+            },
+            "required": ["country_codes"]
+        }
     ),
     FunctionDeclaration(
         name="number_of_endangered_species_by_conservation_status",
@@ -297,22 +325,17 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_endangered_species_in_protected_area",
         description=(
-            "Get list of endangered species in a protected area. Use this function "
-            "to answer questions like: "
+            "Get list of endangered species in a protected area. For questions like: "
             "'What endangered species live in Serengeti?', 'Show me species in Yellowstone', "
-            "'List endangered animals in Kruger National Park'. Note: The function will "
-            "automatically handle variations of protected area names (with or without "
-            "'National Park', 'Reserve', etc.)"
+            "'List endangered animals in Kruger National Park'"
         ),
         parameters={
             "type": "object",
             "properties": {
                 "protected_area_name": {
                     "type": "string",
-                    "description": (
-                        "name of the protected area (e.g., 'Serengeti', 'Yellowstone', 'Kruger'). "
-                        "The function will work with or without suffixes like 'National Park'"
-                    ),
+                    "description": "name of the protected area (e.g., 'Serengeti', "
+                    "'Yellowstone', 'Kruger')",
                 }
             },
             "required": ["protected_area_name"],
@@ -439,4 +462,20 @@ FUNCTION_DECLARATIONS = [
             "required": ["country_names"],  # At least country names are required
         },
     ),
+    FunctionDeclaration(
+        name="endangered_species_hci_correlation",
+        description=(
+            "Tool to analyze correlation between HCI and endangered species. "
+            "Required for questions about: correlation, relationship, or connection "
+            "between HCI (Human Coexistence Index) and endangered species counts. "
+            "Input: None required - defaults to Africa and Critically Endangered species. "
+            "Output: Scatter plot showing correlation."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "continent": {"type": "string", "default": "Africa"},
+            }
+        }
+    )
 ]

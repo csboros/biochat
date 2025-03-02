@@ -285,7 +285,8 @@ class EndangeredSpeciesHandler(BaseHandler):
 
     def endangered_species_for_country(self, content) -> str:
         """
-        Retrieves endangered species for a specified country.
+        Retrieves endangered species for a SINGLE specified country.
+        For multiple countries, use endangered_species_for_countries() instead.
 
         Args:
             content (dict): Dictionary containing:
@@ -391,11 +392,18 @@ class EndangeredSpeciesHandler(BaseHandler):
         """
         try:
             country_code = content.get('country_code')
+            country_codes = content.get('country_codes')
             conservation_status = content.get('conservation_status')
-            if not country_code and not conservation_status:
+            if not country_code and not conservation_status and not country_codes:
                 # If neither country_code nor conservation_status is provided,
                 # return global statistics
                 results = self._query_conservation_status_counts()
+            elif country_codes:
+                all_results = []
+                for code in country_codes:
+                    results = self._query_conservation_status_counts(code)
+                    all_results.append(self._format_conservation_counts(results, code))
+                return "\n\n".join(all_results)
             else:
                 # If either country_code or conservation_status is provided,
                 #  return statistics for the specified country
@@ -452,3 +460,101 @@ class EndangeredSpeciesHandler(BaseHandler):
         for status, count in results:
             output.append(f"* {status}: {count} species")
         return "\n".join(output)
+
+    def endangered_species_hci_correlation(self, content) -> str:
+        """Get correlation data between endangered species and human impact factors."""
+        try:
+            self.logger.info("Received content: %s", content)
+
+            continent = content.get('continent', 'Africa')
+
+            query = """
+               SELECT
+                    countrycode,
+                    iso3,
+                    continent,
+                    AVG(terrestrial_hci) AS terrestrial_hci,
+                    AVG(population_density) AS population_density,
+                    SUM(CAST(species_count AS INT64)) AS species_count
+                FROM
+                    `{project_id}.biodiversity.endangered_species_country`
+                WHERE
+                    continent = @continent
+                GROUP BY
+                    countrycode,
+                    iso3,
+                    continent
+                ORDER BY
+                    species_count DESC
+            """
+
+            parameters = [
+                bigquery.ScalarQueryParameter("continent", "STRING", continent)
+            ]
+
+            self.logger.info("Query parameters: %s", parameters)  # Debug print
+
+            client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
+            query = self.build_query(query)
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
+            results = client.query(query, job_config=job_config).result()
+            result = self._format_correlation_results(results, continent)
+            return result
+        except Exception as e:
+            self.logger.error("Error in endangered_species_hci_correlation: %s", str(e))
+            raise
+
+    def _format_correlation_results(self, results, continent=None, conservation_status=None) -> str:
+        """Format the correlation results into a JSON structure."""
+        data = {
+            "continent": continent,
+            "countries": [
+                {
+                    "iso3": row['iso3'],
+                    "species_count": row['species_count'],
+                    "hci": row['terrestrial_hci'],
+                    "popden": row['population_density']
+                }
+                for row in results
+            ]
+        }
+        return data
+
+    def endangered_species_for_countries(self, content) -> str:
+        """
+        Retrieves endangered species for MULTIPLE countries.
+        Use this function when comparing species across two or more countries.
+
+        Args:
+            content (dict): Dictionary containing:
+                - country_codes (list[str]): List of two-letter country codes (e.g., ['NA', 'KE'])
+                - conservation_status (str, optional):
+                    Status to filter by (e.g., 'Critically Endangered')
+
+        Returns:
+            str: Formatted string with endangered species for all specified countries
+        """
+        try:
+            # Get list of countries to process
+            country_codes = content.get('country_codes', [])  # Remove default European countries
+            conservation_status = content.get('conservation_status')
+
+            if not country_codes:  # Add validation for empty country list
+                raise ValueError("No country codes provided")
+
+            # Rest of the method remains the same
+            all_results = []
+            for country_code in country_codes:
+                params = {
+                    'country_code': country_code,  # Remove list wrapping
+                    'conservation_status': conservation_status
+                }
+                country_results = self.endangered_species_for_country(params)
+                all_results.append(country_results)
+
+            return ("\n\n".join(all_results) if all_results 
+                    else "No results found for any of the specified countries.")
+
+        except Exception as e:
+            self.logger.error("Error in endangered_species_for_countries: %s", str(e))
+            raise
