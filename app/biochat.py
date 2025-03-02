@@ -211,8 +211,7 @@ class BioChat:
             # Main UI setup
             st.title("Biodiversity Chat")
             # Example queries section
-            st.write("See for examples queries: "
-                     "https://github.com/csboros/biochat/blob/main/prompts.md")
+            st.write("[See example queries](https://github.com/csboros/biochat/blob/main/prompts.md)")
             # Core functionality
             self.handle_user_input()
             self.display_message_history()
