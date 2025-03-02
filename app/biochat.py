@@ -7,7 +7,7 @@
     information.
 
 """
-
+import json
 import logging
 import time
 import vertexai
@@ -103,16 +103,27 @@ class BioChat:
             chat_start = time.time()
             with st.spinner("Setting up chat..."):
                 chat = model.start_chat()
-                system_message = """You are a biodiversity expert assistant.
-                Your role is to help users
-                understand endangered species, their conservation status, 
-                and global biodiversity patterns. 
-                When providing information:
-                - First, Use the provided tools to get the data and information you need 
-                - Second, if you don't have the answer, use the google_search tool to find the answer. 
-                - Third, if you don't have the answer based on the tools and google search, 
-                    use your own knowledge to answer the questions. 
-                - Use available tools to show data visualizations when relevant
+                system_message = """You are a biodiversity expert assistant. Your primary role is to help users understand endangered species, their conservation status, and global biodiversity patterns.
+
+                IMPORTANT: For EVERY user query about endangered species and countries:
+
+                1. For SINGLE country queries:
+                   - Use endangered_species_for_country with TWO-letter country code
+                   Example: 'Show endangered species in Kenya' → use endangered_species_for_country with 'KE'
+
+                2. For MULTIPLE country comparisons:
+                   - Use endangered_species_for_countries with list of TWO-letter country codes
+                   Example: 'Compare endangered species between Kenya and Tanzania' → use endangered_species_for_countries with ['KE', 'TZ']
+
+                3. For species information:
+                   - First use translate_to_scientific_name for common names
+                   - Then use get_species_info with the result
+
+                4. For species distribution:
+                   - Use get_occurences for location data
+                   - Use get_yearly_occurrences for temporal trends
+
+                Remember: Always use the appropriate function based on whether the query is about a single country or multiple countries.
                 """
                 chat.send_message(system_message)
                 logger.info("Chat session initialized in %.2f seconds",
@@ -402,12 +413,16 @@ class BioChat:
                     self.process_geojson_data(call['response'], call['params'])
                 elif call['name'] == "get_endangered_species_in_protected_area":
                     self.process_json_data(call['response'], call['params'])
+                elif call['name'] == "endangered_species_hci_correlation":
+                    self.process_endangered_species_hci_correlation(call['response'],
+                                                                    call['params'])
                 elif call['name'] in (
                     'read_terrestrial_hci',
                     'read_population_density'
                 ):
                     self.process_indicator_data(call['response'], call['params'])
                 elif call['name'] in ('endangered_species_for_country',
+                                  'endangered_species_for_countries',
                                   'number_of_endangered_species_by_conservation_status',
                                   'endangered_species_for_family', 
                                   'endangered_families_for_order',
@@ -651,3 +666,41 @@ class BioChat:
         except Exception as e:
             self.logger.error("Error processing yearly observations: %s", str(e), exc_info=True)
             raise
+
+    def process_endangered_species_hci_correlation(self, data_response, parameters):
+        """
+        Processes and visualizes correlation data between HCI and endangered species.
+        
+        Args:
+            data_response (str): JSON string containing correlation data
+            parameters (dict): Parameters for visualization
+        """
+        try:
+            if not data_response:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {"text": "No correlation data available."}
+                })
+                return
+
+            # Add visualization to session state
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {
+                    "chart_data": data_response,
+                    "type": "correlation_scatter",
+                    "parameters": parameters
+                }
+            })
+        except json.JSONDecodeError as e:
+            self.logger.error("JSON decode error: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": "Error processing correlation data: Invalid JSON format"}
+            })
+        except Exception as e:  # pylint: disable=broad-except
+            self.logger.error("Error processing correlation data: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing correlation data: {str(e)}"}
+            })

@@ -112,8 +112,12 @@ class FunctionHandler(BaseHandler):
                 "get_species_occurrences_in_protected_area":
                     self.handlers["species"].get_species_occurrences_in_protected_area,
                 "read_terrestrial_hci": self.read_terrestrial_hci,
-                "get_yearly_occurrences": self.handlers["species"].get_yearly_occurrences,      
+                "get_yearly_occurrences": self.get_yearly_occurrences,      
                 "read_population_density": self.read_population_density,
+                "endangered_species_hci_correlation":
+                self.handlers["endangered"].endangered_species_hci_correlation,
+                "endangered_species_for_countries":
+                self.handlers["endangered"].endangered_species_for_countries
             }
         except (ValueError, ImportError) as e:
             self.logger.error("Setup error: %s", str(e), exc_info=True)
@@ -129,7 +133,19 @@ class FunctionHandler(BaseHandler):
         """
         try:
             query_string = content.get("query")
-            query = f"site:https://www.iucnredlist.org/ {query_string}"
+            # Create a search query across multiple authoritative biodiversity sites
+            sites = [
+                "iucnredlist.org",           # IUCN Red List
+                "gbif.org",                  # Global Biodiversity Information Facility
+                "eol.org",                   # Encyclopedia of Life
+                "biodiversitya-z.org",       # Biodiversity A-Z
+                "unep-wcmc.org",             # UN Environment World Conservation Monitoring Centre
+                "protectedplanet.net",       # Protected Planet
+                "worldwildlife.org",         # World Wildlife Fund
+                "fauna-flora.org"           # Fauna & Flora International
+            ]
+            site_query = " OR ".join(f"site:{site}" for site in sites)
+            query = f"({site_query}) {query_string}"
             return self.search.run(query)
         except google.api_core.exceptions.GoogleAPIError as e:
             self.logger.error("Google Search API error: %s", str(e), exc_info=True)
