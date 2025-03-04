@@ -1,5 +1,7 @@
 # Test Prompts for Biodiversity Application
 
+❗ **IMPORTANT LIMITATIONS:** ❗Application database only includes **Mammals** and protected areas are only availble in **Africa**. 
+
 ## Basic Species Information
 - What is the scientific name for Bornean Orangutan?
 - List all orders with endangered species for class Mammalia
