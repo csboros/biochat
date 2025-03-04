@@ -49,3 +49,24 @@
 - What's the correlation between human coexistence index and endangered species count?
   ![Screenshot](screenshots/screenshot_7.png)
   
+## Edge Cases and Error Testing
+
+- Show me dinosaurs in New York (non-existent species)
+- What's the population density of Atlantis (non-existent location)
+- Show me the distribution of unicorns (mythical creatures)
+
+## Data Validation Queries
+
+- Are there any Polar Bears in Africa?
+- Show me marine species in the Sahara Desert
+- Find penguins in the Amazon rainforest
+- List desert species in Antarctica
+
+
+## Video Criteria
+
+Share a downloadable link of a video (maximum of 3 mins) about your product. The video should: 
+
+Introduction – Briefly introduce the team and explain the aim of the product and the datasets used. 
+Product walkthrough – Provide a clear, concise overview of the product. Avoid jargon and explain as if presenting to a general audience. 
+Value and impact – Discuss the potential value or impact of the product and areas where it could scale up. 
