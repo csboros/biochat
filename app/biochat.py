@@ -10,8 +10,9 @@
 import json
 import logging
 import time
-import vertexai
-from vertexai.generative_models import (
+import os
+import google.cloud.aiplatform as vertexai
+from vertexai.preview.generative_models import (
     GenerationConfig,
     GenerativeModel,
     Part,
@@ -108,7 +109,7 @@ class BioChat:
             # Add timeout to Vertex AI initialization
             vertex_start = time.time()
             with st.spinner("Initializing Vertex AI..."):
-                vertexai.init(location="us-central1")
+                vertexai.init(project=os.getenv("GOOGLE_CLOUD_PROJECT"), location="us-central1")
                 logger.info("Vertex AI initialized successfully in %.2f seconds",
                           time.time() - vertex_start)
 
@@ -125,9 +126,10 @@ class BioChat:
             with st.spinner("Loading Gemini model..."):
                 tools = Tool(function_declarations=handler.declarations)
                 model = GenerativeModel(
-                    model_name="gemini-pro",
+                    "gemini-2.0-flash", 
                     generation_config=GenerationConfig(temperature=0),
                     tools=[tools],
+                    system_instruction=_self.SYSTEM_MESSAGE
                 )
                 logger.info("Model loaded successfully in %.2f seconds",
                           time.time() - model_start)
@@ -444,7 +446,11 @@ class BioChat:
             'read_terrestrial_hci': lambda c:
                 self.process_indicator_data(c['response'], c['params']),
             'read_population_density': lambda c:
-                self.process_indicator_data(c['response'], c['params'])
+                self.process_indicator_data(c['response'], c['params']),
+            'endangered_species_for_country': lambda c:
+                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
+            'endangered_species_for_countries': lambda c:
+                self.process_endangered_species(c['response'], c['params'], "circle_packing")
         }
 
         if call['name'] in handlers:
@@ -452,8 +458,7 @@ class BioChat:
             return None
 
         # Handle simple text response functions
-        if call['name'] in ('endangered_species_for_country', 'endangered_species_for_countries',
-                          'number_of_endangered_species_by_conservation_status',
+        if call['name'] in ('number_of_endangered_species_by_conservation_status',
                           'endangered_species_for_family', 'endangered_families_for_order',
                           'endangered_orders_for_class', 'endangered_classes_for_kingdom'):
             self.add_message_to_history("assistant", {"text": call['response']})
@@ -752,4 +757,36 @@ class BioChat:
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": {"text": "No images found for this species."}
+            })
+
+    def process_endangered_species(self, data_response, parameters, chart_type="circle_packing"):
+        """
+        Process endangered species data and visualize using specified chart type.
+        
+        Args:
+            data_response (dict): Response data containing endangered species information
+            parameters (dict): Parameters for visualization
+            chart_type (str): Type of visualization to use (default: circle_packing)
+        """
+        try:
+            if not data_response:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {"text": "No endangered species data available."}
+                })
+                return
+
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {
+                    "chart_data": data_response,
+                    "type": chart_type,
+                    "parameters": parameters
+                }
+            })
+        except Exception as e:  # pylint: disable=broad-except
+            self.logger.error("Error processing endangered species data: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing endangered species data: {str(e)}"}
             })

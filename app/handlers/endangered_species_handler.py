@@ -308,7 +308,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             conservation_status = content.get('conservation_status')
 
             results_data = self._query_country_species(country_code, conservation_status)
-            return self._format_country_species_results(results_data, country_code)
+            return self._format_hierarchy_data(results_data)
         except google.api_core.exceptions.GoogleAPIError as e:
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
@@ -325,7 +325,7 @@ class EndangeredSpeciesHandler(BaseHandler):
         job_config = bigquery.QueryJobConfig(query_parameters=parameters)
         query_job = client.query(query, job_config=job_config)
         results = query_job.result()
-        return [(row.species_name, row.family, row.status, row.url) for row in results]
+        return [(row.species_name, row.family, row.status, row.order_name, row['class']) for row in results]
 
     def _build_country_species_query(self, conservation_status: Optional[str] = None) -> str:
         """Build the BigQuery query string for country species."""
@@ -346,30 +346,63 @@ class EndangeredSpeciesHandler(BaseHandler):
             conservation_status=conservation_status
         )
 
-    def _format_country_species_results(self, results_data: list, country_code: str) -> str:
-        """Format the country species results into a readable string, grouped by family."""
-        result = (
-            f"**These are the endangered species in the {country_code} "
-            "(only mammals are included).**\n\n"
-        )
-        # Group results by family
-        family_groups = {}
-        for scientific_name, family, status, url in sorted(results_data, key=lambda x: x[1]):
-            if family not in family_groups:
-                family_groups[family] = []
-            family_groups[family].append((scientific_name, status, url))
+    def _format_hierarchy_data(self, data):
+        """Format the data into a hierarchical structure."""
+        hierarchy = {
+            'name': 'Endangered Species',
+            'children': []  # Classes
+        }
 
-        # Format each family group
-        for family in sorted(family_groups.keys()):
-            result += f"**Family: {family}**\n"
-            for scientific_name, status, url in sorted(family_groups[family]):
-                result += self._format_country_species_entry(scientific_name, status, url)
-            result += "\n"
-        return result
+        classes = {}
+        orders = {}
+        families = {}
 
-    def _format_country_species_entry(self, scientific_name: str, status: str, url: str) -> str:
-        """Format a single country species entry."""
-        return f"* **{scientific_name}** ({status}):\n  {url}\n"
+        # First pass: organize all data
+        for species_name, family_name, status, order_name, class_name in data:
+            # Create class if it doesn't exist
+            if class_name not in classes:
+                classes[class_name] = {
+                    'name': class_name,
+                    'children': []
+                }
+                hierarchy['children'].append(classes[class_name])
+
+            # Create order if it doesn't exist
+            if order_name not in orders:
+                orders[order_name] = {
+                    'name': order_name,
+                    'children': []
+                }
+                classes[class_name]['children'].append(orders[order_name])
+
+            # Create family if it doesn't exist
+            if family_name not in families:
+                families[family_name] = {
+                    'name': family_name,
+                    'children': []
+                }
+                orders[order_name]['children'].append(families[family_name])
+
+            # Add species
+            families[family_name]['children'].append({
+                'name': species_name,
+                'status': status,
+                'value': 1
+            })
+
+        # Sort all levels
+        for family in families.values():
+            family['children'].sort(key=lambda x: x['name'])
+
+        for order in orders.values():
+            order['children'].sort(key=lambda x: x['name'])
+
+        for class_group in classes.values():
+            class_group['children'].sort(key=lambda x: x['name'])
+
+        hierarchy['children'].sort(key=lambda x: x['name'])
+
+        return hierarchy
 
     def number_of_endangered_species_by_conservation_status(self, content) -> str:
         """
