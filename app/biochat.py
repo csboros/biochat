@@ -450,7 +450,11 @@ class BioChat:
             'endangered_species_for_country': lambda c:
                 self.process_endangered_species(c['response'], c['params'], "circle_packing"),
             'endangered_species_for_countries': lambda c:
-                self.process_endangered_species(c['response'], c['params'], "circle_packing")
+                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
+            'endangered_families_for_order': lambda c:
+                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
+            'endangered_species_for_family': lambda c:
+                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
         }
 
         if call['name'] in handlers:
@@ -459,7 +463,6 @@ class BioChat:
 
         # Handle simple text response functions
         if call['name'] in ('number_of_endangered_species_by_conservation_status',
-                          'endangered_species_for_family', 'endangered_families_for_order',
                           'endangered_orders_for_class', 'endangered_classes_for_kingdom'):
             self.add_message_to_history("assistant", {"text": call['response']})
             return None

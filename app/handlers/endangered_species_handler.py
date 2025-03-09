@@ -154,38 +154,22 @@ class EndangeredSpeciesHandler(BaseHandler):
             client = bigquery.Client(
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
-            query = """
-                SELECT family_name, count(family_name) as cnt 
-                FROM `{project_id}.biodiversity.endangered_species` 
-                {where_clause}
-                GROUP BY family_name 
-                ORDER BY family_name
-            """
-
             query = self.build_query(
-                query,
-                where_clause=("WHERE LOWER(order_name) = LOWER(@order_name) "
-                            "AND family_name IS NOT NULL")
+                self.SPECIES_QUERY_TEMPLATE,
+                where_clause="AND LOWER(order_name) = LOWER(@order_name) "
+                    "AND family_name IS NOT NULL"
             )
-
             parameters = self.get_parameters(
                 order_name=order_name
             )
-
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(
                 query,
                 job_config=job_config
             )
-            intro = (f"Here are the families within the {order_name} order, along with "
-                    "the number of endangered species in each:\n\n")
-            results = []
-            for row in query_job:
-                formatted_entry = f"* **{row['family_name']}**: {row['cnt']} endangered species"
-                results.append(formatted_entry)
-
-            final_text = intro + '\n'.join(results)
-            return final_text
+            res = [(row.species_name, row.family, row.status, row.order_name, row['class']) 
+                   for row in query_job]
+            return self._format_hierarchy_data(res)
         except google.api_core.exceptions.GoogleAPIError as e:
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
@@ -204,7 +188,7 @@ class EndangeredSpeciesHandler(BaseHandler):
                     Status to filter by (e.g., 'Critically Endangered')
 
         Returns:
-            str: Formatted string with endangered species and their IUCN links
+            str: Formatted string with hierarchical structure of species data
 
         Raises:
             ValueError: If family_name is invalid or not found
@@ -214,74 +198,29 @@ class EndangeredSpeciesHandler(BaseHandler):
         try:
             self.logger.info("Fetching endangered species for family from BigQuery")
             family_name = content['family_name']
-            conservation_status = None
-            if 'conservation_status' in content:
-                conservation_status = content['conservation_status']
+            conservation_status = content.get('conservation_status')
 
-            results_data = self._query_endangered_species(family_name, conservation_status)
-            return self._format_species_results(results_data)
+            client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
+            query = self.build_query(
+                self.SPECIES_QUERY_TEMPLATE,
+                where_clause="AND LOWER(family_name) = LOWER(@family_name)"
+            )
+            parameters = self.get_parameters(
+                family_name=family_name,
+                conservation_status=conservation_status
+            )
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
+            query_job = client.query(query, job_config=job_config)
+            
+            res = [(row.species_name, row.family, row.status, row.order_name, row['class']) 
+                   for row in query_job]
+            return self._format_hierarchy_data(res)
         except google.api_core.exceptions.GoogleAPIError as e:
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
         except (TypeError, ValueError) as e:
             self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
-
-    def _query_endangered_species(self, family_name: str,
-                                conservation_status: str = None) -> list:
-        """Execute BigQuery to fetch endangered species data."""
-        client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
-        query = self._build_species_query(conservation_status)
-        parameters = self.get_parameters(
-            family_name=family_name,
-            conservation_status=conservation_status
-        )
-        job_config = bigquery.QueryJobConfig(query_parameters=parameters)
-        query_job = client.query(query, job_config=job_config)
-        return [(row['species_header'], row['urls']) for row in query_job]
-
-    def _build_species_query(self, conservation_status: str = None) -> str:
-        """Build the BigQuery query string."""
-        base_query = """
-           SELECT 
-               CONCAT(genus_name, ' ', species_name, ':') as species_header,
-               STRING_AGG(url, '||' ORDER BY url) as urls
-           FROM `{project_id}.biodiversity.endangered_species` 
-           WHERE LOWER(family_name) = LOWER(@family_name) 
-           AND species_name IS NOT NULL 
-           AND genus_name IS NOT NULL 
-           {conservation_status_filter}
-           GROUP BY genus_name, species_name
-           ORDER BY species_header
-        """
-        conservation_status_filter = (
-            "AND LOWER(conservation_status) = LOWER(@conservation_status)"
-            if conservation_status
-            else ""
-        )
-        return self.build_query(
-            base_query,
-            conservation_status_filter=conservation_status_filter
-        )
-
-    def _format_species_results(self, results_data: list) -> str:
-        """Format the species results into a readable string."""
-        formatted_entries = []
-        for scientific_name, urls in results_data:
-            urls_formatted = self._format_urls(urls)
-            formatted_entry = self._format_species_entry(scientific_name, urls_formatted)
-            formatted_entries.append(formatted_entry)
-
-        return '\n'.join(formatted_entries)
-
-    def _format_urls(self, urls: str) -> str:
-        """Format URLs into a bulleted list."""
-        return '\n'.join(f'    * {url}' for url in urls.split('||'))
-
-    def _format_species_entry(self, scientific_name: str, urls_formatted: str) -> str:
-        """Format a single species entry."""
-        scientific_name = scientific_name.split(':')[0]
-        return f"* **{scientific_name}**:\n{urls_formatted}"
 
     def endangered_species_for_country(self, content) -> str:
         """

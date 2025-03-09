@@ -146,6 +146,16 @@ def create_circle_packing_html(data, width=700, height=600):
 def display_species_visualization(data):
     """Display the species visualization in Streamlit."""
     # pylint: disable=no-member
+    st.markdown("""
+        <style>
+            .element-container {
+                width: 100%;
+            }
+            iframe {
+                width: 100%;
+            }
+        </style>
+    """, unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])  # 3:1 ratio for visualization:description
 
     with col1:
@@ -156,15 +166,13 @@ def display_species_visualization(data):
         components.html(html_content, height=600, width=700)
 
     with col2:
+        # pylint: disable=no-member
         st.markdown("### Species Hierarchy")
         st.markdown("""
         This visualization shows the hierarchical relationship of endangered species:
 
-        **Structure:**
-        - Outer circles represent families
-        - Inner circles represent individual species
         """)
-        
+
         # Updated color legend with Extinct status
         st.markdown("**Conservation Status:**")
         st.markdown("""
@@ -217,12 +225,28 @@ def display_species_visualization(data):
         """)
 
 def create_tree_html(data, width=950, height=800):
-    """Create the HTML/JavaScript code for D3.js tree visualization."""
+    """Create the HTML/JavaScript code for D3.js radial cluster tree visualization."""
     return """
     <div id="tree-container" style="width: 100%;">
         <div id="tree-visualization" style="width: 100%; height: """ + str(height) + """px;">
             <script src="https://d3js.org/d3.v7.min.js"></script>
             <style>
+                @media (prefers-color-scheme: dark) {
+                    .link {
+                        stroke: #A8C3BC !important;
+                    }
+                    .node-text {
+                        fill: #A8C3BC !important;
+                    }
+                }
+                @media (prefers-color-scheme: light) {
+                    .link {
+                        stroke: #353839 !important;
+                    }
+                    .node-text {
+                        fill: #353839 !important;
+                    }
+                }
                 #tree-container {
                     width: 100%;
                 }
@@ -240,7 +264,6 @@ def create_tree_html(data, width=950, height=800):
                 }
                 .link {
                     fill: none;
-                    stroke: #999;
                     stroke-opacity: 0.6;
                     stroke-width: 1px;
                 }
@@ -260,12 +283,9 @@ def create_tree_html(data, width=950, height=800):
                 d3.select("#tree-visualization svg").remove();
 
                 const height = """ + str(height) + """;
-                const margin = {top: 20, right: 40, bottom: 30, left: 2};
+                const width = height;
+                const radius = width / 2;
                 
-                function getWidth() {
-                    return document.getElementById('tree-visualization').offsetWidth;
-                }
-
                 // Create tooltip
                 const tooltip = d3.select("#tree-visualization")
                     .append("div")
@@ -276,8 +296,8 @@ def create_tree_html(data, width=950, height=800):
                 const svg = d3.select("#tree-visualization")
                     .append("svg")
                     .attr("id", "tree-svg")
-                    .append("g")
-                    .attr("transform", `translate(${margin.left},${margin.top})`);
+                    .attr("viewBox", [-width / 2, -height / 2, width, height])
+                    .style("font", "10px sans-serif");
 
                 const data = {data_placeholder};
 
@@ -288,84 +308,71 @@ def create_tree_html(data, width=950, height=800):
                     .range(['#67000d', '#d73027', '#fc8d59', '#fee08b', 
                            '#d9ef8b', '#91cf60', '#808080']);
 
+                // Define colors based on color scheme
+                const linkColor = window.matchMedia('(prefers-color-scheme: dark)').matches ? '#A8C3BC' : '#353839';
+
                 function updateVisualization() {
-                    const width = getWidth();
-                    const innerWidth = width - margin.left - margin.right;
-                    const innerHeight = height - margin.top - margin.bottom;
-
-                    // Update SVG dimensions
-                    d3.select("#tree-svg")
-                        .attr("width", width)
-                        .attr("height", height)
-                        .attr("viewBox", `0 0 ${width} ${height}`);
-
-                    // Create tree layout
-                    const treeLayout = d3.tree()
-                        .size([innerHeight, innerWidth]);
+                    // Create cluster layout
+                    const tree = d3.cluster()
+                        .size([2 * Math.PI, radius - 100]);  // 100px padding for labels
 
                     // Generate tree data
                     const root = d3.hierarchy(data);
-                    const treeData = treeLayout(root);
+                    tree(root);
 
-                    // Adjust node positions
-                    treeData.descendants().forEach(d => {
-                        d.y = d.depth * (innerWidth / 5);
-                    });
+                    // Create links
+                    svg.append("g")
+                        .attr("fill", "none")
+                        .selectAll("path")
+                        .data(root.links().filter(d => d.source.depth > 0))
+                        .join("path")
+                        .attr("d", d3.linkRadial()
+                            .angle(d => d.x)
+                            .radius(d => d.y))
+                        .style("stroke", linkColor)  // Use the defined color
+                        .style("stroke-opacity", 0.9)
+                        .style("stroke-width", "1px");
 
-                    // Update links
-                    const link = svg.selectAll(".link")
-                        .data(treeData.links().filter(d => d.source.depth > 0));
-
-                    link.exit().remove();
-
-                    link.enter()
-                        .append("path")
-                        .attr("class", "link")
-                        .merge(link)
-                        .transition()
-                        .duration(750)
-                        .attr("d", d3.linkHorizontal()
-                            .x(d => d.y)
-                            .y(d => d.x));
-
-                    // Update nodes
-                    const node = svg.selectAll(".node")
-                        .data(treeData.descendants().slice(1));
-
-                    node.exit().remove();
-
-                    const nodeEnter = node.enter()
-                        .append("g")
-                        .attr("class", "node");
-
-                    nodeEnter.append("circle");
-                    nodeEnter.append("text");
-
-                    const allNodes = nodeEnter.merge(node);
-
-                    allNodes.transition()
-                        .duration(750)
-                        .attr("transform", d => `translate(${d.y},${d.x})`);
+                    // Create nodes
+                    const node = svg.append("g")
+                        .selectAll("g")
+                        .data(root.descendants().filter(d => d.depth > 0))  // Filter out root
+                        .join("g")
+                        .attr("transform", d => `
+                            rotate(${d.x * 180 / Math.PI - 90})
+                            translate(${d.y},0)
+                        `);
 
                     // Add circles to nodes
-                    allNodes.select("circle")
+                    node.append("circle")
                         .attr("r", d => {
-                            if (d.depth === 1) return 10;
-                            if (d.depth === 2) return 8;
-                            if (d.depth === 3) return 6;
-                            return 4;
+                            if (d.depth === 1) return 8;      // Class
+                            if (d.depth === 2) return 6;      // Order
+                            if (d.depth === 3) return 4;      // Family
+                            return 3;                         // Species
                         })
                         .style("fill", d => {
-                            if (d.depth === 1) return "#0066cc";      // Class (first level) - Blue
-                            if (d.depth === 2) return "#00cccc";      // Order (second level) - Cyan
-                            if (d.depth === 3) return "#fff";         // Family (third level) - White
-                            return color(d.data.status);              // Species (leaf nodes) - Status color
+                            if (d.depth === 1) return "#0066cc";    // Class
+                            if (d.depth === 2) return "#00cccc";    // Order
+                            if (d.depth === 3) return "#fff";       // Family
+                            return color(d.data.status);            // Species
                         })
                         .style("stroke", "#000")
                         .style("stroke-width", "1px");
 
+                    // Add labels
+                    node.append("text")
+                        .attr("dy", "0.31em")
+                        .attr("x", d => d.x < Math.PI === !d.children ? 6 : -6)
+                        .attr("text-anchor", d => d.x < Math.PI === !d.children ? "start" : "end")
+                        .attr("transform", d => d.x >= Math.PI ? "rotate(180)" : null)
+                        .text(d => d.data.name)
+                        .style("font-size", "10px")
+                        .style("font-family", "sans-serif")
+                        .style("fill", linkColor);
+
                     // Add hover effects
-                    allNodes.on("mouseover", function(event, d) {
+                    node.on("mouseover", function(event, d) {
                         // Highlight node
                         d3.select(this).select("circle")
                             .style("stroke-width", "2px");
@@ -389,19 +396,7 @@ def create_tree_html(data, width=950, height=800):
                         // Hide tooltip
                         tooltip.style("opacity", 0);
                     });
-
-                    // Add labels
-                    allNodes.select("text")
-                        .filter(d => d.children)
-                        .attr("dy", ".31em")
-                        .attr("x", d => d.children ? -10 : 10)
-                        .style("text-anchor", d => d.children ? "end" : "start")
-                        .style("font-size", "10px")
-                        .text(d => d.data.name);
                 }
-
-                // Update visualization on window resize
-                window.addEventListener('resize', updateVisualization);
 
                 // Initialize visualization
                 updateVisualization();
@@ -631,6 +626,15 @@ def create_force_html(data, width=950, height=800):
                 });
             });
 
+            // Update radius based on node count
+            const nodeCount = nodes.length;
+            const radiusScale = nodeCount < 50 ? 2.5 : 
+                              nodeCount < 100 ? 1.5 : 
+                              1;
+            nodes.forEach(node => {
+                node.radius = node.radius * radiusScale;
+            });
+
             // Color scale for conservation status
             const color = d3.scaleOrdinal()
                 .domain(['Extinct', 'Critically Endangered', 'Endangered', 'Vulnerable', 
@@ -650,10 +654,15 @@ def create_force_html(data, width=950, height=800):
                 .force("link", d3.forceLink(links)
                     .id(d => d.id)
                     .distance(d => {
-                        if (d.source.group === "class") return 30;
-                        if (d.source.group === "order") return 3;
-                        if (d.source.group === "family") return 20;
-                        return 15;
+                        const nodeCount = nodes.length;
+                        const scaleFactor = nodeCount < 50 ? 10 : 
+                                          nodeCount < 100 ? 5 : 
+                                          1;
+                        
+                        if (d.source.group === "class") return 30 * scaleFactor;
+                        if (d.source.group === "order") return 10 * scaleFactor;
+                        if (d.source.group === "family") return 20 * scaleFactor;
+                        return 15 * scaleFactor;
                     }))
                 .force("charge", d3.forceManyBody()
                     .strength(d => {
@@ -872,6 +881,61 @@ def display_force_visualization(data):
             </p>
         </div>
         """, unsafe_allow_html=True)
+
+        # Calculate species counts per status per family
+        # family_status_counts = {}
+        # for class_group in data['children']:
+        #     for order in class_group['children']:
+        #         for family in order['children']:
+        #             family_name = family['name']
+        #             if family_name not in family_status_counts:
+        #                 family_status_counts[family_name] = {}
+                    
+        #             for species in family['children']:
+        #                 status = species['status']
+        #                 family_status_counts[family_name][status] = \
+        #                     family_status_counts[family_name].get(status, 0) + 1
+
+        # # Define status colors
+        # status_colors = {
+        #     'Extinct': '#67000d',
+        #     'Critically Endangered': '#d73027',
+        #     'Endangered': '#fc8d59',
+        #     'Vulnerable': '#fee08b',
+        #     'Near Threatened': '#d9ef8b',
+        #     'Least Concern': '#91cf60',
+        #     'Data Deficient': '#808080'
+        # }
+
+    #    st.markdown("**Species Count by Family:**")
+
+    #     # Add style for color boxes once
+    #     st.markdown("""
+    #     <style>
+    #     .color-box {
+    #         display: inline-block;
+    #         width: 12px;
+    #         height: 12px;
+    #         margin-right: 5px;
+    #         border-radius: 50%;
+    #         vertical-align: middle;
+    #     }
+    #     </style>
+    #     """, unsafe_allow_html=True)
+    #     # Display counts for each family
+    #     for family_name in sorted(family_status_counts.keys()):
+    #         legend_html = f'<div style="margin-left: 10px;"><p><strong>{family_name}:</strong> '
+    #         # Add entries in alphabetical order
+    #         status_entries = []
+    #         for status in sorted(family_status_counts[family_name].keys()):
+    #             count = family_status_counts[family_name][status]
+    #             color = status_colors.get(status, '#808080')
+    #             status_entries.append(
+    #                 f'<span class="color-box" style="background-color: {color};"></span>({count})'
+    #             )
+    #         legend_html += ' • '.join(status_entries)
+    #         legend_html += '</p></div>'
+    #         st.markdown(legend_html, unsafe_allow_html=True)
 
         st.markdown("""
         **Interaction:**

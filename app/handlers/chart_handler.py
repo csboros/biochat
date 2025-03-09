@@ -29,7 +29,7 @@ try:
 except ImportError:
     go = None
 
-from .d3js_visualization import display_force_visualization, display_tree
+from .d3js_visualization import display_force_visualization, display_tree, display_species_visualization
 
 class ChartHandler:
     """
@@ -106,7 +106,7 @@ class ChartHandler:
                     return
             elif chart_type.lower() == "circle_packing":
                 with st.spinner("Rendering circle packing visualization..."):
-                    display_force_visualization(df)
+                    display_tree(df)
                     return
             if isinstance(df, pd.DataFrame):
                 if df.empty:
