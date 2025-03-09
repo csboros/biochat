@@ -75,29 +75,29 @@ def create_circle_packing_html(data, width=700, height=600):
             // Apply the pack layout to the data
             pack(root);
 
+            // Update color scale to include hierarchy levels
             const color = d3.scaleOrdinal()
-                .domain(['Extinct', 'Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened', 'Least Concern', 'Data Deficient'])
-                .range([
-                    '#67000d',  // Extinct - Very Dark Red
-                    '#d73027',  // Critically Endangered - Red
-                    '#fc8d59',  // Endangered - Orange
-                    '#fee08b',  // Vulnerable - Yellow
-                    '#d9ef8b',  // Near Threatened - Light Green
-                    '#91cf60',  // Least Concern - Green
-                    '#808080'   // Data Deficient - Gray
-                ]);
+                .domain(['class', 'order', 'family', 'Extinct', 'Critically Endangered', 'Endangered', 
+                        'Vulnerable', 'Near Threatened', 'Least Concern', 'Data Deficient'])
+                .range(['#eeeeee', '#00cccc', '#ffffff', '#67000d', '#d73027', '#fc8d59', 
+                       '#fee08b', '#d9ef8b', '#91cf60', '#808080']);
 
             const node = svg.selectAll('.node')
                 .data(root.descendants().slice(1))
                 .join('circle')
                 .attr('class', 'node')
-                .attr('fill', d => d.children ? '#fff' : color(d.data.status))
-                .attr('pointer-events', 'all')
+                .attr('fill', d => {
+                    if (d.data.group === "class") return "#eeeeee";
+                    if (d.data.group === "order") return "#00cccc";
+                    if (d.data.group === "family") return "#fff";
+                    return color(d.data.status);
+                })
+//                .attr('pointer-events', 'all')
                 .attr('cx', d => d.x)
                 .attr('cy', d => d.y)
                 .attr('r', d => d.r);
 
-            const label = svg.append('g')
+/*            const label = svg.append('g')
                 .attr('pointer-events', 'none')
                 .attr('text-anchor', 'middle')
                 .selectAll('text')
@@ -106,15 +106,18 @@ def create_circle_packing_html(data, width=700, height=600):
                 .style('fill-opacity', d => d.parent === root ? 1 : 0)
                 .style('display', d => d.parent === root ? 'inline' : 'none')
                 .text(d => d.data.name);
-
-            // Add interactivity with tooltip
+*/
+            // Update tooltip text to show hierarchy information
             node.on('mouseover', function(event, d) {
                 tooltip.transition()
                     .duration(200)
                     .style("opacity", .9);
                     
                 let tooltipText = d.data.name;
-                if (!d.children && d.data.status) {  // If it's a leaf node (species)
+                if (d.data.group) {
+                    tooltipText += ` (${d.data.group})`;
+                }
+                if (d.data.status) {
                     tooltipText += ` (${d.data.status})`;
                 }
                 
@@ -123,8 +126,8 @@ def create_circle_packing_html(data, width=700, height=600):
                     .style("top", (event.pageY - 28) + "px");
                     
                 // Update label visibility
-                label.style('display', n => n.parent === d ? 'inline' : 'none')
-                    .style('fill-opacity', n => n.parent === d ? 1 : 0);
+//                label.style('display', n => n.parent === d ? 'inline' : 'none')
+//                    .style('fill-opacity', n => n.parent === d ? 1 : 0);
                 
                 d3.select(this)
                     .style("stroke", "#000")
