@@ -29,6 +29,7 @@ try:
 except ImportError:
     go = None
 
+from .d3js_visualization import display_force_visualization, display_tree
 
 class ChartHandler:
     """
@@ -103,7 +104,10 @@ class ChartHandler:
                 ):
                     self.display_species_images(df)
                     return
-
+            elif chart_type.lower() == "circle_packing":
+                with st.spinner("Rendering circle packing visualization..."):
+                    display_force_visualization(df)
+                    return
             if isinstance(df, pd.DataFrame):
                 if df.empty:
                     raise pd.errors.EmptyDataError("Empty DataFrame provided")

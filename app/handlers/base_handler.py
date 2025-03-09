@@ -12,18 +12,45 @@ class BaseHandler:
 
     # Add base query templates
     SPECIES_QUERY_TEMPLATE = """
-        SELECT DISTINCT CONCAT(genus_name, ' ', species_name) as species_name,
-               family_name as family, conservation_status as status, url
-        FROM `{project_id}.biodiversity.endangered_species` sp
-        JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc
-            ON CONCAT(genus_name, ' ', species_name) = oc.species
-        WHERE species_name IS NOT NULL
-            AND genus_name IS NOT NULL
-            {where_clause}
-            {conservation_status_filter}
-        GROUP BY genus_name, species_name, family_name, conservation_status, url
-        ORDER BY species_name
-    """
+            WITH RankedSpecies AS (
+                SELECT 
+                    CONCAT(genus_name, ' ', species_name) as species_name,
+                    family_name as family,
+                    conservation_status as status,
+                    order_name,
+                    class,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY species_name
+                        ORDER BY 
+                            CASE conservation_status
+                                WHEN 'Extinct' THEN 7
+                                WHEN 'Critically Endangered' THEN 6
+                                WHEN 'Endangered' THEN 5
+                                WHEN 'Vulnerable' THEN 4
+                                WHEN 'Near Threatened' THEN 3
+                                WHEN 'Least Concern' THEN 2
+                                WHEN 'Data Deficient' THEN 1
+                                ELSE 0
+                            END DESC
+                    ) as rank
+                FROM `{project_id}.biodiversity.endangered_species` sp
+                JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
+                    ON CONCAT(genus_name, ' ', species_name) = oc.species 
+                WHERE species_name IS NOT NULL 
+                    AND genus_name IS NOT NULL 
+                    {where_clause}
+                    {conservation_status_filter}
+            )
+            SELECT 
+                species_name,
+                family,
+                status,
+                order_name,
+                class
+            FROM RankedSpecies
+            WHERE rank = 1
+            ORDER BY class, order_name, family, species_name
+            """
 
     def __init__(self):
         self.logger = logging.getLogger(f"BioChat.{self.__class__.__name__}")
@@ -101,3 +128,4 @@ class BaseHandler:
                     bigquery.ScalarQueryParameter(key, "STRING", value)
                 )
         return parameters
+
