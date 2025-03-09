@@ -518,27 +518,25 @@ def display_tree(data):
 def create_force_html(data, width=950, height=800):
     """Create the HTML/JavaScript code for D3.js force-directed visualization."""
     return """
-    <div id="force-visualization" style="width: """ + str(width) + """px; height: """ + str(height) + """px;">
+    <div id="force-visualization" style="width: 100%; height: """ + str(height) + """px;">
         <script src="https://d3js.org/d3.v7.min.js"></script>
         <style>
             #force-visualization {
                 position: relative;
                 overflow: hidden;
             }
-            .node {
+            svg {
+                width: 100% !important;
+                height: 100% !important;
+            }
+            .node circle {
                 stroke: #000;
                 stroke-width: 1px;
             }
-            .node text {
-                font: 12px sans-serif;
-                fill: white;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.8), -2px -2px 4px rgba(0,0,0,0.8),
-                            2px -2px 4px rgba(0,0,0,0.8), -2px 2px 4px rgba(0,0,0,0.8);
-            }
             .link {
-                stroke: #555;
-                stroke-opacity: 0.4;
-                stroke-width: 1px;
+                fill: none;
+                stroke: #999;
+                stroke-opacity: 0.6;
             }
             .tooltip {
                 position: absolute;
@@ -552,8 +550,12 @@ def create_force_html(data, width=950, height=800):
             }
         </style>
         <script>
-            const width = """ + str(width) + """;
+            function getContainerWidth() {
+                return document.getElementById('force-visualization').getBoundingClientRect().width;
+            }
+
             const height = """ + str(height) + """;
+            let width = getContainerWidth();
 
             // Create tooltip
             const tooltip = d3.select("#force-visualization")
@@ -563,8 +565,8 @@ def create_force_html(data, width=950, height=800):
 
             const svg = d3.select("#force-visualization")
                 .append("svg")
-                .attr("width", width)
-                .attr("height", height);
+                .attr("width", "100%")
+                .attr("height", "100%");
 
             const data = {data_placeholder};
 
@@ -609,7 +611,7 @@ def create_force_html(data, width=950, height=800):
                         // Process species
                         family.children.forEach((species) => {
                             // Create unique ID for species
-                            const speciesId = `${species.name}_${species.status}`;
+                            const speciesId = `${species.name}`;
                             nodes.push({ 
                                 id: speciesId,
                                 displayName: species.name,
@@ -702,41 +704,28 @@ def create_force_html(data, width=950, height=800):
                     return color(d.status);                     // Species colors by status
                 });
 
-            // Add hover effects
+            // Add hover effects to nodes
             node.on("mouseover", function(event, d) {
-                // Highlight the hovered node
-                d3.select(this).select("circle")
-                    .style("stroke-width", "2px");
-                
-                // Highlight connected links and nodes
-                link.style("stroke-width", function(l) {
-                    if (l.source === d || l.target === d) {
-                        return "2px";
-                    }
-                    return "1px";
-                });
-                
-                // Show tooltip
-                let tooltipText = d.displayName || d.id;
-                if (d.group === "species" && d.status) {
-                    tooltipText += ` (${d.status})`;
+                tooltip.transition()
+                    .duration(200)
+                    .style("opacity", .9);
+    
+                let tooltipText = d.id;  // Changed from d.name to d.id
+                if (d.group && d.group !== "species") {
+                    tooltipText += ` (${d.group})`;  // Add the group type (class/order/family)
+                }
+                if (d.status) {
+                    tooltipText += ` (${d.status})`;  // Add status if it exists
                 }
                 
                 tooltip.html(tooltipText)
                     .style("left", (event.pageX + 10) + "px")
-                    .style("top", (event.pageY - 28) + "px")
-                    .style("opacity", 0.9);
+                    .style("top", (event.pageY - 28) + "px");
             })
-            .on("mouseout", function(event, d) {
-                // Reset node style
-                d3.select(this).select("circle")
-                    .style("stroke-width", "1px");
-                
-                // Reset all links
-                link.style("stroke-width", "1px");
-                
-                // Hide tooltip
-                tooltip.style("opacity", 0);
+            .on("mouseout", function() {
+                tooltip.transition()
+                .duration(500)
+                .style("opacity", 0);
             });
 
             // Add hover effects for links
@@ -778,21 +767,39 @@ def create_force_html(data, width=950, height=800):
                 event.subject.fx = null;
                 event.subject.fy = null;
             }
+
+            // Update on window resize
+            window.addEventListener('resize', function() {
+                width = getContainerWidth();
+                simulation.force("center", d3.forceCenter(width / 2, height / 2));
+                simulation.alpha(0.3).restart();
+            });
         </script>
     </div>
     """
 
 def display_force_visualization(data):
     """Display the force-directed visualization in Streamlit."""
+    # Add responsive CSS
     # pylint: disable=no-member
+    st.markdown("""
+        <style>
+            .element-container {
+                width: 100% !important;
+            }
+            iframe {
+                width: 100% !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
     col1, col2 = st.columns([3, 1])
 
     with col1:
-        # Create the HTML with the data embedded
         html_content = create_force_html(data)
         html_content = html_content.replace('{data_placeholder}', str(data))
-        # Display the visualization using Streamlit components
-        components.html(html_content, height=800, width=950)
+        # Set width to None to make it responsive
+        components.html(html_content, height=900, width=None)
 
     with col2:
         st.markdown("### Species Network")
@@ -828,7 +835,7 @@ def display_force_visualization(data):
             </p>
         </div>
         """, unsafe_allow_html=True)
-        
+    
         st.markdown("**Conservation Status:**")
         st.markdown("""
         <div style="margin-left: 10px;">
