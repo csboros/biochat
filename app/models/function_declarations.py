@@ -136,6 +136,11 @@ FUNCTION_DECLARATIONS = [
                         "Data Deficient, Critically Endangered, Extinct,"
                     ),
                 },
+               "chart_type": {
+                    "type": "string",
+                    "description": "type of chart to display, supported values: "
+                    "'force_directed_graph', 'tree'",
+                },
             },
         },
     ),
@@ -166,9 +171,16 @@ FUNCTION_DECLARATIONS = [
             "properties": {
                 "order_name": {
                     "type": "string",
-                    "description": "name of the order to get endangered families for "
-                    "(e.g., Primates, Carnivora, etc.)",
-                }
+                    "description": (
+                        "name of the order to get endangered families for "
+                        "(e.g., Primates, Carnivora, etc.)"
+                    )
+                },
+               "chart_type": {
+                    "type": "string",
+                    "description": "type of chart to display, supported values: "
+                    "'force_directed_graph', 'tree'",
+                },
             },
         },
     ),
@@ -210,7 +222,8 @@ FUNCTION_DECLARATIONS = [
             "Examples: 'Show endangered species in Kenya' → use 'KE', "
             "'List endangered animals in Tanzania' → use 'TZ'. "
             "IMPORTANT: Must use 2-letter ISO country codes (e.g., KE, TZ, UG, US, GB), "
-            "3-letter codes will not work!"
+            "3-letter codes will not work! "
+            "Supported chart types: 'tree', 'force_directed_graph'"
         ),
         parameters={
             "type": "object",
@@ -235,6 +248,12 @@ FUNCTION_DECLARATIONS = [
                         "Critically Endangered, Extinct"
                     ),
                 },
+                "chart_type": {
+                    "type": "string",
+                    "description": "type of chart to display, supported values: "
+                    "'force_directed_graph', 'tree'",
+                    "enum": ["force_directed_graph", "tree"]
+                },
             },
             "required": ["country_code"],
         },
@@ -247,6 +266,7 @@ FUNCTION_DECLARATIONS = [
             "Examples: 'Compare endangered species between Kenya and Tanzania', "
             "'Show endangered species in both Uganda and Rwanda'. "
             "For single country queries, use endangered_species_for_country instead."
+            "Supported chart types: 'force_directed_graph', 'tree'"
         ),
         parameters={
             "type": "object",
@@ -264,7 +284,12 @@ FUNCTION_DECLARATIONS = [
                 "conservation_status": {
                     "type": "string",
                     "description": "Filter by conservation status (e.g., 'Critically Endangered')"
-                }
+                },
+                "chart_type": {
+                    "type": "string",
+                    "description": "type of chart to display, supported values: "
+                    "'force_directed_graph', 'tree'",
+                },
             },
             "required": ["country_codes"]
         }

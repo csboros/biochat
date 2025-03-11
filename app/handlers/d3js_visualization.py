@@ -1,7 +1,7 @@
 """Module for creating and displaying D3.js-based species visualization in Streamlit."""
 
 import streamlit as st
-try:  
+try:
     import streamlit.components.v1 as components
 except ImportError:
     components = None
@@ -9,7 +9,7 @@ except ImportError:
 def create_circle_packing_html(data, width=700, height=600):
     """Create the HTML/JavaScript code for D3.js visualization."""
     return """
-    <div id="visualization" style="width: """ + str(width) + """px; height: """ + str(height) + """px;">
+    <div id="visualization" style="width: {width}px; height: {height}px;">
         <script src="https://d3js.org/d3.v7.min.js"></script>
         <style>
             #visualization {
@@ -316,46 +316,48 @@ def create_tree_html(data, width=950, height=800):
                     const tree = d3.cluster()
                         .size([2 * Math.PI, radius - 100]);  // 100px padding for labels
 
-                    // Generate tree data
+                    // Generate tree data and filter out root
                     const root = d3.hierarchy(data);
-                    tree(root);
+                    const firstChild = root.children[0];  // Get the first child (class level)
+                    firstChild.parent = null;  // Remove parent reference to make it the new root
+                    tree(firstChild);  // Apply the layout to the new root
 
-                    // Create links
+                    // Create links (no need to filter depth now)
                     svg.append("g")
                         .attr("fill", "none")
                         .selectAll("path")
-                        .data(root.links().filter(d => d.source.depth > 0))
+                        .data(firstChild.links())
                         .join("path")
                         .attr("d", d3.linkRadial()
                             .angle(d => d.x)
                             .radius(d => d.y))
-                        .style("stroke", linkColor)  // Use the defined color
+                        .style("stroke", linkColor)
                         .style("stroke-opacity", 0.9)
                         .style("stroke-width", "1px");
 
-                    // Create nodes
+                    // Create nodes (no need to filter depth now)
                     const node = svg.append("g")
                         .selectAll("g")
-                        .data(root.descendants().filter(d => d.depth > 0))  // Filter out root
+                        .data(firstChild.descendants())
                         .join("g")
                         .attr("transform", d => `
                             rotate(${d.x * 180 / Math.PI - 90})
                             translate(${d.y},0)
                         `);
 
-                    // Add circles to nodes
+                    // Add circles to nodes (adjust depth numbers by -1)
                     node.append("circle")
                         .attr("r", d => {
-                            if (d.depth === 1) return 8;      // Class
-                            if (d.depth === 2) return 6;      // Order
-                            if (d.depth === 3) return 4;      // Family
-                            return 3;                         // Species
+                            if (d.depth === 1) return 8;      // Class (was depth 1)
+                            if (d.depth === 2) return 6;      // Order (was depth 2)
+                            if (d.depth === 3) return 4;      // Family (was depth 3)
+                            return 3;                         // Species (was depth 4)
                         })
                         .style("fill", d => {
-                            if (d.depth === 1) return "#0066cc";    // Class
-                            if (d.depth === 2) return "#00cccc";    // Order
-                            if (d.depth === 3) return "#fff";       // Family
-                            return color(d.data.status);            // Species
+                            if (d.depth === 1) return "#0066cc";    // Class (was depth 1)
+                            if (d.depth === 2) return "#00cccc";    // Order (was depth 2)
+                            if (d.depth === 3) return "#fff";       // Family (was depth 3)
+                            return color(d.data.status);            // Species (was depth 4)
                         })
                         .style("stroke", "#000")
                         .style("stroke-width", "1px");
@@ -422,7 +424,7 @@ def display_tree(data):
 
     with col1:
         # Create the HTML with the data embedded
-        html_content = create_tree_html(data, width=950, height=1200)
+        html_content = create_tree_html(data, width=900, height=900)
         html_content = html_content.replace('{data_placeholder}', str(data))
         # Display the visualization using Streamlit components
         components.html(html_content, height=1200, width=None)
@@ -847,7 +849,7 @@ def display_force_visualization(data):
             </p>
         </div>
         """, unsafe_allow_html=True)
-    
+
         st.markdown("**Conservation Status:**")
         st.markdown("""
         <div style="margin-left: 10px;">
@@ -889,8 +891,7 @@ def display_force_visualization(data):
         #         for family in order['children']:
         #             family_name = family['name']
         #             if family_name not in family_status_counts:
-        #                 family_status_counts[family_name] = {}
-                    
+        #                 family_status_counts[family_name] = {}        
         #             for species in family['children']:
         #                 status = species['status']
         #                 family_status_counts[family_name][status] = \

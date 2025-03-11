@@ -264,7 +264,8 @@ class EndangeredSpeciesHandler(BaseHandler):
         job_config = bigquery.QueryJobConfig(query_parameters=parameters)
         query_job = client.query(query, job_config=job_config)
         results = query_job.result()
-        return [(row.species_name, row.family, row.status, row.order_name, row['class']) for row in results]
+        return [(row.species_name, row.family, row.status,
+                row.order_name, row['class']) for row in results]
 
     def _build_country_species_query(self, conservation_status: Optional[str] = None) -> str:
         """Build the BigQuery query string for country species."""
