@@ -213,7 +213,8 @@ class BioChat:
             # Main UI setup
             st.title("Biodiversity Chat")
             # Example queries section
-            st.write("[See example queries](https://github.com/csboros/biochat/blob/main/prompts.md)")
+            st.write("[See example queries]"
+                    "(https://github.com/csboros/biochat/blob/main/prompts.md)")
             # Core functionality
             self.handle_user_input()
             self.display_message_history()
@@ -448,13 +449,13 @@ class BioChat:
             'read_population_density': lambda c:
                 self.process_indicator_data(c['response'], c['params']),
             'endangered_species_for_country': lambda c:
-                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
+                self.process_endangered_species(c['response'], c['params']),
             'endangered_species_for_countries': lambda c:
-                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
+                self.process_endangered_species(c['response'], c['params']),
             'endangered_families_for_order': lambda c:
-                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
+                self.process_endangered_species(c['response'], c['params']),
             'endangered_species_for_family': lambda c:
-                self.process_endangered_species(c['response'], c['params'], "circle_packing"),
+                self.process_endangered_species(c['response'], c['params']),
         }
 
         if call['name'] in handlers:
@@ -762,7 +763,7 @@ class BioChat:
                 "content": {"text": "No images found for this species."}
             })
 
-    def process_endangered_species(self, data_response, parameters, chart_type="circle_packing"):
+    def process_endangered_species(self, data_response, parameters):
         """
         Process endangered species data and visualize using specified chart type.
         
@@ -772,6 +773,7 @@ class BioChat:
             chart_type (str): Type of visualization to use (default: circle_packing)
         """
         try:
+            chart_type = parameters.get("chart_type", "force_directed_graph")
             if not data_response:
                 st.session_state.messages.append({
                     "role": "assistant",

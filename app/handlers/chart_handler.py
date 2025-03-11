@@ -29,7 +29,7 @@ try:
 except ImportError:
     go = None
 
-from .d3js_visualization import display_force_visualization, display_tree, display_species_visualization
+from .d3js_visualization import display_force_visualization, display_tree
 
 class ChartHandler:
     """
@@ -104,9 +104,13 @@ class ChartHandler:
                 ):
                     self.display_species_images(df)
                     return
-            elif chart_type.lower() == "circle_packing":
+            elif chart_type.lower() == "tree":
                 with st.spinner("Rendering circle packing visualization..."):
                     display_tree(df)
+                    return
+            elif chart_type.lower() == "force_directed_graph":
+                with st.spinner("Rendering circle packing visualization..."):
+                    display_force_visualization(df)
                     return
             if isinstance(df, pd.DataFrame):
                 if df.empty:

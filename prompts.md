@@ -6,7 +6,12 @@
 - What is the scientific name for Bornean Orangutan?
 - List all orders with endangered species for class Mammalia
 - List all families for primates with the number of endangered species 
+  ![Screenshot](screenshots/screenshot_1_1.png)
+- List all families for primates with the number of endangered species as tree chart.
+  ![Screenshot](screenshots/screenshot_1_2.png)
 - Show all endangered species in the family of HOMINIDAE with link to IUCN
+- List all endangered species in Kenya
+  ![Screenshot](screenshots/screenshot_1_3.png)
 - Show the taxonomy of Bornean Orangutans
 - Tell me about Bengal Tiger
 
