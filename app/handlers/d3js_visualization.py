@@ -381,8 +381,11 @@ def create_tree_html(data, width=950, height=800):
 
                         // Show tooltip
                         let tooltipText = d.data.name;
+                        if (d.data.species_name_en) {
+                            tooltipText += `<br>${d.data.species_name_en}`;
+                        }
                         if (d.data.status) {
-                            tooltipText += ` (${d.data.status})`;
+                            tooltipText += `<br>${d.data.status}`;
                         }
                         
                         tooltip.html(tooltipText)
@@ -612,13 +615,19 @@ def create_force_html(data, width=950, height=800):
                         family.children.forEach((species) => {
                             // Create unique ID for species
                             const speciesId = `${species.name}`;
-                            nodes.push({ 
+                            // Add species with English name if available
+                            const species_info = {
                                 id: speciesId,
                                 displayName: species.name,
                                 group: "species",
                                 status: species.status,
                                 radius: 4 
-                            });
+                            }
+                            if (species.species_name_en) {  // JavaScript syntax for checking property existence
+                                species_info['species_name_en'] = species.species_name_en;
+                            }
+
+                            nodes.push(species_info)
                             links.push({ 
                                 source: family.name, 
                                 target: speciesId 
@@ -724,12 +733,15 @@ def create_force_html(data, width=950, height=800):
                     .duration(200)
                     .style("opacity", .9);
     
-                let tooltipText = d.id;  // Changed from d.name to d.id
+                let tooltipText = d.id; 
+                if (d.species_name_en) {
+                    tooltipText += `<br>${d.species_name_en}`;
+                }
                 if (d.group && d.group !== "species") {
-                    tooltipText += ` (${d.group})`;  // Add the group type (class/order/family)
+                    tooltipText += ` (${d.group})`;
                 }
                 if (d.status) {
-                    tooltipText += ` (${d.status})`;  // Add status if it exists
+                    tooltipText += `<br>${d.status}`;
                 }
                 
                 tooltip.html(tooltipText)

@@ -22,6 +22,7 @@ from app.models.function_declarations import FUNCTION_DECLARATIONS
 from .endangered_species_handler import EndangeredSpeciesHandler
 from .species_handler import SpeciesHandler
 from .base_handler import BaseHandler
+from .correlation_handler import CorrelationHandler
 
 
 class FunctionHandler(BaseHandler):
@@ -58,6 +59,7 @@ class FunctionHandler(BaseHandler):
             self.handlers = {
                 "endangered": EndangeredSpeciesHandler(),
                 "species": SpeciesHandler(),
+                "correlation": CorrelationHandler(),
             }
 
             # Combine world data into a single dictionary
@@ -86,6 +88,7 @@ class FunctionHandler(BaseHandler):
             self.declarations = FUNCTION_DECLARATIONS
             self.function_handler = {
                 "translate_to_scientific_name": self.translate_to_scientific_name_from_api,
+                "translate_to_common_name": self.translate_to_common_name_from_api,
                 "get_occurences": self.get_occurrences,
                 "get_species_info": self.get_species_info_from_api,
                 "endangered_species_for_family": self.handlers[
@@ -120,6 +123,12 @@ class FunctionHandler(BaseHandler):
                 "endangered_species_for_countries":
                 self.handlers["endangered"].endangered_species_for_countries,
                 "get_species_images": self.get_species_images,
+                "get_endangered_species_by_country": 
+                    self.handlers["species"].get_endangered_species_by_country,
+                "get_species_hci_correlation":
+                    self.handlers["correlation"].get_species_hci_correlation,
+                "analyze_species_correlations":
+                    self.handlers["correlation"].analyze_correlation_data_with_llm,
             }
         except (ValueError, ImportError) as e:
             self.logger.error("Setup error: %s", str(e), exc_info=True)
@@ -144,7 +153,15 @@ class FunctionHandler(BaseHandler):
                 "unep-wcmc.org",             # UN Environment World Conservation Monitoring Centre
                 "protectedplanet.net",       # Protected Planet
                 "worldwildlife.org",         # World Wildlife Fund
-                "fauna-flora.org"           # Fauna & Flora International
+                "fauna-flora.org",           # Fauna & Flora International
+                "https://blogs.worldbank.org/en/opendata/fostering-human-wildlife-coexistence-to-protect-biodiversity--in", 
+                "blogs.worldbank.org",       # World Bank Blogs
+                "statistics.laerd.com",      # Statistics explanations
+                "statisticshowto.com",       # Statistics definitions
+                "scholar.google.com",        # Academic papers
+                "researchgate.net",         # Research papers and definitions
+                "link.springer.com",        # Academic publications
+                "sciencedirect.com",        # Scientific articles
             ]
             site_query = " OR ".join(f"site:{site}" for site in sites)
             query = f"({site_query}) {query_string}"

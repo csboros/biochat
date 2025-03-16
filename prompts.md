@@ -18,6 +18,9 @@
 - Tell me about Bengal Tiger
 
 ## Geographic Distribution Queries
+- Show endangered species locations in Kenya
+  ![Screenshot](screenshots/screenshot_1_4.png)
+
 - Where can I find Orangutans in the wild?
   ![Screenshot](screenshots/screenshot_1.png)
 

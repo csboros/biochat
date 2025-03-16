@@ -19,7 +19,6 @@ from vertexai.preview.generative_models import (
     Tool,
     ResponseValidationError
 )
-import requests
 from google.api_core import exceptions as google_exceptions
 import streamlit as st
 from app.utils.logging_config import setup_logging
@@ -40,25 +39,46 @@ class BioChat:
     SYSTEM_MESSAGE = """You are a biodiversity expert assistant. Your primary role is to help users 
     understand endangered species, their conservation status, and global biodiversity patterns.
 
+ Key definitions and concepts:
+- HCI (Human Coexistence Index): A measure of human impact on an area, with higher values indicating greater human presence and activity
+- Species-HCI correlation: In our analysis, this is calculated as:
+  1. For each species, we look at grid cells where it occurs
+  2. We calculate the Pearson correlation coefficient between:
+     * Number of individuals of the species in each cell
+     * HCI value of that cell
+  3. Interpretation:
+     * Positive correlation (+1): More individuals in high-HCI areas
+     * Negative correlation (-1): More individuals in low-HCI areas
+     * Zero correlation (0): No clear relationship
+  4. Additional metrics provided:
+     * avg_hci: Mean HCI value across all cells where species occurs
+     * number_of_grid_cells: Number of cells where species is found
+     * total_individuals: Total count of individuals observed   
+
     IMPORTANT: For EVERY user query:
 
-    1. For protected area queries (e.g. "What species live in X park/reserve?"):
+    1. For any question you can't answer directly, use the appropriate tool immediately - don't announce your intention to use it
+    2. For general knowledge questions, use google_search directly
+    3. Always use the most specific tool available for the task
+    4. If multiple tools might help, use them in sequence without announcing each step
+
+    5. For protected area queries (e.g. "What species live in X park/reserve?"):
        - ALWAYS use get_endangered_species_in_protected_area
        Example: "What endangered species live in Serengeti?" → use get_endangered_species_in_protected_area("Serengeti National Park")
 
-    2. For SINGLE country queries:
+    6. For SINGLE country queries:
        - Use endangered_species_for_country with TWO-letter country code
        Example: 'Show endangered species in Kenya' → use endangered_species_for_country with 'KE'
 
-    3. For MULTIPLE country comparisons:
+    7. For MULTIPLE country comparisons:
        - Use endangered_species_for_countries with list of TWO-letter country codes
        Example: 'Compare endangered species between Kenya and Tanzania' → use endangered_species_for_countries with ['KE', 'TZ']
 
-    4. For species information:
+    8. For species information:
        - First use translate_to_scientific_name for common names
        - Then use get_species_info with the result
 
-    5. For species distribution:
+    9. For species distribution:
        - Use get_occurences for location data
        - Use get_yearly_occurrences for temporal trends
 
@@ -67,7 +87,9 @@ class BioChat:
     IMPORTANT: You must use the provided functions for any queries about species, countries, or biodiversity data. 
     If no function matches the user's query or if you need additional general information, use the google_search function 
     to find relevant information. Do not rely on your general knowledge alone - either use the provided functions or 
-    perform a Google search.
+    perform a Google search. 
+
+    Please do not announce your intention to use the functions, simple use it.
     """
 
     # pylint: disable=no-member
@@ -299,87 +321,42 @@ class BioChat:
         prompt : str
             The user's input text to be processed by the assistant
 
-        Raises
-        ------
-        google_exceptions.ResourceExhausted
-            When the API quota has been exceeded
-        google_exceptions.TooManyRequests
-            When too many requests are made in a short time period
-        google_exceptions.GoogleAPIError
-            When there's an error in the API communication
-        requests.exceptions.RequestException
-            When there's an error in the API communication
         """
-        start_time = time.time()
         self.logger.info("Starting to process assistant response")
         try:
             # Send initial message with explicit function calling configuration
-            message_start = time.time()
             response = self.chat.send_message(
                 content=prompt,
                 generation_config=GenerationConfig(
-                    temperature=0,  # Keep temperature low for consistent function calling
+                    temperature=0.1,  # Keep temperature low for consistent responses
                     candidate_count=1,
                 )
             )
-            self.logger.info("Initial message sent in %.2f seconds",
-                           time.time() - message_start)
 
-            # If we get a non-function response, try again with a stronger prompt
+            # If we get a non-function response, accept it as a valid response
             if not response.candidates[0].content.parts[0].function_call:
-                self.logger.info("No function call detected, trying again with reinforced prompt")
-                reinforced_prompt = (
-                    "Please use the appropriate function to answer this query. "
-                    "Remember to use the provided functions for any data about species, "
-                    "countries, or biodiversity. Query: " + prompt
-                )
-                response = self.chat.send_message(
-                    content=reinforced_prompt,
-                    generation_config=GenerationConfig(
-                        temperature=0,
-                        candidate_count=1,
-                    )
-                )
+                self.logger.info("No function call detected, using direct LLM response")
+                self.handle_final_response(response)
+                return
 
-                # If still no function call, then handle as final response
-                if not response.candidates[0].content.parts[0].function_call:
-                    self.handle_final_response(response)
-            else:
-                # Process function calls as normal
-                while True:
-                    try:
-                        parts = response.candidates[0].content.parts
-                        function_calls = self.collect_function_calls(parts)
-                        if not function_calls:
-                            self.handle_final_response(response)
-                            break
-                        response = self.process_function_calls(function_calls)
-                        if response is None:
-                            break
-                    except IndexError as e:
-                        self.logger.error("Invalid response format: %s", str(e))
+            # Process function calls as normal
+            while True:
+                try:
+                    parts = response.candidates[0].content.parts
+                    function_calls = self.collect_function_calls(parts)
+                    if not function_calls:
+                        self.handle_final_response(response)
                         break
+                    response = self.process_function_calls(function_calls)
+                    if response is None:
+                        break
+                except IndexError as e:
+                    self.logger.error("Invalid response format: %s", str(e))
+                    break
 
-        except (google_exceptions.ResourceExhausted,
-                google_exceptions.TooManyRequests) as e:
-            self.logger.error("API quota exceeded (took %.2f seconds): %s",
-                            time.time() - start_time, str(e), exc_info=True)
-            st.error("API quota has been exceeded. Please wait a few minutes and try again.")
-        except google_exceptions.GoogleAPIError as e:
-            self.logger.error("API error (took %.2f seconds): %s",
-                            time.time() - start_time, str(e), exc_info=True)
-            st.error(f"Failed to get data from Google BigQuery: {str(e)}")
-        except requests.exceptions.RequestException as e:
-            self.logger.error("Network error (took %.2f seconds): %s",
-                            time.time() - start_time, str(e), exc_info=True)
-            st.error("Network error occurred. Please check your connection and try again.")
-        except Exception as e:  # pylint: disable=broad-except
-            self.logger.error("Unexpected error (took %.2f seconds): %s",
-                            time.time() - start_time, str(e), exc_info=True)
+        except Exception as e:
+            self.logger.error("Error during processing: %s", str(e), exc_info=True)
             raise
-        finally:
-            self.logger.info("Total assistant response processing took %.2f seconds",
-                           time.time() - start_time)
 
     def collect_function_calls(self, parts):
         """
@@ -424,7 +401,7 @@ class BioChat:
                 st.error(f"Error processing data for {call['name']}. Please try a different query.")
                 continue
 
-        if func_parts:
+        if func_parts and len(func_parts) > 0:
             self.logger.debug("Sending function responses back to Gemini")
             return self.chat.send_message(func_parts)
         return None
@@ -456,6 +433,10 @@ class BioChat:
                 self.process_endangered_species(c['response'], c['params']),
             'endangered_species_for_family': lambda c:
                 self.process_endangered_species(c['response'], c['params']),
+            'get_endangered_species_by_country': lambda c:
+                self.process_endangered_species_by_country(c['response'], c['params']),
+            'get_species_hci_correlation': lambda c:
+                self.process_species_hci_correlation(c['response'], c['params']),
         }
 
         if call['name'] in handlers:
@@ -464,7 +445,8 @@ class BioChat:
 
         # Handle simple text response functions
         if call['name'] in ('number_of_endangered_species_by_conservation_status',
-                          'endangered_orders_for_class', 'endangered_classes_for_kingdom'):
+                          'endangered_orders_for_class', 'endangered_classes_for_kingdom',
+                          'analyze_species_correlations'):
             self.add_message_to_history("assistant", {"text": call['response']})
             return None
 
@@ -794,4 +776,81 @@ class BioChat:
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": {"text": f"Error processing endangered species data: {str(e)}"}
+            })
+
+    def process_endangered_species_by_country(self, data_response, parameters):
+        """
+        Process and visualize endangered species occurrence data for a specific country.
+        
+        Args:
+            data_response (dict): Response containing:
+                - country_code: Two-letter country code
+                - total_occurrences: Total number of occurrences
+                - occurrences: List of species occurrences with location data
+            parameters (dict): Parameters used for the query
+        """
+        try:
+            if not data_response or data_response.get("error"):
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "text": data_response.get("error", "No endangered species data available.")
+                    }
+                })
+                return
+
+            # Add visualization to session state
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {
+                    "chart_data": data_response,
+                    "type": "occurrence_map",
+                    "parameters": parameters
+                }
+            })
+
+        except Exception as e: # pylint: disable=broad-except
+            self.logger.error(
+                "Error processing endangered species by country data: %s", 
+                str(e), 
+                exc_info=True
+            )
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {
+                    "text": f"Error processing endangered species data: {str(e)}"
+                }
+            })
+
+    def process_species_hci_correlation(self, data_response, parameters):
+        """
+        Process and visualize species-HCI correlation data.
+        
+        Args:
+            data_response (dict): Response containing correlation data
+            parameters (dict): Parameters used for the query
+        """
+        try:
+            if "error" in data_response:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {"text": data_response["error"]}
+                })
+                return
+
+            # Add visualization to session state
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {
+                    "chart_data": data_response,
+                    "type": "species_hci_correlation",
+                    "parameters": parameters
+                }
+            })
+
+        except Exception as e: # pylint: disable=broad-except
+            self.logger.error("Error processing correlation data: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing correlation data: {str(e)}"}
             })

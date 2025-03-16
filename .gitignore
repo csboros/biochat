@@ -20,6 +20,10 @@ scripts/*.sql
 requirements-dev.lock
 requirements.lock
 .vscode
-
+scripts/
+screenshots/*.mp4
+screenshots/*.m4a
+screenshots/*.mov
+sql/
 
 

@@ -159,6 +159,7 @@ class EndangeredSpeciesHandler(BaseHandler):
                 where_clause="AND LOWER(order_name) = LOWER(@order_name) "
                     "AND family_name IS NOT NULL"
             )
+            print(query)
             parameters = self.get_parameters(
                 order_name=order_name
             )
@@ -167,7 +168,8 @@ class EndangeredSpeciesHandler(BaseHandler):
                 query,
                 job_config=job_config
             )
-            res = [(row.species_name, row.family, row.status, row.order_name, row['class']) 
+            res = [(row.species_name, row.family, row.status, row.order_name, row['class'],
+                   getattr(row, 'species_name_en', None))  # Handle species_name_en
                    for row in query_job]
             return self._format_hierarchy_data(res)
         except google.api_core.exceptions.GoogleAPIError as e:
@@ -211,8 +213,9 @@ class EndangeredSpeciesHandler(BaseHandler):
             )
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(query, job_config=job_config)
-            
-            res = [(row.species_name, row.family, row.status, row.order_name, row['class']) 
+
+            res = [(row.species_name, row.family, row.status, row.order_name, row['class'],
+                   getattr(row, 'species_name_en', None))  # Add species_name_en
                    for row in query_job]
             return self._format_hierarchy_data(res)
         except google.api_core.exceptions.GoogleAPIError as e:
@@ -265,7 +268,9 @@ class EndangeredSpeciesHandler(BaseHandler):
         query_job = client.query(query, job_config=job_config)
         results = query_job.result()
         return [(row.species_name, row.family, row.status,
-                row.order_name, row['class']) for row in results]
+                row.order_name, row['class'],
+                getattr(row, 'species_name_en', None))  # Add species_name_en
+                for row in results]
 
     def _build_country_species_query(self, conservation_status: Optional[str] = None) -> str:
         """Build the BigQuery query string for country species."""
@@ -298,7 +303,11 @@ class EndangeredSpeciesHandler(BaseHandler):
         families = {}
 
         # First pass: organize all data
-        for species_name, family_name, status, order_name, class_name in data:
+        for row in data:
+            # Unpack with default None for species_name_en if it's not provided
+            species_name, family_name, status, order_name, class_name, *extra = row
+            species_name_en = extra[0] if extra else None
+
             # Create class if it doesn't exist
             if class_name not in classes:
                 classes[class_name] = {
@@ -323,12 +332,16 @@ class EndangeredSpeciesHandler(BaseHandler):
                 }
                 orders[order_name]['children'].append(families[family_name])
 
-            # Add species
-            families[family_name]['children'].append({
+            # Add species with English name if available
+            species_info = {
                 'name': species_name,
                 'status': status,
                 'value': 1
-            })
+            }
+            if species_name_en:  # Only add English name if it exists
+                species_info['species_name_en'] = species_name_en
+
+            families[family_name]['children'].append(species_info)
 
         # Sort all levels
         for family in families.values():

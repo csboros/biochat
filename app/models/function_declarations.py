@@ -30,6 +30,30 @@ FUNCTION_DECLARATIONS = [
         },
     ),
     FunctionDeclaration(
+        name="translate_to_common_name",
+        description=(
+            "IMPORTANT: Use this function to translate scientific names to common/English names. "
+            "This is useful when you have a scientific name and need to find its common name. "
+            "Examples: \n"
+            "- 'What is the common name for Panthera tigris?' → 'Tiger' \n"
+            "- 'Translate Leporidae to common name' → 'Hares and Rabbits' \n"
+            "- 'What do we call Ursus arctos in English?' → 'Brown Bear' \n"
+            "For ANY question asking to translate or explain what a scientific name means in common terms, "
+            "use this function first."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "scientific name of the species that needs "
+                    "translation to common/English name",
+                },
+            },
+            "required": ["name"],
+        },
+    ),
+    FunctionDeclaration(
         name="get_species_info",
         description=(
             "IMPORTANT: This is step 2 - must be called after translate_to_scientific_name "
@@ -518,5 +542,77 @@ FUNCTION_DECLARATIONS = [
             "type": "object",
             "properties": {"species_name": {"type": "string"}},
         },
+    ),
+    FunctionDeclaration(
+        name="get_endangered_species_by_country",
+        description=(
+            "Get detailed occurrence data for all endangered species in a specific country. "
+            "Returns location data and conservation status for each occurrence. "
+            "IMPORTANT: Use TWO LETTER country code ONLY. "
+            "Examples: 'Show endangered species locations in Kenya' → use 'KE', "
+            "'Where are endangered animals in Tanzania' → use 'TZ'. "
+            "For comparing multiple countries, use endangered_species_for_countries instead."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "country_code": {
+                    "type": "string",
+                    "description": "TWO LETTER country code "
+                    "(e.g., 'KE' for Kenya, 'TZ' for Tanzania)",
+                    "pattern": "^[A-Z]{2}$",  # Enforce exactly 2 uppercase letters
+                }
+            },
+            "required": ["country_code"],
+        },
+    ),
+    FunctionDeclaration(
+        name="get_species_hci_correlation",
+        description=(
+            "Get correlation data between species occurrence and Human Coexistence Index (HCI) "
+            "for a specific country. Use this for questions about: \n"
+            "- How species distribution relates to human impact\n"
+            "- Where endangered species live relative to human activity\n"
+            "- Correlation between species presence and HCI\n"
+            "Examples:\n"
+            "- 'How do endangered species relate to human activity in Kenya?'\n"
+            "- 'Show correlation between species and HCI in Tanzania'\n"
+            "- 'What's the relationship between endangered animals and human impact in Uganda?'"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "country_code": {
+                    "type": "string",
+                    "description": "ISO Alpha-3 country code "
+                    "(e.g., 'KEN' for Kenya, 'TZA' for Tanzania)",
+                }
+            },
+            "required": ["country_code"]
+        }
+    ),
+    FunctionDeclaration(
+        name="analyze_species_correlations",
+        description=(
+            "Analyze correlation patterns between species occurrences and human impact (HCI). "
+            "Use this for questions about: \n"
+            "- How different species relate to human presence\n"
+            "- Whether endangered species avoid or prefer human areas\n"
+            "- Understanding conservation implications of species-human relationships\n"
+            "Examples: 'Analyze correlation patterns for endangered species', "
+            "'How do species distributions relate to human impact?', "
+            "'Do threatened species avoid human areas?'"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "country_code": {
+                    "type": "string",
+                    "description": "ISO Alpha-3 country code "
+                    "(e.g., 'KEN' for Kenya, 'TZA' for Tanzania)",
+                }
+            },
+            "required": ["country_code"]
+        }
     ),
 ]

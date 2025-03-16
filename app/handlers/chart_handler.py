@@ -70,7 +70,18 @@ class ChartHandler:
         """
         try:
             # pylint: disable=no-member
-            if chart_type.lower() == "geojson":
+            if chart_type == "occurrence_map":
+                with st.spinner("Rendering occurrence map..."):
+                    self.draw_occurrence_map(df, parameters)
+                    return
+            elif chart_type == "species_hci_correlation":
+                with st.spinner("Rendering correlation plot..."):
+                    self.draw_species_hci_correlation(df, parameters)
+                    return
+            elif chart_type == "heatmap":
+                self.draw_heatmap(parameters, df)
+                return
+            elif chart_type.lower() == "geojson":
                 with st.spinner(
                     "Rendering geojson map..."
                 ):
@@ -105,7 +116,7 @@ class ChartHandler:
                     self.display_species_images(df)
                     return
             elif chart_type.lower() == "tree":
-                with st.spinner("Rendering circle packing visualization..."):
+                with st.spinner("Rendering tree visualization..."):
                     display_tree(df)
                     return
             elif chart_type.lower() == "force_directed_graph":
@@ -118,9 +129,6 @@ class ChartHandler:
                 # Downsample data for large datasets
                 if len(df) > 1000:
                     df = df.sample(n=1000, random_state=42)
-            if chart_type.lower() == "heatmap":
-                with st.spinner("Rendering heatmap..."):  # pylint: disable=no-member
-                    self.draw_heatmap(parameters, df)
             # hexagon is default chart type
             else:
                 with st.spinner(  # pylint: disable=no-member
@@ -1133,3 +1141,248 @@ class ChartHandler:
                         st.warning("Could not load image")
         else:
             st.info(f"No images found for {images_data['species']}")
+
+    def draw_occurrence_map(self, data, parameters):
+        """
+        Creates an interactive map of endangered species occurrences colored by conservation status.
+        
+        Args:
+            data (dict): Dictionary containing:
+                - occurrences: List of species occurrences with location and status
+                - country_code: Two-letter country code
+            parameters (dict): Visualization parameters
+        """
+        try:
+            # Create DataFrame from occurrences
+            # pylint: disable=no-member
+            df = pd.DataFrame(data['occurrences'])
+
+            if df.empty:
+                st.markdown("No occurrence data to display")
+                return
+
+            # Define color scheme for conservation status
+            color_scheme = {
+                'Extinct': '#8B0000',                # Dark Red
+                'Critically Endangered': '#d62728',   # Red
+                'Endangered': '#ff7f0e',             # Orange
+                'Vulnerable': '#ffd700',             # Gold
+                'Near Threatened': '#2ca02c',        # Green
+                'Least Concern': '#1f77b4',          # Blue
+                'Data Deficient': '#7f7f7f'          # Gray
+            }
+
+            # Add color column to DataFrame
+            df['color'] = df['conservation_status'].map(color_scheme)
+
+            # Create two columns for map and legend
+            col1, col2 = st.columns([3, 1])
+
+            with col1:
+                # Create scatter plot layer
+                scatter_layer = pdk.Layer(
+                    'ScatterplotLayer',
+                    data=df,
+                    get_position=['decimallongitude', 'decimallatitude'],
+                    get_color='color',
+                    get_radius=10,  # Base radius in meters
+                    radius_min_pixels=2,
+                    radius_max_pixels=100,
+                    opacity=0.8,
+                    stroked=True,
+                    filled=True,
+                    pickable=True,
+                    auto_highlight=True
+                )
+
+                # Set initial view state
+                view_state = pdk.ViewState(
+                    latitude=df['decimallatitude'].mean(),
+                    longitude=df['decimallongitude'].mean(),
+                    zoom=7,
+                    pitch=45,
+                    bearing=0
+                )
+
+                # Define tooltip content
+                tooltip_content = """
+                    <div style="background-color: rgba(0, 0, 0, 0.8); color: white; padding: 10px; border-radius: 5px;">
+                        <b>Species:</b> {species}<br/>
+                        <b>Conservation Status:</b> {conservation_status}
+                    </div>
+                """
+
+                # Check if column exists and has non-null value
+                if 'species_name_en' in df.columns and not df['species_name_en'].isna().all():
+                    tooltip_content = """
+                        <div style="background-color: rgba(0, 0, 0, 0.8); color: white; padding: 10px; border-radius: 5px;">
+                            <b>Species:</b> {species}<br/>
+                            <b>Common name:</b> {species_name_en}<br/>
+                            <b>Conservation Status:</b> {conservation_status}
+                        </div>
+                    """
+
+                # Enhanced tooltip
+                tooltip = {
+                    "html": tooltip_content,
+                    "style": {
+                        "backgroundColor": "transparent",
+                        "color": "white"
+                    }
+                }
+
+                # Create and display the map
+                deck = pdk.Deck(
+                    layers=[scatter_layer],
+                    initial_view_state=view_state,
+                    tooltip=tooltip,
+                    map_style='mapbox://styles/mapbox/dark-v10',
+                )
+
+                st.pydeck_chart(deck, height=700)
+
+            # Add legend in the second column
+            with col2:
+                st.markdown("### Conservation Status")
+                st.markdown(f"**Country**: {data['country_code']}")
+                st.markdown(f"**Total Occurrences**: {data['total_occurrences']:,}")
+
+                # Create legend with colored boxes
+                for status, color in color_scheme.items():
+                    status_count = len(df[df['conservation_status'] == status])
+                    if status_count > 0:  # Only show statuses that are present in the data
+                        st.markdown(
+                            f"""
+                            <div style="display: flex; align-items: center; margin: 5px 0;">
+                                <div style="width: 20px; height: 20px; 
+                                          background: rgb({color[0]},{color[1]},{color[2]});
+                                          margin-right: 5px; border: 1px solid black;">
+                                </div>
+                                <span><b>{status}</b> ({status_count:,} occurrences)</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+        except Exception as e:
+            self.logger.error("Error creating occurrence map: %s", str(e), exc_info=True)
+            raise
+
+    def draw_species_hci_correlation(self, correlation_data, parameters):
+        """
+        Draw a scatter plot showing species-HCI correlation.
+        
+        Args:
+            correlation_data (dict): Dictionary containing correlation results
+            parameters (dict): Parameters for visualization
+        """
+        try:
+            # pylint: disable=no-member
+            correlations = correlation_data["correlations"]
+            if not correlations:
+                st.warning("No correlation data found for this country.")
+                return
+
+            # Define color scheme for conservation status
+            color_scheme = {
+                'Extinct': '#8B0000',                # Dark Red
+                'Critically Endangered': '#d62728',   # Red
+                'Endangered': '#ff7f0e',             # Orange
+                'Vulnerable': '#ffd700',             # Gold
+                'Near Threatened': '#2ca02c',         # Green
+                'Least Concern': '#1f77b4',          # Blue
+                'Data Deficient': '#7f7f7f'          # Gray
+            }
+
+            col1, col2 = st.columns([7, 3])
+            with col1:
+                fig = go.Figure()
+
+                # Create separate traces for each conservation status
+                for status, color in color_scheme.items():
+                    status_data = [item for item in correlations
+                                 if item["conservation_status"] == status]
+                    if status_data:
+                        fig.add_trace(go.Scatter(
+                            x=[item["avg_hci"] for item in status_data],
+                            y=[item["correlation_coefficient"] for item in status_data],
+                            mode='markers',
+                            name=status,
+                            text=[f"{item['species_name']}<br>"
+                                  f"English Name: {item['species_name_en'] or 'N/A'}<br>"
+                                  f"Status: {item['conservation_status']}<br>"
+                                  f"Grid Cells: {item['number_of_grid_cells']}<br>"
+                                  f"Total Individuals: {item['total_individuals']}"
+                                  for item in status_data],
+                            hoverinfo='text',
+                            marker=dict(
+                                size=10,
+                                color=color,
+                                line=dict(width=1, color='black')
+                            )
+                        ))
+
+                # Update layout
+                fig.update_layout(
+                    title=f"Species-HCI Correlation in {parameters.get('country_code', 'KEN')}",
+                    xaxis_title="Average HCI",
+                    yaxis_title="Correlation Coefficient",
+                    hovermode='closest',
+                    height=700,
+                    showlegend=False  # Set this to False to hide the legend
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                st.markdown("### Correlation Analysis")
+                st.markdown("""
+                    This scatter plot shows the relationship between:
+                    - Species occurrence
+                    - Human Coexistence Index (HCI)
+                    
+                    **How to Read:**
+                    - Each point represents a species
+                    - X-axis: Average HCI where species is found
+                    - Y-axis: Correlation coefficient
+                    - Color: Conservation status
+                    
+                    **Interpretation:**
+                    - Positive correlation: Species more common in high HCI areas
+                    - Negative correlation: Species more common in low HCI areas
+                    - Near zero: No clear relationship with HCI
+                """)
+
+                # Add summary statistics
+                strong_correlations = [item for item in correlations
+                                     if abs(item["correlation_coefficient"]) > 0.5]
+
+                # Add status counts
+                st.markdown("### Status Distribution")
+                for status, color in color_scheme.items():
+                    count = len([item for item in correlations
+                               if item["conservation_status"] == status])
+                    if count > 0:
+                        st.markdown(
+                            f"""
+                            <div style="display: flex; align-items: center; margin: 5px 0;">
+                                <div style="width: 20px; height: 20px; 
+                                          background-color: {color};
+                                          margin-right: 5px; border: 1px solid black;">
+                                </div>
+                                <span>{status}: {count} species</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+                st.markdown(f"""
+                    **Summary Statistics:**
+                    - Total species analyzed: {len(correlations)}
+                    - Strong correlations (|r| > 0.5): {len(strong_correlations)}
+                """)
+
+        except Exception as e:
+            self.logger.error("Error creating species-HCI correlation plot: %s",
+                            str(e), exc_info=True)
+            raise
