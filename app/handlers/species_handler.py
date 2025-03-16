@@ -257,3 +257,79 @@ class SpeciesHandler(BaseHandler):
                 best_match = row.name
 
         return best_match
+
+    def get_endangered_species_by_country(self, content: Dict) -> Dict:
+        """Get all endangered species occurrences in a specific country.
+        
+        Args:
+            content (Dict): Dictionary containing country_code
+            
+        Returns:
+            Dict: Dictionary containing endangered species occurrences with:
+            - occurrences: List of occurrences with location and species data
+            - country_code: The queried country code
+            - total_occurrences: Total number of occurrences found
+        """
+        try:
+            country_code = content.get("country_code")
+            if not country_code:
+                raise ValueError("Country code is required")
+
+            query = """
+            SELECT
+                decimallongitude,
+                decimallatitude,
+                conservation_status, 
+                o.species, 
+                sp.species_name_en,
+            FROM
+                `{project_id}.biodiversity.occurances_endangered_species_mammals` o
+            INNER JOIN
+                `{project_id}.biodiversity.countries` c
+                ON ST_CONTAINS(c.geometry, ST_GEOGPOINT(o.decimallongitude, o.decimallatitude))
+            INNER JOIN 
+                `{project_id}.biodiversity.endangered_species` sp 
+                ON CONCAT(sp.genus_name, ' ', sp.species_name) = o.species 
+            WHERE
+                eventdate IS NOT NULL
+                AND eventdate > '1980-01-01'
+                AND countrycode = @country_code
+            """
+
+            # Build query with project ID
+            query = self.build_query(query)
+            
+            # Set up query parameters
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("country_code", "STRING", country_code)
+                ]
+            )
+            
+            results = []
+            total_occurrences = 0
+            
+            # Execute query
+            for row in self.client.query(query, job_config=job_config):
+                results.append({
+                    "species": row.species,
+                    "species_name_en": row.species_name_en,
+                    "decimallatitude": row.decimallatitude,
+                    "decimallongitude": row.decimallongitude,
+                    "conservation_status": row.conservation_status
+                })
+                total_occurrences += 1
+
+            return {
+                "country_code": country_code,
+                "total_occurrences": total_occurrences,
+                "occurrences": results
+            }
+
+        except ValueError as e:
+            self.logger.error("Invalid input: %s", str(e))
+            raise
+        except Exception as e:
+            self.logger.error("Error getting endangered species for country %s: %s", 
+                             country_code, str(e))
+            raise

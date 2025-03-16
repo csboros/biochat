@@ -23,6 +23,8 @@ dependencies = [
     "python-Levenshtein>=0.22.10",
     "plotly>=5.22.0",
     "google-cloud-aiplatform>=1.83.0",
+    "db-dtypes>=1.0.0",
+    "google-cloud-bigquery-storage>=2.0.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.12"

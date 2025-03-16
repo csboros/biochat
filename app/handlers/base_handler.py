@@ -15,6 +15,7 @@ class BaseHandler:
             WITH RankedSpecies AS (
                 SELECT 
                     CONCAT(genus_name, ' ', species_name) as species_name,
+                    species_name_en,
                     family_name as family,
                     conservation_status as status,
                     order_name,
@@ -43,6 +44,7 @@ class BaseHandler:
             )
             SELECT 
                 species_name,
+                species_name_en,
                 family,
                 status,
                 order_name,
@@ -89,6 +91,40 @@ class BaseHandler:
             self.logger.error("Request timeout for species: %s", species_name)
             return json.dumps({"error": "Request timed out"})
         except Exception as e: # pylint: disable=broad-except
+            self.logger.error("Error translating species name: %s", str(e))
+            return json.dumps({"error": "An error occurred"})
+
+    def translate_to_common_name_from_api(self, content: Dict) -> str:
+        """Translates scientific species name to common name using EBI Taxonomy API."""
+        scientific_name = content.get("name", "").strip()
+        if not scientific_name:
+            return json.dumps({"error": "No species name provided"})
+
+        try:
+            self.logger.info("Fetching common name for species: %s", scientific_name)
+            url = f"https://www.ebi.ac.uk/ena/taxonomy/rest/scientific-name/{scientific_name}"
+            response = requests.get(
+                url, headers={"Accept": "application/json"}, timeout=5
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            if data and isinstance(data, list) and len(data) > 0:
+                common_name = data[0].get("commonName")
+                if common_name:
+                    self.logger.info(
+                        "Successfully translated '%s' to '%s'",
+                        scientific_name,
+                        common_name,
+                    )
+                    return json.dumps({"common_name": common_name})
+
+            return json.dumps({"error": "Name could not be translated"})
+
+        except requests.Timeout:
+            self.logger.error("Request timeout for species: %s", scientific_name)
+            return json.dumps({"error": "Request timed out"})
+        except Exception as e:  # pylint: disable=broad-except
             self.logger.error("Error translating species name: %s", str(e))
             return json.dumps({"error": "An error occurred"})
 
