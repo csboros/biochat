@@ -23,7 +23,7 @@ from .endangered_species_handler import EndangeredSpeciesHandler
 from .species_handler import SpeciesHandler
 from .base_handler import BaseHandler
 from .correlation_handler import CorrelationHandler
-
+from .forest_handler_ee import ForestHandlerEE
 
 class FunctionHandler(BaseHandler):
     """
@@ -60,6 +60,7 @@ class FunctionHandler(BaseHandler):
                 "endangered": EndangeredSpeciesHandler(),
                 "species": SpeciesHandler(),
                 "correlation": CorrelationHandler(),
+                "forest": ForestHandlerEE(),
             }
 
             # Combine world data into a single dictionary
@@ -128,7 +129,13 @@ class FunctionHandler(BaseHandler):
                 "get_species_hci_correlation":
                     self.handlers["correlation"].get_species_hci_correlation,
                 "analyze_species_correlations":
-                    self.handlers["correlation"].analyze_correlation_data_with_llm,
+                    self.handlers["correlation"].analyze_species_correlations,
+                "get_species_hci_correlation_by_status":
+                    self.handlers["correlation"].get_species_hci_correlation_by_status,
+                "get_species_shared_habitat":
+                    self.handlers["correlation"].get_species_shared_habitat,
+                "calculate_species_forest_correlation":
+                    self.handlers["forest"].calculate_species_forest_correlation_ee,
             }
         except (ValueError, ImportError) as e:
             self.logger.error("Setup error: %s", str(e), exc_info=True)

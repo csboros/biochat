@@ -12,6 +12,11 @@ import colorsys
 import numpy as np
 import pandas as pd
 import pydeck as pdk
+import folium
+from streamlit_folium import folium_static
+from folium.plugins import Fullscreen
+import time
+
 
 try:
     from scipy.spatial import Delaunay
@@ -29,7 +34,9 @@ try:
 except ImportError:
     go = None
 
-from .d3js_visualization import display_force_visualization, display_tree
+from .d3js_visualization import display_force_visualization, display_tree, display_shared_habitat
+from ..utils.alpha_shape_utils import AlphaShapeUtils
+
 
 class ChartHandler:
     """
@@ -55,14 +62,19 @@ class ChartHandler:
         self.default_view_state = pdk.ViewState(
             latitude=0.0, longitude=30, zoom=2, pitch=30
         )
+        self.alpha_shape_utils = AlphaShapeUtils()
 
-    def draw_chart(self, df, chart_type, parameters):
+    def draw_chart(self, df, chart_type, parameters, _cache_buster=None):
         """
         Main entry point for creating visualizations.
         Args:
             data (pd.DataFrame): DataFrame containing coordinate data
             chart_type (str): Type of visualization to create
             params (dict): Additional parameters for visualization
+                - For distribution maps: Can include 'alpha', 'eps', and 'min_samples' 
+                  to control alpha shape generation (defaults: 0.5, 1.0, 3)
+                - For distribution maps: Can include 'avoid_overlaps' (bool) to control
+                  whether overlapping clusters should be merged (default: True)
         Raises:
             ValueError: If chart_type is invalid or data format is incorrect
             TypeError: If arguments are of wrong type
@@ -72,14 +84,19 @@ class ChartHandler:
             # pylint: disable=no-member
             if chart_type == "occurrence_map":
                 with st.spinner("Rendering occurrence map..."):
-                    self.draw_occurrence_map(df, parameters)
+                    self.draw_occurrence_map(df, parameters, _cache_buster)
                     return
             elif chart_type == "species_hci_correlation":
                 with st.spinner("Rendering correlation plot..."):
-                    self.draw_species_hci_correlation(df, parameters)
+                    self.draw_species_hci_correlation(df, parameters, _cache_buster)
+                    return
+            elif chart_type == "species_forest_correlation":
+                with st.spinner("Rendering forest correlation plot..."):
+                    # For forest correlation, df contains the complete data structure
+                    self.draw_species_forest_correlation(df, parameters, _cache_buster)
                     return
             elif chart_type == "heatmap":
-                self.draw_heatmap(parameters, df)
+                self.draw_heatmap(parameters, df, _cache_buster)
                 return
             elif chart_type.lower() == "geojson":
                 with st.spinner(
@@ -107,21 +124,25 @@ class ChartHandler:
                 with st.spinner(
                     "Rendering correlation scatterplot..."
                 ):
-                    self.draw_correlation_scatter(df, parameters)
+                    self.draw_correlation_scatter(df, parameters, _cache_buster)
                     return
             elif chart_type.lower() == "images":
                 with st.spinner(
                     "Rendering images..."
                 ):
-                    self.display_species_images(df)
+                    self.display_species_images(df, _cache_buster)
                     return
             elif chart_type.lower() == "tree":
                 with st.spinner("Rendering tree visualization..."):
-                    display_tree(df)
+                    display_tree(df, _cache_buster=None)
                     return
             elif chart_type.lower() == "force_directed_graph":
                 with st.spinner("Rendering circle packing visualization..."):
-                    display_force_visualization(df)
+                    display_force_visualization(df, _cache_buster=None)
+                    return
+            elif chart_type.lower() == "species_shared_habitat":
+                with st.spinner("Rendering shared habitat visualization..."):
+                    display_shared_habitat(df, _cache_buster=None)
                     return
             if isinstance(df, pd.DataFrame):
                 if df.empty:
@@ -134,14 +155,15 @@ class ChartHandler:
                 with st.spinner(  # pylint: disable=no-member
                     "Rendering distribution map..."
                 ):  # pylint: disable=no-member
-                    self.draw_hexagon_map(df, parameters)
+                    self.draw_hexagon_map(df, parameters, _cache_buster)
         except (TypeError, ValueError, pd.errors.EmptyDataError) as e:
             self.logger.error("Error creating visualization: %s", str(e), exc_info=True)
             raise
 
-    def draw_heatmap(self, parameters, data):
+    def draw_heatmap(self, parameters, data, _cache_buster=None):
         """Creates a heatmap visualization using PyDeck's HeatmapLayer."""
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             df = pd.DataFrame(data["occurrences"])
             bounds = self._get_bounds_from_data(df)
             view_state = self.default_view_state
@@ -192,6 +214,7 @@ class ChartHandler:
                         },
                     ),
                     height=700,
+                    key=f"heatmap_{message_index}"
                 )
             # Add legend in the second column
             with col2:
@@ -240,7 +263,7 @@ class ChartHandler:
             self.logger.error("Error creating heatmap: %s", str(e), exc_info=True)
             raise
 
-    def draw_hexagon_map(self, data, parameters):
+    def draw_hexagon_map(self, data, parameters, _cache_buster=None):
         """
         Creates a 3D hexagon bin visualization.
         Raises:
@@ -253,19 +276,36 @@ class ChartHandler:
                 raise TypeError("Parameters must be a dictionary")
             logging.debug("Drawing hexagon map with parameters: %s", parameters)
             occurrences = data["occurrences"]
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
+
             # Convert the JSON array to a DataFrame
             df = pd.DataFrame(occurrences)
             bounds = self._get_bounds_from_data(df)
 
-            # Calculate concave hull
+            # Get alpha parameters from parameters or use defaults
+            alpha = parameters.get('alpha', 0.5)
+            eps = parameters.get('eps', 1.0)
+            min_samples = parameters.get('min_samples', 3)
+            avoid_overlaps = parameters.get('avoid_overlaps', True)
+
+            # Calculate concave hull using the same parameters as ForestHandlerEE
             points = df[["decimallongitude", "decimallatitude"]].values
-            hull_geojson = self._calculate_alpha_shape(points, alpha=0.5)
+            hull_geojson = self.alpha_shape_utils.calculate_alpha_shape(
+                points,
+                alpha=alpha,
+                eps=eps,
+                min_samples=min_samples,
+                avoid_overlaps=avoid_overlaps
+            )
+
+            # Force a new view state each time with a slight random variation to prevent caching
             if bounds is not None:
                 view_state = pdk.ViewState(
                     latitude=sum(coord[0] for coord in bounds) / len(bounds),
                     longitude=sum(coord[1] for coord in bounds) / len(bounds),
                     zoom=3,
                     pitch=30,
+                    bearing=0.001 * np.random.randn()  # Tiny random bearing to force redraw
                 )
             else:
                 view_state = self.default_view_state
@@ -305,7 +345,10 @@ class ChartHandler:
                         },
                     ),
                     height=700,
+                    use_container_width=True,  # Ensure proper sizing
+                    key=f"hexagon_map_{message_index}"
                 )
+
             # Add legend in the second column
             with col2:
                 st.markdown("### Distribution Map")
@@ -474,7 +517,7 @@ class ChartHandler:
         }
         return iucn_colors.get(category, [150, 150, 150])  # Default gray for unknown
 
-    def draw_geojson_map(self, data):
+    def draw_geojson_map(self, data, _cache_buster=None):
         """
         Draws a geojson map.
 
@@ -483,6 +526,7 @@ class ChartHandler:
             parameters (dict): Additional visualization parameters
         """
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             geojson_data = json.loads(data)
             bounds = self._get_bounds_from_geojson(geojson_data)
             if bounds is not None:
@@ -531,8 +575,9 @@ class ChartHandler:
                             )
                         ],
                         tooltip={"text": "Name: {name}\nIUCN Category: {category}"},
-                    ),
+                    ),  
                     height=700,
+                    key=f"geojson_map_{message_index}"
                 )
 
             # Add legend in the second column
@@ -592,16 +637,17 @@ class ChartHandler:
             self.logger.error("Error calculating GeoJSON bounds: %s", str(e))
             return None
 
-    def draw_json_data(self, data: str) -> None:
+    def draw_json_data(self, data: str, _cache_buster=None) -> None:
         """Draw JSON data as a table.
         Args:
             data (str): JSON string containing array of dictionaries
             parameters (dict, optional): Additional visualization parameters
         """
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             df = pd.DataFrame(data)
             # pylint: disable=no-member
-            st.dataframe(df)
+            st.dataframe(df, key=f"json_data_{message_index}")
         except (json.JSONDecodeError, pd.errors.EmptyDataError) as e:
             self.logger.error("Error parsing JSON data: %s", str(e))
             raise
@@ -609,106 +655,10 @@ class ChartHandler:
             self.logger.error("Error creating table: %s", str(e))
             raise
 
-    def _calculate_alpha_shape(self, points, alpha):
-        """Calculate clustered alpha shapes for point distributions."""
-        if len(points) < 4:
-            return MultiPoint(points).convex_hull
-        # Perform DBSCAN clustering
-        clustering = DBSCAN(eps=2, min_samples=3).fit(points)
-        labels = clustering.labels_
-        # Process each cluster
-        hulls = self._process_clusters(points, labels, alpha)
-        # Convert hulls to GeoJSON format
-        return self._convert_hulls_to_geojson(hulls)
-
-    def _process_clusters(self, points, labels, alpha):
-        """Process each cluster to create hulls."""
-        hulls = []
-        for label in set(labels):
-            if label == -1:  # Skip noise points
-                continue
-            cluster_points = points[labels == label]
-            hull = self._process_single_cluster(cluster_points, alpha)
-            if hull is not None:
-                hulls.append(hull)
-        return hulls
-
-    def _process_single_cluster(self, cluster_points, alpha):
-        """Process a single cluster to create a hull."""
-        if len(cluster_points) < 4:
-            hull = MultiPoint(cluster_points).convex_hull
-            return hull.buffer(0.5, resolution=16)
-        try:
-            return self._create_alpha_shape(cluster_points, alpha)
-        except Exception:  # pylint: disable=broad-except
-            m = MultiPoint(cluster_points)
-            return m.convex_hull.buffer(0.5, resolution=16)
-
-    def _create_alpha_shape(self, points, alpha):
-        """Create alpha shape from points."""
-        tri = Delaunay(points)
-        edges = set()
-        edge_points = []
-
-        for ia, ib, ic in tri.simplices:
-            pa = points[ia]
-            pb = points[ib]
-            pc = points[ic]
-
-            circum_r = self._calculate_circumradius(pa, pb, pc)
-            if circum_r < 1.0 / alpha:
-                self._add_edge(edges, edge_points, (pa, ia, ib))
-                self._add_edge(edges, edge_points, (pb, ib, ic))
-                self._add_edge(edges, edge_points, (pc, ic, ia))
-
-        m = MultiPoint(points)
-        polygon = Polygon(m.convex_hull)
-        if polygon.is_valid:
-            return polygon.buffer(0.5, resolution=16)
-        return m.convex_hull.buffer(0.5, resolution=16)
-
-    def _calculate_circumradius(self, pa, pb, pc):
-        """Calculate circumradius of triangle."""
-        a = np.sqrt((pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2)
-        b = np.sqrt((pb[0] - pc[0]) ** 2 + (pb[1] - pc[1]) ** 2)
-        c = np.sqrt((pc[0] - pa[0]) ** 2 + (pc[1] - pa[1]) ** 2)
-        s = (a + b + c) / 2.0
-        area = np.sqrt(s * (s - a) * (s - b) * (s - c))
-        return a * b * c / (4.0 * area) if area > 0 else float("inf")
-
-    def _convert_hulls_to_geojson(self, hulls):
-        """Convert hulls to GeoJSON format."""
-        return {
-            "type": "Feature",
-            "geometry": {
-                "type": "MultiPolygon",
-                "coordinates": [
-                    [[list(p) for p in hull.exterior.coords]]
-                    for hull in hulls
-                    if hasattr(hull, "exterior")
-                ],
-            },
-        }
-
-    def _add_edge(self, edges: set, edge_points: list, point_data: tuple) -> None:
-        """Helper method to add edges.
-        Args:
-            edges (set): Set of existing edges
-            edge_points (list): List of edge point coordinates
-            point_data (tuple): Tuple containing (coords, i, j) where:
-                - coords: Array of coordinates
-                - i: First vertex index
-                - j: Second vertex index
-        """
-        coords, i, j = point_data
-        if (i, j) in edges or (j, i) in edges:
-            return
-        edges.add((i, j))
-        edge_points.append(coords[[i, j]])
-
-    def _draw_3d_scatterplot(self, data):
+    def _draw_3d_scatterplot(self, data, _cache_buster=None):
         """Draws a 3D scatter visualization using PyDeck's ColumnLayer."""
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             property_name = data.get("property_name", "")
             countries_data = data.get("countries", {})
             if not countries_data:
@@ -736,7 +686,7 @@ class ChartHandler:
                 "global_min": global_min,
                 "global_max": global_max,
             }
-            self._render_visualization((col1, col2), layer, view_state, viz_config)
+            self._render_visualization((col1, col2), layer, view_state, viz_config, key=f"3d_scatterplot_{message_index}")
 
         except Exception as e:
             self.logger.error(
@@ -795,7 +745,7 @@ class ChartHandler:
             pitch=45,
         )
 
-    def _render_visualization(self, columns, layer, view_state, viz_config):
+    def _render_visualization(self, columns, layer, view_state, viz_config, key=None):
         """Render the visualization."""
         col1, col2 = columns
         with col1:
@@ -813,6 +763,7 @@ class ChartHandler:
                     },
                 ),
                 height=700,
+                key=key
             )
 
         with col2:
@@ -899,9 +850,10 @@ class ChartHandler:
             colors.append(hex_color)
         return colors
 
-    def draw_yearly_observations(self, data):
+    def draw_yearly_observations(self, data, _cache_buster=None):
         """Draws a visualization of yearly observation data with distinct colors per country."""
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             if "error" in data:
                 raise ValueError(data["error"])
 
@@ -915,9 +867,9 @@ class ChartHandler:
             col1, col2 = st.columns([3, 1])
 
             with col1:
-                self._draw_observation_chart(yearly_data, names["common"])
+                self._draw_observation_chart(yearly_data, names["common"], key=f"yearly_observations_{message_index}")
             with col2:
-                self._display_observation_summary(yearly_data, names)
+                self._display_observation_summary(yearly_data, names, key=f"yearly_observations_summary_{message_index}")
 
         except Exception as e:
             self.logger.error(
@@ -925,15 +877,15 @@ class ChartHandler:
             )
             raise
 
-    def _draw_observation_chart(self, yearly_data, title):
+    def _draw_observation_chart(self, yearly_data, title, key=None):
         """Creates and displays the observation chart."""
         print(yearly_data)
         if isinstance(yearly_data, dict):
-            self._draw_country_chart(yearly_data, title)
+            self._draw_country_chart(yearly_data, title, key=f"yearly_observations_country_chart_{key}")
         else:
-            self._draw_global_chart(yearly_data)
+            self._draw_global_chart(yearly_data, key=f"yearly_observations_global_chart_{key}")
 
-    def _display_observation_summary(self, yearly_data, names):
+    def _display_observation_summary(self, yearly_data, names, key=None):
         """Displays the observation summary sidebar."""
         # pylint: disable=no-member
         st.markdown("### Species Information")
@@ -942,11 +894,11 @@ class ChartHandler:
         st.markdown("### Observation Summary")
 
         if isinstance(yearly_data, dict):
-            self._display_country_summary(yearly_data)
+            self._display_country_summary(yearly_data, key=f"yearly_observations_country_summary_{key}")
         else:
-            self._display_global_summary(pd.DataFrame(yearly_data))
+            self._display_global_summary(pd.DataFrame(yearly_data), key=f"yearly_observations_global_summary_{key}")
 
-    def _draw_country_chart(self, yearly_data, title):
+    def _draw_country_chart(self, yearly_data, title, key=None):
         """Creates and displays the country-specific observation chart."""
         try:
             # Create DataFrame for plotting
@@ -979,13 +931,13 @@ class ChartHandler:
                 )
             )
             # pylint: disable=no-member
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=key)
 
         except Exception as e:
             self.logger.error("Error creating country chart: %s", str(e))
             raise
 
-    def _draw_global_chart(self, yearly_data):
+    def _draw_global_chart(self, yearly_data, key=None):
         """Creates and displays the global observation chart."""
         try:
             df = pd.DataFrame(yearly_data)
@@ -1009,13 +961,13 @@ class ChartHandler:
                 showlegend=False
             )
             # pylint: disable=no-member
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=key)
 
         except Exception as e:
             self.logger.error("Error creating global chart: %s", str(e))
             raise
 
-    def _display_country_summary(self, yearly_data):
+    def _display_country_summary(self, yearly_data, key=None):
         """Displays the country-specific observation summary."""
         total_observations = 0
         # pylint: disable=no-member
@@ -1029,16 +981,17 @@ class ChartHandler:
                 st.markdown(f"- Year range: {min(years)} - {max(years)}")
         st.markdown(f"**Total Observations**: {total_observations:,}")
 
-    def _display_global_summary(self, df):
+    def _display_global_summary(self, df, key=None):
         """Displays the global observation summary."""
         total_observations = df["count"].sum()
         # pylint: disable=no-member
-        st.markdown(f"**Total Observations**: {total_observations:,}")
-        st.markdown(f"**Year Range**: {df['year'].min()} - {df['year'].max()}")
+        st.markdown(f"**Total Observations**: {total_observations:,}", key=key)
+        st.markdown(f"**Year Range**: {df['year'].min()} - {df['year'].max()}", key=key)
 
-    def draw_correlation_scatter(self, data, parameters):
+    def draw_correlation_scatter(self, data, parameters, _cache_buster=None):
         """Draw a scatter plot showing correlation between HCI and species counts."""
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             # pylint: disable=no-member
             col1, col2 = st.columns([3, 1])  # 3:1 ratio for plot:legend
             with col1:
@@ -1121,11 +1074,12 @@ class ChartHandler:
             )
             raise
 
-    def display_species_images(self, images_data):
+    def display_species_images(self, images_data, _cache_buster=None):
         """Display species images in the Streamlit interface."""
+        message_index = _cache_buster if _cache_buster is not None else int(time.time())
         # pylint: disable=no-member
         if images_data["image_count"] > 0:
-            st.subheader(f"Images of {images_data['species']}")
+            st.subheader(f"Images of {images_data['species']}", key=f"species_images_{message_index}")
             cols = st.columns(min(images_data["image_count"], 3))  # Up to 3 columns
 
             for idx, img in enumerate(images_data["images"]):
@@ -1142,7 +1096,7 @@ class ChartHandler:
         else:
             st.info(f"No images found for {images_data['species']}")
 
-    def draw_occurrence_map(self, data, parameters):
+    def  draw_occurrence_map(self, data, parameters, _cache_buster=None):
         """
         Creates an interactive map of endangered species occurrences colored by conservation status.
         
@@ -1153,6 +1107,7 @@ class ChartHandler:
             parameters (dict): Visualization parameters
         """
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             # Create DataFrame from occurrences
             # pylint: disable=no-member
             df = pd.DataFrame(data['occurrences'])
@@ -1163,16 +1118,16 @@ class ChartHandler:
 
             # Define color scheme for conservation status
             color_scheme = {
-                'Extinct': '#8B0000',                # Dark Red
-                'Critically Endangered': '#d62728',   # Red
-                'Endangered': '#ff7f0e',             # Orange
-                'Vulnerable': '#ffd700',             # Gold
-                'Near Threatened': '#2ca02c',        # Green
-                'Least Concern': '#1f77b4',          # Blue
-                'Data Deficient': '#7f7f7f'          # Gray
+                'Extinct': [139, 0, 0],                # Dark Red
+                'Critically Endangered': [214, 39, 40], # Red
+                'Endangered': [255, 127, 14],          # Orange
+                'Vulnerable': [255, 215, 0],           # Gold
+                'Near Threatened': [44, 160, 44],      # Green
+                'Least Concern': [31, 119, 180],       # Blue
+                'Data Deficient': [127, 127, 127]      # Gray
             }
 
-            # Add color column to DataFrame
+            # Add color column to DataFrame with RGB arrays
             df['color'] = df['conservation_status'].map(color_scheme)
 
             # Create two columns for map and legend
@@ -1184,8 +1139,8 @@ class ChartHandler:
                     'ScatterplotLayer',
                     data=df,
                     get_position=['decimallongitude', 'decimallatitude'],
-                    get_color='color',
-                    get_radius=10,  # Base radius in meters
+                    get_color='color',  # Now points to RGB array
+                    get_radius=10,
                     radius_min_pixels=2,
                     radius_max_pixels=100,
                     opacity=0.8,
@@ -1239,7 +1194,7 @@ class ChartHandler:
                     map_style='mapbox://styles/mapbox/dark-v10',
                 )
 
-                st.pydeck_chart(deck, height=700)
+                st.pydeck_chart(deck, height=700, key=f"occurrence_map_{message_index}")
 
             # Add legend in the second column
             with col2:
@@ -1268,7 +1223,7 @@ class ChartHandler:
             self.logger.error("Error creating occurrence map: %s", str(e), exc_info=True)
             raise
 
-    def draw_species_hci_correlation(self, correlation_data, parameters):
+    def draw_species_hci_correlation(self, correlation_data, parameters, _cache_buster=None):
         """
         Draw a scatter plot showing species-HCI correlation.
         
@@ -1277,112 +1232,431 @@ class ChartHandler:
             parameters (dict): Parameters for visualization
         """
         try:
+            message_index = _cache_buster if _cache_buster is not None else int(time.time())
             # pylint: disable=no-member
             correlations = correlation_data["correlations"]
             if not correlations:
-                st.warning("No correlation data found for this country.")
+                st.warning("No correlation data found.")
                 return
-
-            # Define color scheme for conservation status
-            color_scheme = {
-                'Extinct': '#8B0000',                # Dark Red
-                'Critically Endangered': '#d62728',   # Red
-                'Endangered': '#ff7f0e',             # Orange
-                'Vulnerable': '#ffd700',             # Gold
-                'Near Threatened': '#2ca02c',         # Green
-                'Least Concern': '#1f77b4',          # Blue
-                'Data Deficient': '#7f7f7f'          # Gray
-            }
 
             col1, col2 = st.columns([7, 3])
             with col1:
                 fig = go.Figure()
 
-                # Create separate traces for each conservation status
-                for status, color in color_scheme.items():
-                    status_data = [item for item in correlations
-                                 if item["conservation_status"] == status]
-                    if status_data:
-                        fig.add_trace(go.Scatter(
-                            x=[item["avg_hci"] for item in status_data],
-                            y=[item["correlation_coefficient"] for item in status_data],
-                            mode='markers',
-                            name=status,
-                            text=[f"{item['species_name']}<br>"
-                                  f"English Name: {item['species_name_en'] or 'N/A'}<br>"
-                                  f"Status: {item['conservation_status']}<br>"
-                                  f"Grid Cells: {item['number_of_grid_cells']}<br>"
-                                  f"Total Individuals: {item['total_individuals']}"
-                                  for item in status_data],
-                            hoverinfo='text',
-                            marker=dict(
-                                size=10,
-                                color=color,
-                                line=dict(width=1, color='black')
-                            )
-                        ))
+                # Check if we're dealing with a single conservation status
+                statuses = {item["conservation_status"] for item in correlations}
+                is_single_status = len(statuses) == 1
+
+                if is_single_status:
+                    # For single status, color by correlation coefficient
+                    status = list(statuses)[0]
+                    correlations_array = [item["correlation_coefficient"] for item in correlations]
+                    min_corr = min(correlations_array)
+                    max_corr = max(correlations_array)
+
+                    fig.add_trace(go.Scatter(
+                        x=[item["avg_hci"] for item in correlations],
+                        y=[item["correlation_coefficient"] for item in correlations],
+                        mode='markers',
+                        marker=dict(
+                            size=10,
+                            color=[item["correlation_coefficient"] for item in correlations],
+                            colorscale='RdYlBu',  # Red for negative, Blue for positive correlations
+                            colorbar=dict(
+                                title=dict(
+                                    text="Correlation<br>Coefficient",
+                                    side='right'
+                                )
+                            ),
+                            line=dict(width=1, color='black')
+                        ),
+                        text=[f"{item['species_name']}<br>"
+                              f"English Name: {item['species_name_en'] or 'N/A'}<br>"
+                              f"Correlation: {item['correlation_coefficient']:.3f}<br>"
+                              f"Grid Cells: {item['number_of_grid_cells']}<br>"
+                              f"Total Individuals: {item['total_individuals']}"
+                              for item in correlations],
+                        hoverinfo='text'
+                    ))
+
+                    title = f"Species-HCI Correlation for {status} Species"
+
+                else:
+                    # Original behavior for multiple conservation statuses
+                    color_scheme = {
+                        'Extinct': '#8B0000',                # Dark Red
+                        'Critically Endangered': '#d62728',   # Red
+                        'Endangered': '#ff7f0e',             # Orange
+                        'Vulnerable': '#ffd700',             # Gold
+                        'Near Threatened': '#2ca02c',         # Green
+                        'Least Concern': '#1f77b4',          # Blue
+                        'Data Deficient': '#7f7f7f'          # Gray
+                    }
+
+                    for status, color in color_scheme.items():
+                        status_data = [item for item in correlations
+                                     if item["conservation_status"] == status]
+                        if status_data:
+                            fig.add_trace(go.Scatter(
+                                x=[item["avg_hci"] for item in status_data],
+                                y=[item["correlation_coefficient"] for item in status_data],
+                                mode='markers',
+                                name=status,
+                                text=[f"{item['species_name']}<br>"
+                                      f"English Name: {item['species_name_en'] or 'N/A'}<br>"
+                                      f"Status: {item['conservation_status']}<br>"
+                                      f"Grid Cells: {item['number_of_grid_cells']}<br>"
+                                      f"Total Individuals: {item['total_individuals']}"
+                                      for item in status_data],
+                                hoverinfo='text',
+                                marker=dict(
+                                    size=10,
+                                    color=color,
+                                    line=dict(width=1, color='black')
+                                )
+                            ))
+
+                    title = f"Species-HCI Correlation in {parameters.get('country_code', 'KEN')}"
 
                 # Update layout
                 fig.update_layout(
-                    title=f"Species-HCI Correlation in {parameters.get('country_code', 'KEN')}",
+                    title=title,
                     xaxis_title="Average HCI",
                     yaxis_title="Correlation Coefficient",
                     hovermode='closest',
                     height=700,
-                    showlegend=False  # Set this to False to hide the legend
+                    showlegend=not is_single_status  # Hide legend for single status
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
 
             with col2:
                 st.markdown("### Correlation Analysis")
-                st.markdown("""
-                    This scatter plot shows the relationship between:
-                    - Species occurrence
-                    - Human Coexistence Index (HCI)
-                    
-                    **How to Read:**
-                    - Each point represents a species
-                    - X-axis: Average HCI where species is found
-                    - Y-axis: Correlation coefficient
-                    - Color: Conservation status
-                    
-                    **Interpretation:**
-                    - Positive correlation: Species more common in high HCI areas
-                    - Negative correlation: Species more common in low HCI areas
-                    - Near zero: No clear relationship with HCI
-                """)
+                if is_single_status:
+                    status = list(statuses)[0]
+                    st.markdown(f"### {status} Species")
+                    st.markdown("""
+                        This scatter plot shows the relationship between:
+                        - Species occurrence
+                        - Human Coexistence Index (HCI)
+                        
+                        **How to Read:**
+                        - Each point represents a species
+                        - X-axis: Average HCI where species is found
+                        - Y-axis: Correlation coefficient
+                        - Color: Correlation strength and direction
+                          - Blue: Positive correlation
+                          - Red: Negative correlation
+                        
+                        **Interpretation:**
+                        - Blue points: Species more common in high HCI areas
+                        - Red points: Species more common in low HCI areas
+                        - White/pale points: No clear relationship with HCI
+                    """)
 
-                # Add summary statistics
-                strong_correlations = [item for item in correlations
-                                     if abs(item["correlation_coefficient"]) > 0.5]
+                    # Add summary statistics
+                    pos_threshold = 0.3
+                    pos_corr = len([c for c in correlations 
+                                  if c["correlation_coefficient"] > pos_threshold])
+                    neg_corr = len([c for c in correlations 
+                                  if c["correlation_coefficient"] < -pos_threshold])
+                    neut_corr = len([c for c in correlations 
+                                   if abs(c["correlation_coefficient"]) <= pos_threshold])
 
-                # Add status counts
-                st.markdown("### Status Distribution")
-                for status, color in color_scheme.items():
-                    count = len([item for item in correlations
-                               if item["conservation_status"] == status])
-                    if count > 0:
-                        st.markdown(
-                            f"""
-                            <div style="display: flex; align-items: center; margin: 5px 0;">
-                                <div style="width: 20px; height: 20px; 
-                                          background-color: {color};
-                                          margin-right: 5px; border: 1px solid black;">
+                    st.markdown(f"""
+                        **Summary Statistics:**
+                        - Total species analyzed: {len(correlations)}
+                        - Strong positive correlation (>0.3): {pos_corr}
+                        - Strong negative correlation (<-0.3): {neg_corr}
+                        - Weak/no correlation: {neut_corr}
+                        - Correlation range: {min_corr:.3f} to {max_corr:.3f}
+                    """)
+
+                else:
+                    st.markdown("""
+                        This scatter plot shows the relationship between:
+                        - Species occurrence
+                        - Human Coexistence Index (HCI)
+                        
+                        **How to Read:**
+                        - Each point represents a species
+                        - X-axis: Average HCI where species is found
+                        - Y-axis: Correlation coefficient
+                        - Color: Conservation status
+                        
+                        **Interpretation:**
+                        - Positive correlation: Species more common in high HCI areas
+                        - Negative correlation: Species more common in low HCI areas
+                        - Near zero: No clear relationship with HCI
+                    """)
+
+                    # Add status counts
+                    st.markdown("### Status Distribution")
+                    color_scheme = {
+                        'Extinct': '#8B0000',
+                        'Critically Endangered': '#d62728',
+                        'Endangered': '#ff7f0e',
+                        'Vulnerable': '#ffd700',
+                        'Near Threatened': '#2ca02c',
+                        'Least Concern': '#1f77b4',
+                        'Data Deficient': '#7f7f7f'
+                    }
+
+                    for status, color in color_scheme.items():
+                        count = len([item for item in correlations
+                                   if item["conservation_status"] == status])
+                        if count > 0:
+                            st.markdown(
+                                f"""
+                                <div style="display: flex; align-items: center; margin: 5px 0;">
+                                    <div style="width: 20px; height: 20px; 
+                                              background-color: {color};
+                                              margin-right: 5px; border: 1px solid black;">
+                                    </div>
+                                    <span>{status}: {count} species</span>
                                 </div>
-                                <span>{status}: {count} species</span>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-
-                st.markdown(f"""
-                    **Summary Statistics:**
-                    - Total species analyzed: {len(correlations)}
-                    - Strong correlations (|r| > 0.5): {len(strong_correlations)}
-                """)
+                                """,
+                                unsafe_allow_html=True
+                            )
 
         except Exception as e:
             self.logger.error("Error creating species-HCI correlation plot: %s",
                             str(e), exc_info=True)
+            raise
+
+    def draw_species_forest_correlation(self, data, parameters, _cache_buster=None):
+        """Draw a map showing species observations, alpha shapes, and forest layers using Folium.
+        
+        Args:
+            data (dict): Dictionary containing:
+                - correlation_data: Dictionary of correlation statistics
+                - analysis: Analysis results
+                - species_name: Name of the species
+                - observations: List of species observations 
+                - forest_layers: Dictionary of Earth Engine layer URLs
+                - alpha_shapes: List of alpha shape polygons (optional)
+            parameters (dict): Visualization parameters
+        """
+        try:
+            # pylint: disable=no-member
+            # Create DataFrame from observations
+            df = pd.DataFrame(data['observations'])
+
+            if df.empty:
+                st.warning("No observation data to display")
+                return
+
+            # Create two columns for map and legend
+            col1, col2 = st.columns([3, 1])
+
+            with col1:
+                # First display the map using the full width
+                st.markdown(f"### {data.get('species_name', 'Species')} - Forest Correlation Map")
+                st.markdown(f"**Total Observations**: {len(df):,}")
+
+                # Create a Folium map with full width
+                m = folium.Map(
+                    location=[df['decimallatitude'].mean(), df['decimallongitude'].mean()],
+                    zoom_start=5,
+                    tiles="CartoDB dark_matter"
+                )
+                Fullscreen().add_to(m)
+                # Add Earth Engine forest layers if available
+                forest_layers = data.get('forest_layers', {})
+
+                # Forest Cover Layer
+                if 'forest_cover' in forest_layers:
+                    forest_cover_url = forest_layers['forest_cover']['tiles'][0]
+                    folium.TileLayer(
+                        tiles=forest_cover_url,
+                        attr=forest_layers['forest_cover']['attribution'],
+                        name='Forest Cover 2000',
+                        overlay=True
+                    ).add_to(m)
+
+                # Forest Loss Layer
+                if 'forest_loss' in forest_layers:
+                    forest_loss_url = forest_layers['forest_loss']['tiles'][0]
+                    folium.TileLayer(
+                        tiles=forest_loss_url,
+                        attr=forest_layers['forest_loss']['attribution'],
+                        name='Forest Loss',
+                        overlay=True
+                    ).add_to(m)
+
+                # Forest Gain Layer
+                if 'forest_gain' in forest_layers:
+                    forest_gain_url = forest_layers['forest_gain']['tiles'][0]
+                    folium.TileLayer(
+                        tiles=forest_gain_url,
+                        attr=forest_layers['forest_gain']['attribution'],
+                        name='Forest Gain',
+                        overlay=True,
+                        show=False  # Hidden by default
+                    ).add_to(m)
+
+                # Add Alpha Shapes Layer if available
+                if 'alpha_shapes' in forest_layers:
+                    alpha_shapes_url = forest_layers['alpha_shapes']['tiles'][0]
+                    folium.TileLayer(
+                        tiles=alpha_shapes_url,
+                        attr=forest_layers['alpha_shapes']['attribution'],
+                        name='Analysis Areas',
+                        overlay=True,
+                        show=True  # Show by default
+                    ).add_to(m)
+                # Create a feature group for species observations
+                observations = folium.FeatureGroup(name="Species Observations")
+                # Add species observations
+                for _, row in df.iterrows():
+                    folium.CircleMarker(
+                        location=[row['decimallatitude'], row['decimallongitude']],
+                        radius=4,  # Slightly larger for better visibility
+                        color='4285F4',
+                        fill=True,
+                        fill_color='4285F4',
+                        fill_opacity=0.9,  # More opaque red dots
+                        popup=f"Year: {row['observation_year']}<br>Count: {row['individual_count']}"
+                    ).add_to(observations)
+                # Add the observations layer to the map
+                observations.add_to(m)
+
+                # Add alpha shapes as GeoJSON if available (for more interactivity)
+                if 'alpha_shapes' in data and data['alpha_shapes']:
+                    # Convert alpha shapes to GeoJSON format
+                    alpha_shapes_geojson = {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "type": "Feature",
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": shape['coordinates']
+                                },
+                                "properties": shape.get('properties', {})
+                            }
+                            for shape in data['alpha_shapes']
+                        ]
+                    }
+                    # Add alpha shapes as an interactive layer
+                    folium.GeoJson(
+                        alpha_shapes_geojson,
+                        name="Analysis Areas (Interactive)",
+                        style_function=lambda x: {
+                            'fillColor': '#4285F4',
+                            'color': '#4285F4',
+                            'weight': 2,
+                            'fillOpacity': 0.2
+                        },
+                        tooltip=folium.GeoJsonTooltip(
+                            fields=['year', 'num_observations', 'total_individuals'],
+                            aliases=['Year:', 'Observations:', 'Individuals:'],
+                            style=("background-color: white; color: #333333; font-family: arial; "
+                                  "font-size: 12px; padding: 10px;")
+                        )
+                    ).add_to(m)
+                # Add layer control
+                folium.LayerControl().add_to(m)
+                # Display the map at full width with stronger CSS
+                st.markdown(
+                    """
+                    <style>
+                    .folium-map {
+                        width: 100% !important;
+                        height: 800px !important;
+                        max-width: none !important;
+                        box-sizing: border-box !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+                    iframe {
+                        width: 100% !important;
+                        height: 900px !important;
+                        border: none !important;
+                    }
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+                folium_static(m, width=3000 )  # Force wide display
+
+            with col2:
+                # Display correlation statistics
+                corr_data = data['correlation_data']
+                st.markdown("### Forest Correlation Analysis")
+
+                # Forest Cover Statistics
+                st.markdown("#### Forest Cover")
+                st.markdown(f"""
+                    - Mean: {corr_data['forest_cover']['mean']:.2f}%
+                    - Standard Deviation: {corr_data['forest_cover']['std']:.2f}%
+                    - Correlation: {corr_data['forest_cover']['correlation']:.3f}
+                    - P-value: {corr_data['forest_cover']['p_value']:.3f}
+                """)
+
+                # Forest Loss Statistics
+                st.markdown("#### Forest Loss")
+                st.markdown(f"""
+                    - Mean: {corr_data['forest_loss']['mean'] * 100:.2f}% (2001-2023)
+                    - Standard Deviation: {corr_data['forest_loss']['std'] * 100:.2f}%
+                    - Correlation: {corr_data['forest_loss']['correlation']:.3f}
+                    - P-value: {corr_data['forest_loss']['p_value']:.3f}
+                """)
+
+                # Add clarification note about forest statistics
+                st.markdown("""
+                **Note about statistics:**
+                - Forest cover is measured as percentage of tree canopy closure (0-100%) and includes forest gain where detected
+                - Forest loss is calculated as percentage of the area that experienced loss (0-100%)
+                - Forest gain (2000-2012) is incorporated into the final forest cover calculations
+                - All values are averaged across all analysis regions
+                """)
+
+                # Add explanation of analysis methodology
+                st.markdown("### Analysis Methodology")
+
+                # Check if we're using alpha shapes
+                if 'alpha_shapes' in data and data['alpha_shapes']:
+                    # Check if overlaps are avoided in alpha shapes
+                    overlaps_avoided = "Unknown"
+                    if 'forest_layers' in data and 'alpha_shapes' in data['forest_layers']:
+                        overlaps_avoided = data['forest_layers']['alpha_shapes'].get('non_overlapping', True)
+
+                    st.markdown("""
+                    **Range-based Analysis:**
+                    - Blue polygons show analysis areas created using alpha shapes
+                    - Forest metrics are calculated across entire species ranges
+                    """)                    
+                    # Show alpha shape count if available
+                    if 'alpha_shapes' in forest_layers and 'count' in forest_layers['alpha_shapes']:
+                        st.markdown(f"**Number of Analysis Areas:** {forest_layers['alpha_shapes']['count']}")
+                else:
+                    st.markdown("""
+                    **Point-based Analysis:**
+                    - Forest metrics are sampled at exact observation points
+                    - Surrounding habitat conditions are also considered
+                    - Each point represents one species observation
+                    """)
+
+                # Add interpretation hints
+                st.markdown("""
+                ### Interpreting the Map
+                - **Blue dots:** Species observations
+                - **Green areas:** Forest cover (as of 2000) - Tree canopy closure for vegetation taller than 5m
+                - **Red areas:** Forest loss (2001-2023) - Stand-replacement disturbance or change from forest to non-forest
+                - **Blue areas:** Forest gain (2000-2012) - New forest growth, included in forest cover calculations
+                
+                Toggle layers using the controls in the upper right corner.
+                """)
+
+        except ImportError:
+            # pylint: disable=no-member
+            st.error("""
+            This visualization requires additional packages. 
+            Please install them with:
+            
+            pip install folium streamlit-folium
+            """)
+        except Exception as e:
+            self.logger.error("Error creating forest correlation map: %s", str(e), exc_info=True)
             raise

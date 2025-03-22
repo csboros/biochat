@@ -55,10 +55,12 @@ class BaseHandler:
             """
 
     def __init__(self):
+        """Initialize the base handler."""
+        self.project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        if not self.project_id:
+            raise ValueError("GOOGLE_CLOUD_PROJECT environment variable must be set")
         self.logger = logging.getLogger(f"BioChat.{self.__class__.__name__}")
-        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.client = bigquery.Client(project=self.project_id)
-
 
     def translate_to_scientific_name_from_api(self, content: Dict) -> str:
         """Translates common species name to scientific name using EBI Taxonomy API."""
