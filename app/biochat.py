@@ -255,9 +255,10 @@ class BioChat:
 
 
     @st.cache_data(show_spinner=False)
-    def render_cached_chart(_self, df, chart_type, parameters):  # pylint: disable=no-self-argument
+    def render_cached_chart(_self, _df, _chart_type, _parameters, message_index):  # pylint: disable=no-self-argument
         """Cache chart rendering for each message"""
-        return _self.chart_handler.draw_chart(df, chart_type, parameters)
+        return _self.chart_handler.draw_chart(_df, _chart_type, _parameters,
+                                              _cache_buster=message_index)
 
     def display_message_history(self):
         """
@@ -271,17 +272,18 @@ class BioChat:
         self.logger.debug("Starting message history display")
         try:
             messages_start = time.time()
-            for _, message in enumerate(st.session_state.messages):
+            for i, message in enumerate(st.session_state.messages):
                 avatar = "🦊" if message["role"] == "assistant" else "👨‍🦰"
                 with st.chat_message(message["role"], avatar=avatar):
                     if "chart_data" in message["content"]:
                         chart_start = time.time()
                         df = message["content"]["chart_data"]
-                        # Use message index as part of cache key
+                        # Use message index as unique identifier
                         self.render_cached_chart(
                             df,
                             message["content"]["type"],
-                            message["content"]["parameters"]
+                            message["content"]["parameters"],
+                            i  # Pass the message index
                         )
                         self.logger.debug("Chart rendering took %.2f seconds",
                                         time.time() - chart_start)
@@ -437,6 +439,14 @@ class BioChat:
                 self.process_endangered_species_by_country(c['response'], c['params']),
             'get_species_hci_correlation': lambda c:
                 self.process_species_hci_correlation(c['response'], c['params']),
+            'get_species_hci_correlation_by_status': lambda c:
+                self.process_species_hci_correlation_by_status(c['response'], c['params']),
+            'get_species_shared_habitat': lambda c:
+                self.process_species_shared_habitat(c['response'], c['params']),
+            'analyze_species_correlations': lambda c:
+                self.process_species_correlation_analysis(c['response'], c['params']),
+            'calculate_species_forest_correlation': lambda c:
+                self.process_species_forest_correlation(c['response'], c['params']),
         }
 
         if call['name'] in handlers:
@@ -445,8 +455,7 @@ class BioChat:
 
         # Handle simple text response functions
         if call['name'] in ('number_of_endangered_species_by_conservation_status',
-                          'endangered_orders_for_class', 'endangered_classes_for_kingdom',
-                          'analyze_species_correlations'):
+                          'endangered_orders_for_class', 'endangered_classes_for_kingdom'):
             self.add_message_to_history("assistant", {"text": call['response']})
             return None
 
@@ -812,7 +821,7 @@ class BioChat:
         except Exception as e: # pylint: disable=broad-except
             self.logger.error(
                 "Error processing endangered species by country data: %s", 
-                str(e), 
+                str(e),
                 exc_info=True
             )
             st.session_state.messages.append({
@@ -854,3 +863,165 @@ class BioChat:
                 "role": "assistant",
                 "content": {"text": f"Error processing correlation data: {str(e)}"}
             })
+
+    def process_species_hci_correlation_by_status(self, data_response, parameters):
+        """
+        Process and visualize species-HCI correlation data filtered by conservation status.
+        
+        Args:
+            data_response (dict): Response containing correlation data
+            for a specific conservation status
+            parameters (dict): Parameters used for the query including conservation_status
+        """
+        try:
+            if "error" in data_response:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {"text": data_response["error"]}
+                })
+                return
+
+            # Add visualization to session state
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {
+                    "chart_data": data_response,
+                    "type": "species_hci_correlation",
+                    "parameters": parameters
+                }
+            })
+
+        except Exception as e: # pylint: disable=broad-except
+            self.logger.error(
+                "Error processing correlation by status data: %s", 
+                str(e),
+                exc_info=True
+            )
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing correlation data: {str(e)}"}
+            })
+
+    def process_species_shared_habitat(self, data_response, parameters):
+        """
+        Process and visualize species shared habitat data.
+        
+        Args:
+            data_response (dict): Response containing species shared habitat information
+            parameters (dict): Parameters used for the query
+        """
+        try:
+            print("Processing species shared habitat data:", data_response)  # Debug log
+
+            if "error" in data_response:
+                print("Error found in data_response:", data_response["error"])  # Debug log
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {"text": data_response["error"]}
+                })
+                return
+
+            # Add visualization to session state
+            message = {
+                "role": "assistant",
+                "content": {
+                    "chart_data": data_response,
+                    "type": "species_shared_habitat",
+                    "parameters": parameters
+                }
+            }
+            print("Adding message to session state:", message)  # Debug log
+            st.session_state.messages.append(message)
+
+        except Exception as e: # pylint: disable=broad-except
+            print(f"Error in process_species_shared_habitat: {str(e)}")  # Debug log
+            self.logger.error(
+                "Error processing species shared habitat data: %s", 
+                str(e),
+                exc_info=True
+            )
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing species shared habitat data: {str(e)}"}
+            })
+
+    def process_species_correlation_analysis(self, data_response, parameters):
+        """
+        Process and display species correlation analysis results.
+        
+        Args:
+            data_response (dict): Response containing correlation data and analysis
+            parameters (dict): Parameters used for the analysis
+            
+        Raises:
+            ValueError: If data response format is invalid
+            TypeError: If data types are incorrect
+            KeyError: If required fields are missing
+        """
+        try:
+            if isinstance(data_response, str):
+                # If it's a string (error message), just display it
+                self.add_message_to_history("assistant", {"text": data_response})
+                return
+
+            # Then add the visualization if we have correlation data
+            if 'correlation_data' in data_response:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response['correlation_data'],
+                        "type": "species_hci_correlation",
+                        "parameters": parameters
+                    }
+                })
+            # Add the analysis text first
+            if 'analysis' in data_response:
+                self.add_message_to_history("assistant", {"text": data_response['analysis']})
+
+        except (ValueError, TypeError, KeyError) as e:
+            self.logger.error("Error processing correlation analysis: %s", str(e), exc_info=True)
+            self.add_message_to_history(
+                "assistant", 
+                {"text": f"Error processing correlation analysis: {str(e)}"}
+            )
+
+    def process_species_forest_correlation(self, data_response, parameters):
+        """
+        Process and display species forest correlation analysis results.
+        
+        Args:
+            data_response (dict): Response containing correlation data and analysis
+            parameters (dict): Parameters used for the analysis
+            
+        Raises:
+            ValueError: If data response format is invalid
+            TypeError: If data types are incorrect
+            KeyError: If required fields are missing
+        """
+        try:
+            if isinstance(data_response, str):
+                # If it's a string (error message), just display it
+                self.add_message_to_history("assistant", {"text": data_response})
+                return
+
+            if 'observations' in data_response:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": "species_forest_correlation",
+                        "parameters": parameters
+                    }
+            })                
+
+            # Add the analysis text first
+            if 'analysis' in data_response:
+                self.add_message_to_history("assistant", {"text": data_response['analysis']})
+
+        except (ValueError, TypeError, KeyError) as e:
+            self.logger.error("Error processing forest correlation analysis: %s", str(e),
+                              exc_info=True)
+            self.add_message_to_history(
+                "assistant", 
+                {"text": f"Error processing forest correlation analysis: {str(e)}"}
+            )

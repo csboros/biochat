@@ -584,24 +584,61 @@ FUNCTION_DECLARATIONS = [
             "properties": {
                 "country_code": {
                     "type": "string",
-                    "description": "ISO Alpha-3 country code "
-                    "(e.g., 'KEN' for Kenya, 'TZA' for Tanzania)",
+                    "description": "ISO Alpha-3 country code (e.g., 'KEN' for Kenya, "  
+                    "'TZA' for Tanzania)"
                 }
             },
             "required": ["country_code"]
         }
     ),
     FunctionDeclaration(
+        name="get_species_hci_correlation_by_status",
+        description=(
+            "Get correlation data between species occurrence and Human Coexistence Index (HCI) "
+            "filtered by conservation status. Use this for questions about: \n"
+            "- How specific conservation status species relate to human impact\n"
+            "- Correlation patterns for critically endangered/endangered/vulnerable species\n"
+            "- Understanding how different threat levels relate to human presence\n"
+            "Examples:\n"
+            "- 'Show correlation for critically endangered species'\n"
+            "- 'How do vulnerable species relate to human activity?'\n"
+            "- 'What's the relationship between endangered species and HCI?'"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "conservation_status": {
+                    "type": "string",
+                    "description": "Conservation status to filter by. Valid values: "
+                    "'Critically Endangered', 'Endangered', 'Vulnerable', "
+                    "'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'",
+                    "enum": [
+                        "Critically Endangered",
+                        "Endangered",
+                        "Vulnerable",
+                        "Near Threatened",
+                        "Least Concern",
+                        "Data Deficient",
+                        "Extinct"
+                    ]
+                }
+            },
+            "required": ["conservation_status"]
+        }
+    ),
+    FunctionDeclaration(
         name="analyze_species_correlations",
         description=(
             "Analyze correlation patterns between species occurrences and human impact (HCI). "
-            "Use this for questions about: \n"
-            "- How different species relate to human presence\n"
-            "- Whether endangered species avoid or prefer human areas\n"
+            "Can analyze by either country or conservation status. Use this for questions about:\n"
+            "- How different species relate to human presence in a specific country\n"
+            "- How species of a particular conservation status relate to human areas globally\n"
             "- Understanding conservation implications of species-human relationships\n"
-            "Examples: 'Analyze correlation patterns for endangered species', "
-            "'How do species distributions relate to human impact?', "
-            "'Do threatened species avoid human areas?'"
+            "Examples:\n"
+            "- 'Analyze correlation patterns for endangered species in Kenya'\n"
+            "- 'How do critically endangered species relate to human impact?'\n"
+            "- 'Analyze species-HCI relationships in Tanzania'\n"
+            "- 'Show correlation analysis for vulnerable species'"
         ),
         parameters={
             "type": "object",
@@ -609,10 +646,80 @@ FUNCTION_DECLARATIONS = [
                 "country_code": {
                     "type": "string",
                     "description": "ISO Alpha-3 country code "
-                    "(e.g., 'KEN' for Kenya, 'TZA' for Tanzania)",
+                    "(e.g., 'KEN' for Kenya, 'TZA' for Tanzania). "
+                    "Optional if conservation_status is provided."
+                },
+                "conservation_status": {
+                    "type": "string",
+                    "description": "Conservation status to analyze. "
+                    "Optional if country_code is provided. "
+                    "Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable', "
+                    "'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'",
+                    "enum": [
+                        "Critically Endangered",
+                        "Endangered",
+                        "Vulnerable",
+                        "Near Threatened",
+                        "Least Concern",
+                        "Data Deficient",
+                        "Extinct"
+                    ]
+                }
+            }
+        }
+    ),
+    FunctionDeclaration(
+        name="get_species_shared_habitat",
+        description=(
+            "Get correlation data between a specific species " 
+            " and other species that share its habitat. "
+            "Use this for questions about:\n"
+            "- Which species share habitat with a particular species\n"
+            "- How different species correlate in their occurrence patterns\n"
+            "- Understanding species relationships and co-occurrence\n"
+            "Examples:\n"
+            "- 'Which species share habitat with lion?'\n"
+            "- 'Show species that live alongside tigers'\n"
+            "- 'What animals coexist with elephants?'\n"
+            "- 'Find species that correlate with pandas'\n"
+            "IMPORTANT: For common names, first use translate_to_scientific_name "
+            "to get the scientific name."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "species_name": {
+                    "type": "string",
+                    "description": "Scientific name of the species "
+                    "(e.g., 'Panthera leo' for Lion). "
+                    "For common names, first use translate_to_scientific_name."
                 }
             },
-            "required": ["country_code"]
+            "required": ["species_name"]
+        }
+    ),
+    FunctionDeclaration(
+        name="calculate_species_forest_correlation",
+        description=(
+            "Calculate correlation between species occurrence and forest cover/loss. "
+            "This analyzes how species distribution relates to forest metrics using "
+            "Hansen Global Forest Change data. "
+            "Examples:\n"
+            "- 'How does lion distribution relate to forest cover?'\n"
+            "- 'How does chimpanzee distribution relate to forest cover?'\n"
+            "- 'Show forest correlation for Panthera leo'\n"
+            "- 'Analyze forest habitat relationship for tigers'"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "species_name": {
+                    "type": "string",
+                    "description": "Scientific name of the species (e.g., 'Panthera leo'), "
+                    "for common names, first use translate_to_scientific_name"
+                }
+            },
+            "required": ["species_name"]
         }
     ),
 ]

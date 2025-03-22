@@ -40,14 +40,13 @@ class EndangeredSpeciesHandler(BaseHandler):
             query = """
                 SELECT class, count(class) as cnt 
                 FROM `{project_id}.biodiversity.endangered_species` 
-                WHERE LOWER(kingdom) = LOWER(@kingdom) AND class IS NOT NULL 
-                GROUP BY class ORDER BY class
+                WHERE LOWER(kingdom) = LOWER(@kingdom) 
+                    AND class IS NOT NULL 
+                GROUP BY class 
+                ORDER BY class
             """
 
-            query = self.build_query(
-                query,
-                where_clause=""
-            )
+            query = self.build_query(query)
 
             parameters = self.get_parameters(
                 kingdom=kingdom_name
@@ -159,7 +158,6 @@ class EndangeredSpeciesHandler(BaseHandler):
                 where_clause="AND LOWER(order_name) = LOWER(@order_name) "
                     "AND family_name IS NOT NULL"
             )
-            print(query)
             parameters = self.get_parameters(
                 order_name=order_name
             )
