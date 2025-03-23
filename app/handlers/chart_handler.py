@@ -12,23 +12,9 @@ import colorsys
 import numpy as np
 import pandas as pd
 import pydeck as pdk
-import folium
-from streamlit_folium import folium_static
-from folium.plugins import Fullscreen
-import time
-
-
-try:
-    from scipy.spatial import Delaunay
-except ImportError:
-    Delaunay = None
-from shapely.geometry import Polygon, MultiPoint
 import streamlit as st
+import time 
 
-try:
-    from sklearn.cluster import DBSCAN
-except ImportError:
-    DBSCAN = None
 try:
     import plotly.graph_objects as go
 except ImportError:
@@ -36,6 +22,7 @@ except ImportError:
 
 from .d3js_visualization import display_force_visualization, display_tree, display_shared_habitat
 from ..utils.alpha_shape_utils import AlphaShapeUtils
+from .forest_viz import ForestViz
 
 
 class ChartHandler:
@@ -290,13 +277,7 @@ class ChartHandler:
 
             # Calculate concave hull using the same parameters as ForestHandlerEE
             points = df[["decimallongitude", "decimallatitude"]].values
-            hull_geojson = self.alpha_shape_utils.calculate_alpha_shape(
-                points,
-                alpha=alpha,
-                eps=eps,
-                min_samples=min_samples,
-                avoid_overlaps=avoid_overlaps
-            )
+            hull_geojson = self._create_alpha_shapes(df, parameters)
 
             # Force a new view state each time with a slight random variation to prevent caching
             if bounds is not None:
@@ -403,6 +384,39 @@ class ChartHandler:
         except Exception as e:
             self.logger.error("Error creating hexagon map: %s", str(e), exc_info=True)
             raise
+
+    def _create_alpha_shapes(self, df, parameters):
+        """
+        Create alpha shapes from a dataframe of coordinates.
+        
+        Args:
+            df (pd.DataFrame): DataFrame containing coordinate data with decimallongitude and decimallatitude columns
+            parameters (dict): Dictionary containing alpha shape parameters
+                - alpha (float): Alpha value for concave hull algorithm (default: 0.5)
+                - eps (float): Epsilon value for DBSCAN clustering (default: 1.0) 
+                - min_samples (int): Minimum samples for DBSCAN clustering (default: 3)
+                - avoid_overlaps (bool): Whether to merge overlapping clusters (default: True)
+        
+        Returns:
+            dict: GeoJSON representation of the alpha shapes
+        """
+        # Get alpha parameters from parameters or use defaults
+        alpha = parameters.get('alpha', 0.5)
+        eps = parameters.get('eps', 1.0)
+        min_samples = parameters.get('min_samples', 3)
+        avoid_overlaps = parameters.get('avoid_overlaps', True)
+
+        # Calculate concave hull
+        points = df[["decimallongitude", "decimallatitude"]].values
+        hull_geojson = self.alpha_shape_utils.calculate_alpha_shape(
+            points,
+            alpha=alpha,
+            eps=eps,
+            min_samples=min_samples,
+            avoid_overlaps=avoid_overlaps
+        )
+        
+        return hull_geojson
 
     def _get_bounds_from_data(self, df, percentile_cutoff=2.5, min_points=10):
         """Calculates appropriate map bounds from coordinate data with outlier filtering."""
@@ -1437,226 +1451,5 @@ class ChartHandler:
                 - alpha_shapes: List of alpha shape polygons (optional)
             parameters (dict): Visualization parameters
         """
-        try:
-            # pylint: disable=no-member
-            # Create DataFrame from observations
-            df = pd.DataFrame(data['observations'])
-
-            if df.empty:
-                st.warning("No observation data to display")
-                return
-
-            # Create two columns for map and legend
-            col1, col2 = st.columns([3, 1])
-
-            with col1:
-                # First display the map using the full width
-                st.markdown(f"### {data.get('species_name', 'Species')} - Forest Correlation Map")
-                st.markdown(f"**Total Observations**: {len(df):,}")
-
-                # Create a Folium map with full width
-                m = folium.Map(
-                    location=[df['decimallatitude'].mean(), df['decimallongitude'].mean()],
-                    zoom_start=5,
-                    tiles="CartoDB dark_matter"
-                )
-                Fullscreen().add_to(m)
-                # Add Earth Engine forest layers if available
-                forest_layers = data.get('forest_layers', {})
-
-                # Forest Cover Layer
-                if 'forest_cover' in forest_layers:
-                    forest_cover_url = forest_layers['forest_cover']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=forest_cover_url,
-                        attr=forest_layers['forest_cover']['attribution'],
-                        name='Forest Cover 2000',
-                        overlay=True
-                    ).add_to(m)
-
-                # Forest Loss Layer
-                if 'forest_loss' in forest_layers:
-                    forest_loss_url = forest_layers['forest_loss']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=forest_loss_url,
-                        attr=forest_layers['forest_loss']['attribution'],
-                        name='Forest Loss',
-                        overlay=True
-                    ).add_to(m)
-
-                # Forest Gain Layer
-                if 'forest_gain' in forest_layers:
-                    forest_gain_url = forest_layers['forest_gain']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=forest_gain_url,
-                        attr=forest_layers['forest_gain']['attribution'],
-                        name='Forest Gain',
-                        overlay=True,
-                        show=False  # Hidden by default
-                    ).add_to(m)
-
-                # Add Alpha Shapes Layer if available
-                if 'alpha_shapes' in forest_layers:
-                    alpha_shapes_url = forest_layers['alpha_shapes']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=alpha_shapes_url,
-                        attr=forest_layers['alpha_shapes']['attribution'],
-                        name='Analysis Areas',
-                        overlay=True,
-                        show=True  # Show by default
-                    ).add_to(m)
-                # Create a feature group for species observations
-                observations = folium.FeatureGroup(name="Species Observations")
-                # Add species observations
-                for _, row in df.iterrows():
-                    folium.CircleMarker(
-                        location=[row['decimallatitude'], row['decimallongitude']],
-                        radius=4,  # Slightly larger for better visibility
-                        color='4285F4',
-                        fill=True,
-                        fill_color='4285F4',
-                        fill_opacity=0.9,  # More opaque red dots
-                        popup=f"Year: {row['observation_year']}<br>Count: {row['individual_count']}"
-                    ).add_to(observations)
-                # Add the observations layer to the map
-                observations.add_to(m)
-
-                # Add alpha shapes as GeoJSON if available (for more interactivity)
-                if 'alpha_shapes' in data and data['alpha_shapes']:
-                    # Convert alpha shapes to GeoJSON format
-                    alpha_shapes_geojson = {
-                        "type": "FeatureCollection",
-                        "features": [
-                            {
-                                "type": "Feature",
-                                "geometry": {
-                                    "type": "Polygon",
-                                    "coordinates": shape['coordinates']
-                                },
-                                "properties": shape.get('properties', {})
-                            }
-                            for shape in data['alpha_shapes']
-                        ]
-                    }
-                    # Add alpha shapes as an interactive layer
-                    folium.GeoJson(
-                        alpha_shapes_geojson,
-                        name="Analysis Areas (Interactive)",
-                        style_function=lambda x: {
-                            'fillColor': '#4285F4',
-                            'color': '#4285F4',
-                            'weight': 2,
-                            'fillOpacity': 0.2
-                        },
-                        tooltip=folium.GeoJsonTooltip(
-                            fields=['year', 'num_observations', 'total_individuals'],
-                            aliases=['Year:', 'Observations:', 'Individuals:'],
-                            style=("background-color: white; color: #333333; font-family: arial; "
-                                  "font-size: 12px; padding: 10px;")
-                        )
-                    ).add_to(m)
-                # Add layer control
-                folium.LayerControl().add_to(m)
-                # Display the map at full width with stronger CSS
-                st.markdown(
-                    """
-                    <style>
-                    .folium-map {
-                        width: 100% !important;
-                        height: 800px !important;
-                        max-width: none !important;
-                        box-sizing: border-box !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    }
-                    iframe {
-                        width: 100% !important;
-                        height: 900px !important;
-                        border: none !important;
-                    }
-                    </style>
-                    """,
-                    unsafe_allow_html=True
-                )
-                folium_static(m, width=3000 )  # Force wide display
-
-            with col2:
-                # Display correlation statistics
-                corr_data = data['correlation_data']
-                st.markdown("### Forest Correlation Analysis")
-
-                # Forest Cover Statistics
-                st.markdown("#### Forest Cover")
-                st.markdown(f"""
-                    - Mean: {corr_data['forest_cover']['mean']:.2f}%
-                    - Standard Deviation: {corr_data['forest_cover']['std']:.2f}%
-                    - Correlation: {corr_data['forest_cover']['correlation']:.3f}
-                    - P-value: {corr_data['forest_cover']['p_value']:.3f}
-                """)
-
-                # Forest Loss Statistics
-                st.markdown("#### Forest Loss")
-                st.markdown(f"""
-                    - Mean: {corr_data['forest_loss']['mean'] * 100:.2f}% (2001-2023)
-                    - Standard Deviation: {corr_data['forest_loss']['std'] * 100:.2f}%
-                    - Correlation: {corr_data['forest_loss']['correlation']:.3f}
-                    - P-value: {corr_data['forest_loss']['p_value']:.3f}
-                """)
-
-                # Add clarification note about forest statistics
-                st.markdown("""
-                **Note about statistics:**
-                - Forest cover is measured as percentage of tree canopy closure (0-100%) and includes forest gain where detected
-                - Forest loss is calculated as percentage of the area that experienced loss (0-100%)
-                - Forest gain (2000-2012) is incorporated into the final forest cover calculations
-                - All values are averaged across all analysis regions
-                """)
-
-                # Add explanation of analysis methodology
-                st.markdown("### Analysis Methodology")
-
-                # Check if we're using alpha shapes
-                if 'alpha_shapes' in data and data['alpha_shapes']:
-                    # Check if overlaps are avoided in alpha shapes
-                    overlaps_avoided = "Unknown"
-                    if 'forest_layers' in data and 'alpha_shapes' in data['forest_layers']:
-                        overlaps_avoided = data['forest_layers']['alpha_shapes'].get('non_overlapping', True)
-
-                    st.markdown("""
-                    **Range-based Analysis:**
-                    - Blue polygons show analysis areas created using alpha shapes
-                    - Forest metrics are calculated across entire species ranges
-                    """)                    
-                    # Show alpha shape count if available
-                    if 'alpha_shapes' in forest_layers and 'count' in forest_layers['alpha_shapes']:
-                        st.markdown(f"**Number of Analysis Areas:** {forest_layers['alpha_shapes']['count']}")
-                else:
-                    st.markdown("""
-                    **Point-based Analysis:**
-                    - Forest metrics are sampled at exact observation points
-                    - Surrounding habitat conditions are also considered
-                    - Each point represents one species observation
-                    """)
-
-                # Add interpretation hints
-                st.markdown("""
-                ### Interpreting the Map
-                - **Blue dots:** Species observations
-                - **Green areas:** Forest cover (as of 2000) - Tree canopy closure for vegetation taller than 5m
-                - **Red areas:** Forest loss (2001-2023) - Stand-replacement disturbance or change from forest to non-forest
-                - **Blue areas:** Forest gain (2000-2012) - New forest growth, included in forest cover calculations
-                
-                Toggle layers using the controls in the upper right corner.
-                """)
-
-        except ImportError:
-            # pylint: disable=no-member
-            st.error("""
-            This visualization requires additional packages. 
-            Please install them with:
-            
-            pip install folium streamlit-folium
-            """)
-        except Exception as e:
-            self.logger.error("Error creating forest correlation map: %s", str(e), exc_info=True)
-            raise
+        forest_viz = ForestViz()
+        return forest_viz.draw_species_forest_correlation(data, parameters, _cache_buster)
