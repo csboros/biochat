@@ -413,25 +413,26 @@ def create_tree_html(data, width=950, height=800):
 
 def display_tree(data, _cache_buster=None ):
     """Display the tree visualization in Streamlit."""
+    # Add responsive CSS
     # pylint: disable=no-member
     st.markdown("""
         <style>
             .element-container {
-                width: 100%;
+                width: 100% !important;
             }
             iframe {
-                width: 100%;
+                width: 100% !important;
             }
         </style>
     """, unsafe_allow_html=True)
-    col1, col2 = st.columns([3, 1])  # 3:1 ratio for visualization:description
+    
+    col1, col2 = st.columns([3, 1])
 
     with col1:
-        # Create the HTML with the data embedded
-        html_content = create_tree_html(data, width=900, height=900)
+        html_content = create_tree_html(data)
         html_content = html_content.replace('{data_placeholder}', str(data))
-        # Display the visualization using Streamlit components
-        components.html(html_content, height=1200, width=None, key=f"tree_visualization_{_cache_buster}")
+        # Set width to None to make it responsive
+        components.html(html_content, height=1200, width=None)
 
     with col2:
         st.markdown("### Species Hierarchy")
@@ -827,7 +828,7 @@ def display_force_visualization(data, _cache_buster=None):
         html_content = create_force_html(data)
         html_content = html_content.replace('{data_placeholder}', str(data))
         # Set width to None to make it responsive
-        components.html(html_content, height=900, width=None, key=f"force_visualization_{_cache_buster}")
+        components.html(html_content, height=900, width=None)
 
     with col2:
         st.markdown("### Species Network")
@@ -1123,7 +1124,7 @@ def display_shared_habitat(data, _cache_buster=None):
         print("Final network_data:", network_data)  # Debug log
 
         html_content = create_shared_habitat_html(network_data)
-        components.html(html_content, height=1000, key=f"shared_habitat_visualization_{_cache_buster}")
+        components.html(html_content, height=1000)
 
     with col2:
         st.markdown("### Network Legend")
