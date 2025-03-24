@@ -157,10 +157,11 @@ class ForestViz:
                             folium.CircleMarker(
                                 location=[lat, lon],
                                 radius=5,
-                                color='magenta',
+                                color='black',
                                 fill=True,
-                                fill_color='magenta',
+                                fill_color='yellow',
                                 fill_opacity=0.7,
+                                weight=1,
                                 popup=folium.Popup(popup_content, max_width=300)
                             ).add_to(low_cover_group)
                             low_count += 1
@@ -168,10 +169,11 @@ class ForestViz:
                             folium.CircleMarker(
                                 location=[lat, lon],
                                 radius=5,
-                                color='darkgreen',
+                                color='black',
                                 fill=True,
-                                fill_color='darkgreen',
+                                fill_color='purple',
                                 fill_opacity=0.7,
+                                weight=1,
                                 popup=folium.Popup(popup_content, max_width=300)
                             ).add_to(high_cover_group)
                             high_count += 1
@@ -179,10 +181,11 @@ class ForestViz:
                             folium.CircleMarker(
                                 location=[lat, lon],
                                 radius=5,
-                                color='blue',
+                                color='black',
                                 fill=True,
-                                fill_color='blue',
+                                fill_color='orange',
                                 fill_opacity=0.7,
+                                weight=1,
                                 popup=folium.Popup(popup_content, max_width=300)
                             ).add_to(mid_cover_group)
                             mid_count += 1
@@ -260,9 +263,20 @@ class ForestViz:
                         st.markdown("### Forest Cover Categories")
                         st.markdown("""
                         Points on the map are colored by forest cover:
-                        - <span style="color:magenta">⬤</span> **Magenta**: Low cover (0-10%)
-                        - <span style="color:blue">⬤</span> **Blue**: Medium cover (10-90%)
-                        - <span style="color:darkgreen">⬤</span> **Green**: High cover (90-100%)
+                        - <span style="color:yellow">⬤</span> **Yellow**: Low cover (0-10%)
+                        - <span style="color:orange">⬤</span> **Orange**: Medium cover (10-90%)
+                        - <span style="color:purple">⬤</span> **Purple**: High cover (90-100%)
+                        """, unsafe_allow_html=True)
+
+                    # Add forest loss legend
+                    st.markdown("### Forest Loss Years")
+                    st.markdown("""
+                        Forest loss is shown in different shades of red:
+                        - <span style="color: #ff0000">⬤</span> **Dark Red**: 2020-2023
+                        - <span style="color: #ff3333">⬤</span> **Red**: 2015-2019
+                        - <span style="color: #ff6666">⬤</span> **Medium Red**: 2010-2014
+                        - <span style="color: #ff9999">⬤</span> **Light Red**: 2005-2009
+                        - <span style="color: #ffcccc">⬤</span> **Very Light Red**: 2001-2004
                         """, unsafe_allow_html=True)
 
         except Exception as e:
@@ -534,25 +548,14 @@ class ForestViz:
         - Forest cover is measured as percentage of tree canopy closure (0-100%) and includes forest gain where detected
         - Forest loss is calculated as percentage of the area that experienced loss (0-100%)
         - Forest gain (2000-2012) is incorporated into the final forest cover calculations
-        - All values are averaged across all analysis regions
-        """)
-
-        # Add explanation of analysis methodology
-        st.markdown("### Analysis Methodology")
-
-        st.markdown("""
-        **Point-based Analysis:**
         - Forest metrics are sampled at exact observation points
-        - Surrounding habitat conditions are also considered
-        - Each point represents one species observation
+        - Forest loss for observations takes into account the year of the observation with respect to the lossyear laye
         """)
 
         # Add interpretation hints
         st.markdown("""
-        ### Interpreting the Map
-        - **Blue dots:** Species observations
+        ### Forest Cover
         - **Green areas:** Forest cover (as of 2000) - Tree canopy closure for vegetation taller than 5m
-        - **Red areas:** Forest loss (2001-2023) - Stand-replacement disturbance or change from forest to non-forest
 
         Toggle layers using the controls in the upper right corner.
         """)
