@@ -1,6 +1,6 @@
 """
     A Streamlit application for exploring biodiversity data using Vertex AI's Gemini model.
-    
+
     This application provides an interactive chat interface where users can query information
     about endangered species, conservation status, and global biodiversity patterns. It
     integrates with various data sources and visualization tools to present biodiversity
@@ -24,6 +24,9 @@ import streamlit as st
 from app.utils.logging_config import setup_logging
 from app.handlers.function_handler import FunctionHandler
 from app.handlers.chart_handler import ChartHandler
+import folium
+from folium.plugins import MarkerCluster
+from streamlit_folium import folium_static
 
 # Setup logging configuration at application startup
 setup_logging()
@@ -31,12 +34,12 @@ setup_logging()
 class BioChat:
     """
     Main application class for the Biodiversity Chat interface.
-    
+
     Manages the Streamlit interface, Vertex AI model integration, and chat functionality.
     Handles user interactions, function calls, and visualization of biodiversity data.
     """
 
-    SYSTEM_MESSAGE = """You are a biodiversity expert assistant. Your primary role is to help users 
+    SYSTEM_MESSAGE = """You are a biodiversity expert assistant. Your primary role is to help users
     understand endangered species, their conservation status, and global biodiversity patterns.
 
  Key definitions and concepts:
@@ -53,7 +56,7 @@ class BioChat:
   4. Additional metrics provided:
      * avg_hci: Mean HCI value across all cells where species occurs
      * number_of_grid_cells: Number of cells where species is found
-     * total_individuals: Total count of individuals observed   
+     * total_individuals: Total count of individuals observed
 
     IMPORTANT: For EVERY user query:
 
@@ -84,10 +87,10 @@ class BioChat:
 
     Remember: Always use the appropriate function based on whether the query is about a single country or multiple countries.
 
-    IMPORTANT: You must use the provided functions for any queries about species, countries, or biodiversity data. 
-    If no function matches the user's query or if you need additional general information, use the google_search function 
-    to find relevant information. Do not rely on your general knowledge alone - either use the provided functions or 
-    perform a Google search. 
+    IMPORTANT: You must use the provided functions for any queries about species, countries, or biodiversity data.
+    If no function matches the user's query or if you need additional general information, use the google_search function
+    to find relevant information. Do not rely on your general knowledge alone - either use the provided functions or
+    perform a Google search.
 
     Please do not announce your intention to use the functions, simple use it.
     """
@@ -96,7 +99,7 @@ class BioChat:
     @st.cache_resource(show_spinner=False)
     def initialize_app_resources(_self):  # pylint: disable=no-self-argument
         """
-        Initializes and caches all application resources required 
+        Initializes and caches all application resources required
         for the Biodiversity Chat interface.
 
         This method handles the initialization of Vertex AI, function handlers, and the chat model.
@@ -148,7 +151,7 @@ class BioChat:
             with st.spinner("Loading Gemini model..."):
                 tools = Tool(function_declarations=handler.declarations)
                 model = GenerativeModel(
-                    "gemini-2.0-flash", 
+                    "gemini-2.0-flash",
                     generation_config=GenerationConfig(temperature=0),
                     tools=[tools],
                     system_instruction=_self.SYSTEM_MESSAGE
@@ -185,7 +188,7 @@ class BioChat:
     def __init__(self):
         """
         Initializes the BioChat Application.
-        
+
         Raises:
             google.api_core.exceptions.ResourceExhausted: If API quota is exceeded
             ValueError: If initialization parameters are invalid
@@ -263,7 +266,7 @@ class BioChat:
     def display_message_history(self):
         """
         Displays the chat history.
-        
+
         Raises:
             AttributeError: If session state is not initialized
             ValueError: If message format is invalid
@@ -382,10 +385,10 @@ class BioChat:
     def process_function_calls(self, function_calls):
         """
         Processes function calls and their responses.
-        
+
         Args:
             function_calls (list): List of function calls to process
-            
+
         Returns:
             Response: New response from Gemini if needed
         """
@@ -447,6 +450,8 @@ class BioChat:
                 self.process_species_correlation_analysis(c['response'], c['params']),
             'calculate_species_forest_correlation': lambda c:
                 self.process_species_forest_correlation(c['response'], c['params']),
+            'calculate_species_humanmod_correlation': lambda c:
+                self.process_species_humanmod_correlation(c['response'], c['params']),
         }
 
         if call['name'] in handlers:
@@ -497,7 +502,7 @@ class BioChat:
     def add_message_to_history(self, role, content):
         """
         Adds a message to the session state history.
-        
+
         Args:
             role (str): The role of the message sender
             content (dict): The content of the message
@@ -520,7 +525,7 @@ class BioChat:
     def process_json_data(self, data_response, parameters):
         """
         Processes and visualizes JSON data for protected areas.
-        
+
         Args:
             data_response (Union[dict, list, None]): The response data
             parameters (dict): Parameters for visualization
@@ -583,13 +588,13 @@ class BioChat:
     def process_occurrences_data(self, data_response, parameters):
         """
         Processes and visualizes occurrence data for species.
-        
+
         Args:
             data_response (dict): The response data containing occurrence information
             parameters (dict): Parameters for chart generation including:
                 - chart_type (str): Type of chart to generate
                 - country_code (str, optional): Country code for geographical data
-                
+
         Raises:
             TypeError: If data_response format is invalid for JSON normalization
             ValueError: If data processing or visualization fails
@@ -669,7 +674,7 @@ class BioChat:
     def process_yearly_observations(self, data_response, parameters):
         """
         Processes yearly observation data and adds it to session state.
-        
+
         Args:
             data_response (list): List of dictionaries containing year and count
             parameters (dict): Parameters including species name
@@ -702,7 +707,7 @@ class BioChat:
     def process_endangered_species_hci_correlation(self, data_response, parameters):
         """
         Processes and visualizes correlation data between HCI and endangered species.
-        
+
         Args:
             data_response (str): JSON string containing correlation data
             parameters (dict): Parameters for visualization
@@ -757,7 +762,7 @@ class BioChat:
     def process_endangered_species(self, data_response, parameters):
         """
         Process endangered species data and visualize using specified chart type.
-        
+
         Args:
             data_response (dict): Response data containing endangered species information
             parameters (dict): Parameters for visualization
@@ -790,7 +795,7 @@ class BioChat:
     def process_endangered_species_by_country(self, data_response, parameters):
         """
         Process and visualize endangered species occurrence data for a specific country.
-        
+
         Args:
             data_response (dict): Response containing:
                 - country_code: Two-letter country code
@@ -820,7 +825,7 @@ class BioChat:
 
         except Exception as e: # pylint: disable=broad-except
             self.logger.error(
-                "Error processing endangered species by country data: %s", 
+                "Error processing endangered species by country data: %s",
                 str(e),
                 exc_info=True
             )
@@ -834,7 +839,7 @@ class BioChat:
     def process_species_hci_correlation(self, data_response, parameters):
         """
         Process and visualize species-HCI correlation data.
-        
+
         Args:
             data_response (dict): Response containing correlation data
             parameters (dict): Parameters used for the query
@@ -867,7 +872,7 @@ class BioChat:
     def process_species_hci_correlation_by_status(self, data_response, parameters):
         """
         Process and visualize species-HCI correlation data filtered by conservation status.
-        
+
         Args:
             data_response (dict): Response containing correlation data
             for a specific conservation status
@@ -893,7 +898,7 @@ class BioChat:
 
         except Exception as e: # pylint: disable=broad-except
             self.logger.error(
-                "Error processing correlation by status data: %s", 
+                "Error processing correlation by status data: %s",
                 str(e),
                 exc_info=True
             )
@@ -905,7 +910,7 @@ class BioChat:
     def process_species_shared_habitat(self, data_response, parameters):
         """
         Process and visualize species shared habitat data.
-        
+
         Args:
             data_response (dict): Response containing species shared habitat information
             parameters (dict): Parameters used for the query
@@ -936,7 +941,7 @@ class BioChat:
         except Exception as e: # pylint: disable=broad-except
             print(f"Error in process_species_shared_habitat: {str(e)}")  # Debug log
             self.logger.error(
-                "Error processing species shared habitat data: %s", 
+                "Error processing species shared habitat data: %s",
                 str(e),
                 exc_info=True
             )
@@ -948,11 +953,11 @@ class BioChat:
     def process_species_correlation_analysis(self, data_response, parameters):
         """
         Process and display species correlation analysis results.
-        
+
         Args:
             data_response (dict): Response containing correlation data and analysis
             parameters (dict): Parameters used for the analysis
-            
+
         Raises:
             ValueError: If data response format is invalid
             TypeError: If data types are incorrect
@@ -981,18 +986,18 @@ class BioChat:
         except (ValueError, TypeError, KeyError) as e:
             self.logger.error("Error processing correlation analysis: %s", str(e), exc_info=True)
             self.add_message_to_history(
-                "assistant", 
+                "assistant",
                 {"text": f"Error processing correlation analysis: {str(e)}"}
             )
 
     def process_species_forest_correlation(self, data_response, parameters):
         """
         Process and display species forest correlation analysis results.
-        
+
         Args:
             data_response (dict): Response containing correlation data and analysis
             parameters (dict): Parameters used for the analysis
-            
+
         Raises:
             ValueError: If data response format is invalid
             TypeError: If data types are incorrect
@@ -1012,7 +1017,7 @@ class BioChat:
                         "type": "species_forest_correlation",
                         "parameters": parameters
                     }
-            })                
+            })
 
             # Add the analysis text first
             if 'analysis' in data_response:
@@ -1022,6 +1027,48 @@ class BioChat:
             self.logger.error("Error processing forest correlation analysis: %s", str(e),
                               exc_info=True)
             self.add_message_to_history(
-                "assistant", 
+                "assistant",
                 {"text": f"Error processing forest correlation analysis: {str(e)}"}
             )
+
+    def process_species_humanmod_correlation(self, data_response, parameters):
+        """
+        Process and display species human modification correlation analysis results.
+
+        Args:
+            data_response (dict): Response containing correlation data and analysis
+            parameters (dict): Parameters used for the analysis
+
+        Raises:
+            ValueError: If data response format is invalid
+            TypeError: If data types are incorrect
+            KeyError: If required fields are missing
+        """
+        try:
+            if isinstance(data_response, str):
+                # If it's a string (error message), just display it
+                self.add_message_to_history("assistant", {"text": data_response})
+                return
+
+            if 'observations' in data_response:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": "species_humanmod_correlation",
+                        "parameters": parameters
+                    }
+            })
+
+            # Add the analysis text first
+            if 'analysis' in data_response:
+                self.add_message_to_history("assistant", {"text": data_response['analysis']})
+
+        except (ValueError, TypeError, KeyError) as e:
+            self.logger.error("Error processing human modification correlation analysis: %s", str(e),
+                              exc_info=True)
+            self.add_message_to_history(
+                "assistant",
+                {"text": f"Error processing human modification correlation analysis: {str(e)}"}
+            )
+

@@ -6,6 +6,7 @@ It supports various chart types including heatmaps and hexagon maps, with automa
 view state adjustment based on data bounds.
 """
 
+import time
 import json
 import logging
 import colorsys
@@ -13,7 +14,6 @@ import numpy as np
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
-import time 
 
 try:
     import plotly.graph_objects as go
@@ -23,7 +23,7 @@ except ImportError:
 from .d3js_visualization import display_force_visualization, display_tree, display_shared_habitat
 from ..utils.alpha_shape_utils import AlphaShapeUtils
 from .forest_viz import ForestViz
-
+from .human_modification_viz import HumanModificationViz
 
 class ChartHandler:
     """
@@ -58,7 +58,7 @@ class ChartHandler:
             data (pd.DataFrame): DataFrame containing coordinate data
             chart_type (str): Type of visualization to create
             params (dict): Additional parameters for visualization
-                - For distribution maps: Can include 'alpha', 'eps', and 'min_samples' 
+                - For distribution maps: Can include 'alpha', 'eps', and 'min_samples'
                   to control alpha shape generation (defaults: 0.5, 1.0, 3)
                 - For distribution maps: Can include 'avoid_overlaps' (bool) to control
                   whether overlapping clusters should be merged (default: True)
@@ -81,6 +81,10 @@ class ChartHandler:
                 with st.spinner("Rendering forest correlation plot..."):
                     # For forest correlation, df contains the complete data structure
                     self.draw_species_forest_correlation(df, parameters, _cache_buster)
+                    return
+            elif chart_type == "species_humanmod_correlation":
+                with st.spinner("Rendering human modification correlation plot..."):
+                    self.draw_species_humanmod_correlation(df, parameters, _cache_buster)
                     return
             elif chart_type == "heatmap":
                 self.draw_heatmap(parameters, df, _cache_buster)
@@ -212,11 +216,11 @@ class ChartHandler:
                 st.markdown(
                     """
                     This heatmap shows species distribution:
-                    
+
                     - Areas with more observations appear hotter (red)
                     - Areas with fewer observations appear cooler (yellow)
                     - Intensity indicates density of observations
-                    
+
                     ### Color Scale
                 """
                 )
@@ -338,18 +342,18 @@ class ChartHandler:
                 # Add explanation of visualization
                 st.markdown(
                     """
-                    This map shows species distribution using:                    
+                    This map shows species distribution using:
                     **Hexagons**
                     - Each hexagon represents a geographic area
                     - Height indicates number of observations
                     - Darker color means more observations
                     - Hover over hexagons to see exact counts
-                    
+
                     **Yellow Outline**
                     - Shows the species' range boundary
                     - Calculated using alpha shape algorithm
                     - Connects outermost observation points
-                    
+
                     **Color Scale**
                 """
                 )
@@ -388,15 +392,15 @@ class ChartHandler:
     def _create_alpha_shapes(self, df, parameters):
         """
         Create alpha shapes from a dataframe of coordinates.
-        
+
         Args:
             df (pd.DataFrame): DataFrame containing coordinate data with decimallongitude and decimallatitude columns
             parameters (dict): Dictionary containing alpha shape parameters
                 - alpha (float): Alpha value for concave hull algorithm (default: 0.5)
-                - eps (float): Epsilon value for DBSCAN clustering (default: 1.0) 
+                - eps (float): Epsilon value for DBSCAN clustering (default: 1.0)
                 - min_samples (int): Minimum samples for DBSCAN clustering (default: 3)
                 - avoid_overlaps (bool): Whether to merge overlapping clusters (default: True)
-        
+
         Returns:
             dict: GeoJSON representation of the alpha shapes
         """
@@ -415,7 +419,7 @@ class ChartHandler:
             min_samples=min_samples,
             avoid_overlaps=avoid_overlaps
         )
-        
+
         return hull_geojson
 
     def _get_bounds_from_data(self, df, percentile_cutoff=2.5, min_points=10):
@@ -589,7 +593,7 @@ class ChartHandler:
                             )
                         ],
                         tooltip={"text": "Name: {name}\nIUCN Category: {category}"},
-                    ),  
+                    ),
                     height=700,
                     key=f"geojson_map_{message_index}"
                 )
@@ -1071,12 +1075,12 @@ class ChartHandler:
                     This scatter plot shows the relationship between:
                     - Human Coexistence Index (HCI)
                     - Number of Endangered Species (all categories)
-                    
+
                     **How to Read:**
                     - Each point represents a country
                     - X-axis: HCI value
                     - Y-axis: Number of Endangered species (log scale)
-                    
+
                     **Interpretation:**
                     - Upward trend: Positive correlation
                     - Downward trend: Negative correlation
@@ -1113,7 +1117,7 @@ class ChartHandler:
     def  draw_occurrence_map(self, data, parameters, _cache_buster=None):
         """
         Creates an interactive map of endangered species occurrences colored by conservation status.
-        
+
         Args:
             data (dict): Dictionary containing:
                 - occurrences: List of species occurrences with location and status
@@ -1208,7 +1212,23 @@ class ChartHandler:
                     map_style='mapbox://styles/mapbox/dark-v10',
                 )
 
-                st.pydeck_chart(deck, height=700, key=f"occurrence_map_{message_index}")
+                # Add CSS styling for the map
+                st.markdown(
+                    """
+                    <style>
+                    .stDeckGLChart {
+                        width: 100% !important;
+                        height: 800px !important;
+                        max-width: none !important;
+                        box-sizing: border-box !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+                st.pydeck_chart(deck, height=800, use_container_width=True, key=f"occurrence_map_{message_index}")
 
             # Add legend in the second column
             with col2:
@@ -1223,7 +1243,7 @@ class ChartHandler:
                         st.markdown(
                             f"""
                             <div style="display: flex; align-items: center; margin: 5px 0;">
-                                <div style="width: 20px; height: 20px; 
+                                <div style="width: 20px; height: 20px;
                                           background: rgb({color[0]},{color[1]},{color[2]});
                                           margin-right: 5px; border: 1px solid black;">
                                 </div>
@@ -1240,7 +1260,7 @@ class ChartHandler:
     def draw_species_hci_correlation(self, correlation_data, parameters, _cache_buster=None):
         """
         Draw a scatter plot showing species-HCI correlation.
-        
+
         Args:
             correlation_data (dict): Dictionary containing correlation results
             parameters (dict): Parameters for visualization
@@ -1353,7 +1373,7 @@ class ChartHandler:
                         This scatter plot shows the relationship between:
                         - Species occurrence
                         - Human Coexistence Index (HCI)
-                        
+
                         **How to Read:**
                         - Each point represents a species
                         - X-axis: Average HCI where species is found
@@ -1361,7 +1381,7 @@ class ChartHandler:
                         - Color: Correlation strength and direction
                           - Blue: Positive correlation
                           - Red: Negative correlation
-                        
+
                         **Interpretation:**
                         - Blue points: Species more common in high HCI areas
                         - Red points: Species more common in low HCI areas
@@ -1370,11 +1390,11 @@ class ChartHandler:
 
                     # Add summary statistics
                     pos_threshold = 0.3
-                    pos_corr = len([c for c in correlations 
+                    pos_corr = len([c for c in correlations
                                   if c["correlation_coefficient"] > pos_threshold])
-                    neg_corr = len([c for c in correlations 
+                    neg_corr = len([c for c in correlations
                                   if c["correlation_coefficient"] < -pos_threshold])
-                    neut_corr = len([c for c in correlations 
+                    neut_corr = len([c for c in correlations
                                    if abs(c["correlation_coefficient"]) <= pos_threshold])
 
                     st.markdown(f"""
@@ -1391,13 +1411,13 @@ class ChartHandler:
                         This scatter plot shows the relationship between:
                         - Species occurrence
                         - Human Coexistence Index (HCI)
-                        
+
                         **How to Read:**
                         - Each point represents a species
                         - X-axis: Average HCI where species is found
                         - Y-axis: Correlation coefficient
                         - Color: Conservation status
-                        
+
                         **Interpretation:**
                         - Positive correlation: Species more common in high HCI areas
                         - Negative correlation: Species more common in low HCI areas
@@ -1423,7 +1443,7 @@ class ChartHandler:
                             st.markdown(
                                 f"""
                                 <div style="display: flex; align-items: center; margin: 5px 0;">
-                                    <div style="width: 20px; height: 20px; 
+                                    <div style="width: 20px; height: 20px;
                                               background-color: {color};
                                               margin-right: 5px; border: 1px solid black;">
                                     </div>
@@ -1440,16 +1460,25 @@ class ChartHandler:
 
     def draw_species_forest_correlation(self, data, parameters, _cache_buster=None):
         """Draw a map showing species observations, alpha shapes, and forest layers using Folium.
-        
+
         Args:
             data (dict): Dictionary containing:
                 - correlation_data: Dictionary of correlation statistics
                 - analysis: Analysis results
                 - species_name: Name of the species
-                - observations: List of species observations 
+                - observations: List of species observations
                 - forest_layers: Dictionary of Earth Engine layer URLs
                 - alpha_shapes: List of alpha shape polygons (optional)
             parameters (dict): Visualization parameters
         """
         forest_viz = ForestViz()
         return forest_viz.draw_species_forest_correlation(data, parameters, _cache_buster)
+
+    def draw_species_humanmod_correlation(self, data, parameters, _cache_buster=None):
+        """Draw a map showing species observations and human modification using Folium."""
+        try:
+            # Create visualization handler
+            humanmod_viz = HumanModificationViz()
+            humanmod_viz.draw_species_humanmod_correlation(data, parameters, _cache_buster)
+        except Exception as e:
+            self.logger.error("Error drawing human modification correlation: %s", str(e), exc_info=True)

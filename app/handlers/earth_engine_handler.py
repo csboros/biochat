@@ -1,8 +1,9 @@
 """Module for base Earth Engine data processing functionality."""
 
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
+from scipy import stats
 import numpy as np
 import ee
 from google.cloud import bigquery
@@ -279,3 +280,233 @@ class EarthEngineHandler:
         except Exception as e: # pylint: disable=broad-except
             self.logger.error("Failed to create alpha shape visualization: %s", str(e))
             return None
+
+    def create_error_response(
+        self,
+        species_name: str,
+        observations: list,
+        all_alpha_shapes: list,
+        scale: int,
+        avoid_overlaps: bool,
+        error_message: str = "No valid results were obtained from Earth Engine analysis.",
+        analysis_message: str = "Analysis failed. Please try with different parameters or a smaller area.",
+        correlation_data_structure: dict = None
+    ) -> Dict[str, Any]:
+        """Create a standardized error response for analysis failures.
+
+        Args:
+            species_name (str): Scientific name of the species
+            observations (list): List of observation dictionaries
+            all_alpha_shapes (list): List of alpha shapes for visualization
+            scale (int): Resolution used for analysis
+            avoid_overlaps (bool): Whether alpha shapes avoid overlaps
+            error_message (str): Specific error message to include
+            analysis_message (str): User-friendly analysis message
+            correlation_data_structure (dict): Structure of correlation data specific to the handler
+
+        Returns:
+            dict: Structured error response with consistent format
+        """
+        return {
+            'correlation_data': correlation_data_structure or {
+                'mean': 0,
+                'std': 0,
+                'correlation': 0,
+                'p_value': 1.0,
+                'total_observations': len(observations) if observations else 0,
+                'spatial_resolution': scale,
+                'error': error_message
+            },
+            'analysis': analysis_message,
+            'species_name': species_name,
+            'observations': observations,
+            'alpha_shapes': all_alpha_shapes,
+            'error': True
+        }
+
+    def create_alpha_shape_visualization(self, alpha_shapes: list) -> Optional[list]:
+        """Create visualization tiles for alpha shapes.
+
+        Args:
+            alpha_shapes (list): List of alpha shape GeoJSON polygons
+
+        Returns:
+            list or None: List of tile URLs for visualization or None if creation failed
+        """
+        if not alpha_shapes or len(alpha_shapes) == 0:
+            return None
+
+        try:
+            # Convert the GeoJSON alpha shapes to Earth Engine features
+            ee_features = []
+            for shape in alpha_shapes:
+                try:
+                    # Create a geometry from the coordinates
+                    geom = ee.Geometry.Polygon(shape['coordinates'])
+
+                    # Create a feature with properties
+                    props = shape.get('properties', {})
+                    feature = ee.Feature(geom, props)
+
+                    ee_features.append(feature)
+                except Exception as e: # pylint: disable=broad-except
+                    self.logger.error("Error converting alpha shape: %s", str(e))
+
+            if ee_features:
+                # Create a feature collection from the features
+                alpha_fc = ee.FeatureCollection(ee_features)
+
+                # Style the alpha shapes for visualization
+                styled_alpha = alpha_fc.style(
+                    color='4285F4',         # Blue outline
+                    fillColor='4285F433',   # Semi-transparent blue fill (33 = 20% opacity)
+                    width=2                 # Line width
+                )
+
+                # Get the map ID for the styled alpha shapes
+                alpha_viz = styled_alpha.getMapId()
+                alpha_shape_tiles = [alpha_viz['tile_fetcher'].url_format]
+
+                self.logger.info("Alpha shape visualization created successfully")
+                return alpha_shape_tiles
+
+            return None
+
+        except Exception as e: # pylint: disable=broad-except
+            self.logger.error("Failed to create alpha shape visualization: %s", str(e))
+            return None
+
+    def calculate_correlations(
+        self,
+        all_results: list,
+        scale: int,
+        metric_name: str,
+        metric_values: list,
+        bin_size: float = 5.0,
+        bin_range: tuple = (0, 100)
+    ) -> Dict[str, Any]:
+        """Calculate correlations between species observations and metric values.
+
+        Args:
+            all_results (list): Processed results with metric values for each point
+            scale (int): Resolution in meters used for Earth Engine analysis
+            metric_name (str): Name of the metric being analyzed
+            metric_values (list): List of metric values to analyze
+            bin_size (float): Size of bins for distribution analysis
+            bin_range (tuple): Range for binning (min, max)
+
+        Returns:
+            dict: Correlation data including statistics and distribution
+        """
+        # Create observation counts by location
+        obs_bins = {}
+        for r in all_results:
+            loc_key = round(r[metric_name], 2)  # Round to 2 decimal places for binning
+            obs_bins[loc_key] = obs_bins.get(loc_key, 0) + r['individual_count']
+
+        # Create arrays for correlation calculation
+        bin_counts = list(obs_bins.values())
+        bin_metrics = list(obs_bins.keys())
+
+        # Calculate correlation if sufficient data
+        if len(bin_counts) > 5 and np.std(bin_counts) > 0.01 and np.std(bin_metrics) > 0.01:
+            correlation, p_value = stats.pearsonr(bin_counts, bin_metrics)
+        else:
+            correlation, p_value = 0.0, 1.0
+
+        # Calculate mean and standard deviation
+        mean_value = np.mean(metric_values)
+        std_value = np.std(metric_values)
+
+        # Create distribution bins
+        distribution_bins = {}
+        for i in range(int((bin_range[1] - bin_range[0]) / bin_size)):
+            bin_start = bin_range[0] + (i * bin_size)
+            bin_end = bin_start + bin_size
+            bin_label = f"{bin_start:.2f}-{bin_end:.2f}"
+            distribution_bins[bin_label] = 0
+
+        # Bin the observations
+        for r in all_results:
+            metric_value = r[metric_name]
+            bin_index = min(
+                len(distribution_bins) - 1,
+                int((metric_value - bin_range[0]) / bin_size)
+            )
+            bin_start = bin_range[0] + (bin_index * bin_size)
+            bin_end = bin_start + bin_size
+            bin_label = f"{bin_start:.2f}-{bin_end:.2f}"
+            distribution_bins[bin_label] += r['individual_count']
+
+        return {
+            metric_name: {
+                'mean': float(mean_value),
+                'std': float(std_value),
+                'correlation': float(correlation),
+                'p_value': float(p_value)
+            },
+            'total_observations': len(all_results),
+            'spatial_resolution': scale,
+            'notes': "Correlations calculated based on observation frequency in habitat bins",
+            'distribution': distribution_bins
+        }
+
+    def process_sample_results(
+        self,
+        point_sample_results: list,
+        metric_names: list,
+        default_year: int = 2000
+    ) -> tuple:
+        """Process sample results from Earth Engine point features.
+
+        Args:
+            point_sample_results (list): List of feature results from Earth Engine
+            metric_names (list): List of metric names to extract from properties
+            default_year (int): Default year to use if not specified
+
+        Returns:
+            tuple: (all_results, filtering_stats)
+                - all_results: List of processed results with calculated metrics
+                - filtering_stats: Dictionary with statistics about filtered points
+        """
+        all_results = []
+        total_points = len(point_sample_results)
+        filtered_points = 0
+
+        for sample in point_sample_results:
+            props = sample['properties']
+
+            # Skip points with no data
+            if not all(props.get(metric, 0) is not None for metric in metric_names):
+                filtered_points += 1
+                continue
+
+            year = props.get('year', default_year)
+            individual_count = props.get('individual_count', 1)
+
+            # Create result dictionary with all metrics
+            result = {
+                'year': year,
+                'individual_count': individual_count,
+                'geometry': sample.get('geometry', {})
+            }
+
+            # Add all metrics to the result
+            for metric in metric_names:
+                result[metric] = props.get(metric, 0)
+
+            all_results.append(result)
+
+        # Create filtering statistics
+        filtering_stats = {
+            'total_filtered': filtered_points,
+            'valid_observations': len(all_results),
+            'total_observations': total_points,
+            'filtered_at_earth_engine': True
+        }
+
+        self.logger.info("Processed %s observations (%s points filtered)",
+                        len(all_results),
+                        filtered_points)
+
+        return all_results, filtering_stats

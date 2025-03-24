@@ -584,7 +584,7 @@ FUNCTION_DECLARATIONS = [
             "properties": {
                 "country_code": {
                     "type": "string",
-                    "description": "ISO Alpha-3 country code (e.g., 'KEN' for Kenya, "  
+                    "description": "ISO Alpha-3 country code (e.g., 'KEN' for Kenya, "
                     "'TZA' for Tanzania)"
                 }
             },
@@ -671,7 +671,7 @@ FUNCTION_DECLARATIONS = [
     FunctionDeclaration(
         name="get_species_shared_habitat",
         description=(
-            "Get correlation data between a specific species " 
+            "Get correlation data between a specific species "
             " and other species that share its habitat. "
             "Use this for questions about:\n"
             "- Which species share habitat with a particular species\n"
@@ -709,6 +709,30 @@ FUNCTION_DECLARATIONS = [
             "- 'How does orangutan distribution relate to forest cover?'\n"
             "- 'Show forest correlation for Panthera leo'\n"
             "- 'Analyze forest habitat relationship for tigers'"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "species_name": {
+                    "type": "string",
+                    "description": "Scientific name of the species (e.g., 'Panthera leo'), "
+                    "for common names, first use translate_to_scientific_name"
+                }
+            },
+            "required": ["species_name"]
+        }
+    ),
+    FunctionDeclaration(
+        name="calculate_species_humanmod_correlation",
+        description=(
+            "Calculate correlation between species occurrence and human modification. "
+            "This analyzes how species distribution relates to human impact using "
+            "the Global Human Modification dataset. "
+            "Examples:\n"
+            "- 'How does lion distribution relate to human modification?'\n"
+            "- 'How does elephant distribution relate to human impact?'\n"
+            "- 'Show human modification correlation for Panthera leo'\n"
+            "- 'Analyze human impact relationship for tigers'"
         ),
         parameters={
             "type": "object",

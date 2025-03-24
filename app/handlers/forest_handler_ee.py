@@ -75,13 +75,13 @@ class ForestHandlerEE(EarthEngineHandler):
             sampling_results = self.sample_forest_metrics_at_points(ee_point_features, scale)
 
             # Process results and separate out the filtering statistics
-            all_results, filtering_stats = self.process_sample_results(sampling_results)
+            all_results, filtering_stats = self.process_forest_sample_results(sampling_results)
 
             # Calculate correlations using all results
             if not all_results:
                 self.logger.warning("No valid results were obtained from Earth Engine. "
                                     "Cannot calculate correlations.")
-                return self.create_error_response(
+                return self.create_forest_error_response(
                     species_name=species_name,
                     observations=observations,
                     all_alpha_shapes=all_alpha_shapes,
@@ -90,7 +90,7 @@ class ForestHandlerEE(EarthEngineHandler):
                 )
 
             # Calculate correlation data from the results
-            correlation_data = self.calculate_correlations(all_results, scale)
+            correlation_data = self.calculate_forest_correlations(all_results, scale)
 
             # Create prompt and get analysis from LLM
             analysis = self.send_to_llm(
@@ -111,7 +111,7 @@ class ForestHandlerEE(EarthEngineHandler):
             }
         except (ValueError, ee.EEException) as e:
             self.logger.error(lambda: f"Error calculating correlations with Earth Engine: {str(e)}")
-            return self.create_error_response(
+            return self.create_forest_error_response(
                 species_name=species_name,
                 observations=observations,
                 all_alpha_shapes=all_alpha_shapes if 'all_alpha_shapes' in locals() else [],
@@ -121,7 +121,7 @@ class ForestHandlerEE(EarthEngineHandler):
                 analysis_message="Analysis failed. Please try with different parameters or a smaller area."
             )
 
-    def calculate_correlations(self, all_results: list, scale: int) -> Dict[str, Any]:
+    def calculate_forest_correlations(self, all_results: list, scale: int) -> Dict[str, Any]:
         """Calculate correlations between species observations and forest metrics.
 
         Args:
@@ -270,7 +270,7 @@ class ForestHandlerEE(EarthEngineHandler):
         }
         return correlation_data
 
-    def process_sample_results(self, point_sample_results: list) -> tuple:
+    def process_forest_sample_results(self, point_sample_results: list) -> tuple:
         """Process sample results from Earth Engine point features with temporal awareness and datamask filtering.
 
         Args:
@@ -426,42 +426,7 @@ class ForestHandlerEE(EarthEngineHandler):
             gain_layer = gain_vis.getMapId()
 
             # Alpha shape visualization (new code)
-            alpha_shape_tiles = None
-            if alpha_shapes and len(alpha_shapes) > 0:
-                try:
-                    # Convert the GeoJSON alpha shapes to Earth Engine features
-                    ee_features = []
-                    for shape in alpha_shapes:
-                        try:
-                            # Create a geometry from the coordinates
-                            geom = ee.Geometry.Polygon(shape['coordinates'])
-
-                            # Create a feature with properties
-                            props = shape.get('properties', {})
-                            feature = ee.Feature(geom, props)
-
-                            ee_features.append(feature)
-                        except Exception as e: # pylint: disable=broad-except
-                            self.logger.error("Error converting alpha shape: %s", str(e))
-
-                    if ee_features:
-                        # Create a feature collection from the features
-                        alpha_fc = ee.FeatureCollection(ee_features)
-
-                        # Style the alpha shapes for visualization
-                        styled_alpha = alpha_fc.style(
-                            color='4285F4',         # Blue outline
-                            fillColor='4285F433',   # Semi-transparent blue fill (33 = 20% opacity)
-                            width=2                 # Line width
-                        )
-
-                        # Get the map ID for the styled alpha shapes
-                        alpha_viz = styled_alpha.getMapId()
-                        alpha_shape_tiles = [alpha_viz['tile_fetcher'].url_format]
-
-                        self.logger.info("Alpha shape visualization created successfully")
-                except Exception as e: # pylint: disable=broad-except
-                    self.logger.error("Failed to create alpha shape visualization: %s", str(e))
+            alpha_shape_tiles = self.create_alpha_shape_visualization(alpha_shapes)
 
             # Construct the result dictionary with all layers
             result = {
@@ -683,7 +648,7 @@ class ForestHandlerEE(EarthEngineHandler):
             self.logger.error("Earth Engine error: %s", str(e))
             raise
 
-    def create_error_response(
+    def create_forest_error_response(
         self,
         species_name: str,
         observations: list,
