@@ -23,7 +23,7 @@ class ForestHandlerEE(EarthEngineHandler):
         eps: float = 1.0,
         min_samples: int = 3,
         avoid_overlaps: bool = True,
-        scale: int = 200
+        scale: int = 30
     ) -> Dict[str, Any]:
         """Calculate correlation between species observations and forest metrics using Earth Engine.
 
@@ -283,14 +283,22 @@ class ForestHandlerEE(EarthEngineHandler):
         """
         all_results = []
 
-        # All points are now valid since datamask filtering is done at Earth Engine level
-        valid_count = len(point_sample_results)
+        # Track filtering statistics
+        total_points = len(point_sample_results)
+        water_points = 0
+        no_data_points = 0
 
         for sample in point_sample_results:
             props = sample['properties']
+            datamask = props.get('datamask', 0)
 
-            # No need to check datamask value - all points should be on land (datamask=1)
-            # due to the mask applied in sample_forest_metrics_at_points
+            # Skip points over water or with no data
+            if datamask != 1:
+                if datamask == 2:
+                    water_points += 1
+                else:
+                    no_data_points += 1
+                continue
 
             year = props.get('year', 2000)  # Observation year
             individual_count = props.get('individual_count', 1)
@@ -347,18 +355,19 @@ class ForestHandlerEE(EarthEngineHandler):
             })
 
         # Create filtering statistics
-        # Note: Statistics will be different now - total filtered will be unknown
-        # since Earth Engine filters before we get the results
-        total_input = valid_count  # We only know about the points that passed the filter
         filtering_stats = {
-            'total_filtered': 0,  # We don't know how many were filtered
-            'valid_observations': valid_count,
-            'total_observations': total_input,
+            'total_filtered': water_points + no_data_points,
+            'ocean_observations_filtered': water_points,
+            'no_data_observations_filtered': no_data_points,
+            'valid_observations': len(all_results),
+            'total_observations': total_points,
             'filtered_at_earth_engine': True  # Flag indicating filtering happened at EE level
         }
 
-        self.logger.info("Processed %s observations (pre-filtered at Earth Engine level)",
-                         total_input)
+        self.logger.info("Processed %s observations (%s water points, %s no-data points filtered)",
+                         len(all_results),
+                         water_points,
+                         no_data_points)
 
         return all_results, filtering_stats
 
@@ -392,26 +401,14 @@ class ForestHandlerEE(EarthEngineHandler):
                 palette=['00ff00']  # Only green for areas with forest
             )
 
-            # Forest loss visualization - using the same approach as
-            # in calculate_species_forest_correlation_ee
-            # Check if 'loss' band exists in the Hansen dataset
-            hansen_bands = hansen.bandNames().getInfo()
-            if 'loss' in hansen_bands:
-                # If 'loss' band exists, use it directly
-                self.logger.info("Using 'loss' band directly for visualization")
-                loss_mask = hansen.select('loss')
-            else:
-                # If 'loss' band doesn't exist, create it from 'lossyear'
-                self.logger.info("Creating binary loss from 'lossyear' for visualization")
-                loss_year = hansen.select(['lossyear'])
-                # Show all loss (2001-2023)
-                loss_mask = loss_year.gt(0)
-
+            # Forest loss visualization using lossyear
+            loss_year = hansen.select(['lossyear'])
             # Apply the mask to make areas with no loss transparent
-            loss_vis = loss_mask.selfMask().visualize(
-                min=0,
-                max=1,
-                palette=['ff0000']  # Red for forest loss
+            loss_vis = loss_year.selfMask().visualize(
+                min=1,  # Start from 1 (2001)
+                max=23,  # End at 23 (2023)
+                palette=['ff0000', 'ff1a1a', 'ff3333', 'ff4d4d', 'ff6666',
+                        'ff8080', 'ff9999', 'ffb3b3', 'ffcccc', 'ffe6e6']  # Different shades of red
             )
 
             # Forest gain visualization (2000-2012)
@@ -474,7 +471,13 @@ class ForestHandlerEE(EarthEngineHandler):
                 },
                 'forest_loss': {
                     'tiles': [loss_layer['tile_fetcher'].url_format],
-                    'attribution': 'Hansen/UMD/Google/USGS/NASA'
+                    'attribution': 'Hansen/UMD/Google/USGS/NASA',
+                    'legend': {
+                        'title': 'Forest Loss Year',
+                        'min': 2001,
+                        'max': 2023,
+                        'colors': ['dark red', 'light red']  # Simplified legend colors
+                    }
                 },
                 'forest_gain': {
                     'tiles': [gain_layer['tile_fetcher'].url_format],
@@ -663,10 +666,18 @@ class ForestHandlerEE(EarthEngineHandler):
                 tileScale=4
             )
             point_sample_results = point_forest_stats.getInfo()['features']
-            self.logger.info("Received %d sample results for individual points",
-                             len(point_sample_results))
 
-            return point_sample_results
+            # Filter out any points that didn't get valid data (over water or no data)
+            filtered_results = [
+                result for result in point_sample_results
+                if result['properties'].get('datamask') == 1
+            ]
+
+            self.logger.info("Received %d valid sample results (filtered out %d water/no-data points)",
+                             len(filtered_results),
+                             len(point_sample_results) - len(filtered_results))
+
+            return filtered_results
 
         except ee.EEException as e:
             self.logger.error("Earth Engine error: %s", str(e))
