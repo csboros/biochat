@@ -706,7 +706,7 @@ FUNCTION_DECLARATIONS = [
             "Hansen Global Forest Change data. "
             "Examples:\n"
             "- 'How does lion distribution relate to forest cover?'\n"
-            "- 'How does chimpanzee distribution relate to forest cover?'\n"
+            "- 'How does orangutan distribution relate to forest cover?'\n"
             "- 'Show forest correlation for Panthera leo'\n"
             "- 'Analyze forest habitat relationship for tigers'"
         ),
