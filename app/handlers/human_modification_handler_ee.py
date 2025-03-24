@@ -1,12 +1,8 @@
 """Module for handling human modification data processing using Earth Engine."""
 
-import os
 import logging
 from typing import Dict, Any, Optional
-import numpy as np
 import ee
-from google.cloud import bigquery
-from scipy import stats
 from app.utils.alpha_shape_utils import AlphaShapeUtils
 from app.handlers.earth_engine_handler import EarthEngineHandler
 
@@ -30,12 +26,12 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         scale: int = 1000       # Resolution in meters for Earth Engine analysis (gHM is 1km)
     ) -> Dict[str, Any]:
         """Calculate correlation between species observations and human modification using Earth Engine.
-        
+
         This method samples human modification metrics directly at each species observation point,
         providing an analysis of species distribution across human-modified landscapes.
         The correlation is calculated based on observation frequency in different
         habitat types, accounting for individual counts at each location.
-        
+
         Human modification is defined using the global Human Modification dataset (gHM),
         which provides a cumulative measure of human impact on terrestrial lands at a 1km resolution.
         Values range from 0.0 (no modification) to 1.0 (complete modification) and incorporate:
@@ -44,7 +40,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
           - transportation (major, minor, and two-track roads; railroads)
           - mining and energy production
           - electrical infrastructure (power lines, nighttime lights)
-        
+
         Args:
             species_name (str): Scientific name of the species
             min_observations (int): Minimum number of observations required
@@ -53,7 +49,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             min_samples: Minimum samples for DBSCAN clustering (visualization only)
             avoid_overlaps (bool): Whether to merge overlapping alpha shapes (visualization only)
             scale: Resolution in meters for Earth Engine analysis (gHM is 1km resolution)
-            
+
         Returns:
             dict: Dictionary containing correlation results and statistics for the relationship
                   between species occurrence and human modification index.
@@ -65,14 +61,15 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             # Create point features from individual observations
             ee_point_features = self.create_ee_point_features(observations)
 
+            all_alpha_shapes = []
             # Generate alpha shapes for visualization only
-            all_alpha_shapes = self.generate_alpha_shapes_for_visualization(
-                observations,
-                alpha=alpha,
-                eps=eps,
-                min_samples=min_samples,
-                avoid_overlaps=avoid_overlaps
-            )
+            # all_alpha_shapes = self.generate_alpha_shapes_for_visualization(
+            #     observations,
+            #     alpha=alpha,
+            #     eps=eps,
+            #     min_samples=min_samples,
+            #     avoid_overlaps=avoid_overlaps
+            # )
 
             # Sample human modification values at observation points
             all_results = self.process_ghm_sample_results(
@@ -83,7 +80,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             if not all_results:
                 self.logger.warning("No valid results were obtained from Earth Engine. "
                                     "Cannot calculate correlations.")
-                return self.create_error_response(
+                return self.create_humanmod_error_response(
                     species_name=species_name,
                     observations=observations,
                     all_alpha_shapes=all_alpha_shapes,
@@ -105,8 +102,9 @@ class HumanModificationHandlerEE(EarthEngineHandler):
                 'correlation_data': correlation_data,
                 'analysis': analysis,
                 'species_name': species_name,
-                'observations': observations, 
+                'observations': observations,
                 'alpha_shapes': all_alpha_shapes,
+                'all_results': all_results,
                 'ghm_layers': self.get_ghm_layers(
                     alpha_shapes=all_alpha_shapes,
                     avoid_overlaps=avoid_overlaps
@@ -114,7 +112,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             }
         except (ValueError, ee.EEException) as e:
             self.logger.error(lambda: f"Error calculating human modification correlations: {str(e)}")
-            return self.create_error_response(
+            return self.create_humanmod_error_response(
                 species_name=species_name,
                 observations=observations,
                 all_alpha_shapes=all_alpha_shapes if 'all_alpha_shapes' in locals() else [],
@@ -125,247 +123,98 @@ class HumanModificationHandlerEE(EarthEngineHandler):
                 "or a smaller area."
             )
 
-    def get_species_observations(self, species_name: str, min_observations: int = 10) -> list:
-        """Retrieve species observations from BigQuery.
-        
-        Args:
-            species_name (str): Scientific name of the species
-            min_observations (int): Minimum number of observations required
-            
-        Returns:
-            list: List of observation dictionaries with coordinates and metadata
-            
-        Raises:
-            ValueError: If insufficient observations are found for the species
-        """
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        client = bigquery.Client(project=project_id)
-
-        query = f"""
-        SELECT 
-            decimallongitude,
-            decimallatitude,
-            EXTRACT(YEAR FROM eventdate) as observation_year,
-            COALESCE(individualcount, 1) as individual_count
-        FROM `{project_id}.biodiversity.occurances_endangered_species_mammals`
-        WHERE species = @species_name
-            AND decimallongitude IS NOT NULL
-            AND decimallatitude IS NOT NULL
-            AND eventdate IS NOT NULL
-            AND EXTRACT(YEAR FROM eventdate) > 2000
-        """
-
-        if isinstance(species_name, dict) and 'species_name' in species_name:
-            species_name = species_name['species_name']
-
-        params = [bigquery.ScalarQueryParameter("species_name", "STRING", species_name)]
-        job_config = bigquery.QueryJobConfig(query_parameters=params)
-
-        # Convert query results to a list of dictionaries
-        observations_raw = list(client.query(query, job_config=job_config).result())
-        observations = [
-            {
-                "decimallongitude": obs.decimallongitude,
-                "decimallatitude": obs.decimallatitude,
-                "observation_year": obs.observation_year,
-                "individual_count": obs.individual_count
-            }
-            for obs in observations_raw
-        ]
-
-        if len(observations) < min_observations:
-            raise ValueError(
-                f"Insufficient observations ({len(observations)}) "
-                f"for species {species_name}"
-            )
-
-        return observations
-
-    def create_ee_point_features(self, observations: list, buffer_radius: int = None) -> list:
-        """Create Earth Engine features from individual observation points.
-        
-        Args:
-            observations (list): List of observation dictionaries from the database
-            buffer_radius (int, optional): Buffer radius in meters
-            
-        Returns:
-            list: List of Earth Engine features for individual observation points
-        """
-        ee_point_features = []
-
-        for obs in observations:
-            try:
-                # Create point geometry
-                ee_geom = ee.Geometry.Point([obs["decimallongitude"], obs["decimallatitude"]])
-                
-                # Apply buffer if specified (in meters)
-                if buffer_radius:
-                    ee_geom = ee_geom.buffer(buffer_radius)
-
-                # Create Earth Engine feature with properties
-                ee_feature = ee.Feature(ee_geom, {
-                    'year': obs["observation_year"],
-                    'individual_count': obs["individual_count"]
-                })
-
-                ee_point_features.append(ee_feature)
-            except Exception as e: # pylint: disable=broad-except
-                self.logger.warning("Error creating Earth Engine feature for point: %s", str(e))
-
-        return ee_point_features
-
     def sample_ghm_at_points(self, ee_point_features: list, scale: int) -> list:
         """Sample human modification values at each observation point.
-        
+
         Args:
             ee_point_features (list): List of Earth Engine point features
             scale (int): Resolution in meters for Earth Engine analysis
-            
+
         Returns:
             list: Sample results containing human modification values for each point
-            
+
         Raises:
             ee.EEException: If Earth Engine encounters an error during processing
         """
         # Load Global Human Modification dataset
         ghm = ee.ImageCollection("CSP/HM/GlobalHumanModification").first()
-        
-        # Sample the dataset at each observation point
+
+        # Select the gHM band explicitly
+        ghm = ghm.select('gHM')
+
+        # Process points in batches to avoid Earth Engine limit
+        batch_size = 4000  # Keep under 5000 limit
+        all_results = []
+
         try:
-            # Create a feature collection from individual point features
-            point_collection = ee.FeatureCollection(ee_point_features)
-            self.logger.info("Sampling human modification at %d individual observation points",
-                            len(ee_point_features))
+            # Process points in batches
+            for i in range(0, len(ee_point_features), batch_size):
+                batch_features = ee_point_features[i:i + batch_size]
+                point_collection = ee.FeatureCollection(batch_features)
 
-            # Sample human modification at each point
-            point_ghm_stats = ghm.reduceRegions(
-                collection=point_collection,
-                reducer=ee.Reducer.first(),
-                scale=scale,
-                tileScale=4
-            )
-            point_sample_results = point_ghm_stats.getInfo()['features']
-            self.logger.info("Received %d sample results for individual points",
-                            len(point_sample_results))
+                self.logger.info("Sampling human modification for batch %d-%d of %d points",
+                                i + 1, min(i + batch_size, len(ee_point_features)), len(ee_point_features))
 
-            return point_sample_results
+                # Sample human modification at each point
+                point_ghm_stats = ghm.reduceRegions(
+                    collection=point_collection,
+                    reducer=ee.Reducer.first(),
+                    scale=scale,
+                    tileScale=4
+                )
+                batch_results = point_ghm_stats.getInfo()['features']
+                all_results.extend(batch_results)
+
+                # Log the first result to check the structure
+                if i == 0 and batch_results:
+                    self.logger.info("Sample result structure: %s", batch_results[0])
+
+                self.logger.info("Received %d sample results for batch", len(batch_results))
+
+            self.logger.info("Total sample results: %d", len(all_results))
+            return all_results
 
         except ee.EEException as e:
             self.logger.error("Earth Engine error: %s", str(e))
             raise
 
     def process_ghm_sample_results(self, point_sample_results: list) -> list:
-        """Process human modification sample results from Earth Engine point features.
-        
-        Args:
-            point_sample_results (list): List of feature results from Earth Engine
-            
-        Returns:
-            list: Processed results with human modification values for each point
-        """
-        all_results = []
-        for sample in point_sample_results:
-            props = sample['properties']
-            year = props.get('year', 2016)  # Default year for ghm dataset
-            individual_count = props.get('individual_count', 1)
-
-            # Extract human modification value
-            ghm_value = props.get('gHM', 0)
-
-            # Check inputs for validity
-            if ghm_value is None:
-                ghm_value = 0
-
-            # Store each point result separately
-            all_results.append({
-                'year': year,
-                'individual_count': individual_count,
-                'ghm_value': ghm_value,
-                'geometry': sample.get('geometry', {})  # Store point geometry for debugging
-            })
+        """Process human modification sample results from Earth Engine point features."""
+        all_results, _ = self.process_sample_results(
+            point_sample_results,
+            metric_names=['first'],  # 'first' is the property name for gHM values
+            default_year=2016
+        )
         return all_results
 
     def calculate_ghm_correlations(self, all_results: list, scale: int) -> Dict[str, Any]:
         """Calculate correlations between species observations and human modification.
-        
+
         Args:
             all_results (list): Processed results with human modification values for each point
             scale (int): Resolution in meters used for Earth Engine analysis
-            
+
         Returns:
             dict: Correlation data including statistics for human modification
         """
-        individual_counts = [r['individual_count'] for r in all_results]
-        ghm_values = [r['ghm_value'] for r in all_results]
+        # Use base class method to calculate correlations
+        correlation_data = self.calculate_correlations(
+            all_results=all_results,
+            scale=scale,
+            metric_name='first',  # 'first' is the property name for gHM values
+            metric_values=[r['first'] for r in all_results],
+            bin_size=0.05,  # 5% bins for human modification (0-1 range)
+            bin_range=(0, 1)  # Human modification ranges from 0 to 1
+        )
 
-        # Log the values for debugging
-        self.logger.info("Calculating correlations with %s data points", len(individual_counts))
-        self.logger.info("Human modification values range: %s to %s",
-                        min(ghm_values) if ghm_values else 0, 
-                        max(ghm_values) if ghm_values else 0)
-
-        # Handle cases where there's no variation in the data
-        try:
-            # Use standard deviation to check for meaningful variation
-            ghm_values_std = np.std(ghm_values) if ghm_values else 0
-
-            # Log the standard deviation for debugging
-            self.logger.info("Standard deviation - human modification: %.5f",
-                            ghm_values_std)
-
-            # Create observation counts by location and habitat characteristics
-            obs_bins = {}
-            # Include precision for human modification to capture ecological patterns
-            for r in all_results:
-                # Create a location key (rounded to 2 decimal places for binning)
-                loc_key = round(r.get('ghm_value', 0), 2)
-                # Add the individual_count instead of just incrementing by 1
-                obs_bins[loc_key] = obs_bins.get(loc_key, 0) + r.get('individual_count', 1)
-
-            # Create arrays for correlation calculation using observation frequency
-            bin_counts = list(obs_bins.values())
-            bin_ghm = list(obs_bins.keys())
-
-            # Log information about the bins
-            self.logger.info("Created %d distinct habitat bins "
-                            "for correlation analysis", len(bin_counts))
-            self.logger.info("Observation frequency range: %s to %s",
-                            min(bin_counts) if bin_counts else 0,
-                            max(bin_counts) if bin_counts else 0)
-
-            # Make sure we have sufficient data for correlation
-            if len(bin_counts) > 5 and np.std(bin_counts) > 0.01 and np.std(bin_ghm) > 0.01:
-                ghm_corr, ghm_p = stats.pearsonr(bin_counts, bin_ghm)
-                self.logger.info("Successfully calculated human modification "
-                            "correlation using observation frequency: %.3f (p=%.3f)",
-                            ghm_corr, ghm_p)
-            else:
-                ghm_corr, ghm_p = 0.0, 1.0
-                self.logger.warning("Insufficient variation "
-                    "in binned data. Setting human modification correlation to 0.")
-
-            # Set the calculation method note
-            correlation_data_notes = "Correlations calculated based on observation frequency in habitat bins"
-
-        except Exception as e: # pylint: disable=broad-except
-            self.logger.error("Error calculating correlations: %s", str(e))
-            ghm_corr, ghm_p = 0.0, 1.0
-            correlation_data_notes = "Error calculating correlations."
-
-        correlation_data = {
-            'human_modification': {
-                'mean': 
-                    sum(ghm_values) / len(ghm_values) if ghm_values else 0.0,
-                'std': 
-                    stats.tstd(ghm_values) if len(set(ghm_values)) > 1 else 0.0,
-                'correlation': ghm_corr,
-                'p_value': ghm_p
-            },
-            'total_observations': len(all_results),
-            'spatial_resolution': scale,
-            'notes': correlation_data_notes
+        # Restructure the data to match the expected format
+        return {
+            'human_modification': correlation_data['first'],  # Rename 'first' to 'human_modification'
+            'total_observations': correlation_data['total_observations'],
+            'spatial_resolution': correlation_data['spatial_resolution'],
+            'notes': correlation_data['notes'],
+            'distribution': correlation_data['distribution']
         }
-        return correlation_data
 
     def get_ghm_layers(
         self,
@@ -373,11 +222,11 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         avoid_overlaps: bool = True
     ) -> Dict[str, Any]:
         """Get human modification and alpha shape visualization layers.
-        
+
         Args:
             alpha_shapes (list, optional): List of alpha shape GeoJSON polygons to visualize
             avoid_overlaps (bool): Whether to merge overlapping alpha shapes (default: True)
-            
+
         Returns:
             dict: Dictionary containing map visualization URLs for different layers
         """
@@ -395,43 +244,8 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             # Get map ID and token
             ghm_layer = ghm_vis.getMapId()
 
-            # Alpha shape visualization (same as in forest handler)
-            alpha_shape_tiles = None
-            if alpha_shapes and len(alpha_shapes) > 0:
-                try:
-                    # Convert the GeoJSON alpha shapes to Earth Engine features
-                    ee_features = []
-                    for shape in alpha_shapes:
-                        try:
-                            # Create a geometry from the coordinates
-                            geom = ee.Geometry.Polygon(shape['coordinates'])
-
-                            # Create a feature with properties
-                            props = shape.get('properties', {})
-                            feature = ee.Feature(geom, props)
-
-                            ee_features.append(feature)
-                        except Exception as e: # pylint: disable=broad-except
-                            self.logger.error("Error converting alpha shape: %s", str(e))
-
-                    if ee_features:
-                        # Create a feature collection from the features
-                        alpha_fc = ee.FeatureCollection(ee_features)
-
-                        # Style the alpha shapes for visualization
-                        styled_alpha = alpha_fc.style(
-                            color='4285F4',         # Blue outline
-                            fillColor='4285F433',   # Semi-transparent blue fill (33 = 20% opacity)
-                            width=2                 # Line width
-                        )
-
-                        # Get the map ID for the styled alpha shapes
-                        alpha_viz = styled_alpha.getMapId()
-                        alpha_shape_tiles = [alpha_viz['tile_fetcher'].url_format]
-
-                        self.logger.info("Alpha shape visualization created successfully")
-                except Exception as e: # pylint: disable=broad-except
-                    self.logger.error("Failed to create alpha shape visualization: %s", str(e))
+            # Alpha shape visualization
+            alpha_shape_tiles = self.create_alpha_shape_visualization(alpha_shapes)
 
             # Construct the result dictionary with all layers
             result = {
@@ -460,11 +274,11 @@ class HumanModificationHandlerEE(EarthEngineHandler):
 
     def create_ghm_analysis_prompt(self, species_name: str, correlation_data: Dict[str, Any]) -> str:
         """Generate a prompt for LLM analysis of species-human modification correlations.
-        
+
         Args:
             species_name (str): Scientific name of the species being analyzed
             correlation_data (dict): Dictionary containing correlation results and statistics
-            
+
         Returns:
             str: Formatted prompt text for the LLM
         """
@@ -510,7 +324,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         }
 
         prompt += """
-        
+
         Here's the same data with values expressed as percentages:
         """
         prompt += f"\n{percentage_data}"
@@ -526,8 +340,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         """
         return prompt
 
-
-    def create_error_response(
+    def create_humanmod_error_response(
         self,
         species_name: str,
         observations: list,
@@ -538,7 +351,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         analysis_message: str = "Analysis failed. Please try with different parameters or a smaller area."
     ) -> Dict[str, Any]:
         """Create a standardized error response for analysis failures.
-        
+
         Args:
             species_name (str): Scientific name of the species
             observations (list): List of observation dictionaries
@@ -547,24 +360,34 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             avoid_overlaps (bool): Whether alpha shapes avoid overlaps
             error_message (str): Specific error message to include
             analysis_message (str): User-friendly analysis message
-            
+
         Returns:
             dict: Structured error response with consistent format
         """
-        return {
-            'correlation_data': {
-                'human_modification': {'mean': 0, 'std': 0, 'correlation': 0, 'p_value': 1.0},
-                'total_observations': len(observations) if observations else 0,
-                'spatial_resolution': scale,
-                'error': error_message
-            },
-            'analysis': analysis_message,
-            'species_name': species_name,
-            'observations': observations,
-            'alpha_shapes': all_alpha_shapes,
-            'ghm_layers': self.get_ghm_layers(
-                alpha_shapes=all_alpha_shapes,
-                avoid_overlaps=avoid_overlaps
-            ),
-            'error': True
+        # Define the human modification-specific correlation data structure
+        correlation_data_structure = {
+            'human_modification': {'mean': 0, 'std': 0, 'correlation': 0, 'p_value': 1.0},
+            'total_observations': len(observations) if observations else 0,
+            'spatial_resolution': scale,
+            'error': error_message
         }
+
+        # Get base error response
+        error_response = super().create_error_response(
+            species_name=species_name,
+            observations=observations,
+            all_alpha_shapes=all_alpha_shapes,
+            scale=scale,
+            avoid_overlaps=avoid_overlaps,
+            error_message=error_message,
+            analysis_message=analysis_message,
+            correlation_data_structure=correlation_data_structure
+        )
+
+        # Add human modification-specific layers
+        error_response['ghm_layers'] = self.get_ghm_layers(
+            alpha_shapes=all_alpha_shapes,
+            avoid_overlaps=avoid_overlaps
+        )
+
+        return error_response

@@ -19,13 +19,13 @@ class HumanModificationViz:
 
     def draw_species_humanmod_correlation(self, data, parameters, _cache_buster=None):
         """Draw a map showing species observations and human modification using Folium.
-        
+
         Args:
             data (dict): Dictionary containing:
                 - correlation_data: Dictionary of correlation statistics
                 - analysis: Analysis results
                 - species_name: Name of the species
-                - observations: List of species observations 
+                - observations: List of species observations
                 - ghm_layers: Dictionary of Earth Engine layer URLs
                 - alpha_shapes: List of alpha shape polygons (optional)
             parameters (dict): Visualization parameters
@@ -33,7 +33,7 @@ class HumanModificationViz:
         try:
              # pylint: disable=no-member
             message_index = _cache_buster if _cache_buster is not None else int(time.time())
-            
+
             # Create DataFrame from observations
             df = pd.DataFrame(data['observations'])
 
@@ -59,7 +59,7 @@ class HumanModificationViz:
                     tiles="CartoDB dark_matter"
                 )
                 Fullscreen().add_to(m)
-                
+
                 # Add Earth Engine human modification layer if available
                 ghm_layers = data.get('ghm_layers', {})
 
@@ -84,44 +84,146 @@ class HumanModificationViz:
                     ).add_to(m)
 
                 # Add observation points
-                cluster = MarkerCluster(name="Observations").add_to(m)
-                
-                for _, row in df.iterrows():
-                    popup_text = f"""
-                    <b>Location:</b> {row['decimallatitude']:.5f}, {row['decimallongitude']:.5f}<br>
-                    <b>Year:</b> {row['observation_year']}<br>
-                    <b>Count:</b> {row['individual_count']}
-                    """
-                    
-                    folium.Marker(
-                        location=[row['decimallatitude'], row['decimallongitude']],
-                        popup=folium.Popup(popup_text, max_width=300),
-                        icon=folium.Icon(color='red', icon='info-sign')
-                    ).add_to(cluster)
-                
+                if 'all_results' in data and len(data['all_results']) > 0:
+                    # Create separate feature groups for different human modification levels
+                    low_mod_group = folium.FeatureGroup(name="Low Human Modification (0-0.2)")
+                    mid_mod_group = folium.FeatureGroup(name="Medium Human Modification (0.2-0.6)")
+                    high_mod_group = folium.FeatureGroup(name="High Human Modification (0.6-1.0)")
+
+                    # Keep track of counts
+                    low_count = 0
+                    mid_count = 0
+                    high_count = 0
+
+                    # Process each point
+                    for point in data['all_results']:
+                        if 'geometry' not in point or 'coordinates' not in point['geometry']:
+                            continue
+
+                        coords = point['geometry']['coordinates']
+                        if not coords or len(coords) < 2:
+                            continue
+
+                        lon, lat = coords[0], coords[1]
+                        ghm_value = point.get('ghm_value', 0)
+
+                        # Create popup content
+                        popup_content = f"""
+                            <b>Location:</b> {lat:.4f}, {lon:.4f}<br>
+                            <b>Human Modification:</b> {ghm_value:.2f}<br>
+                            <b>Year:</b> {point.get('year', 'Unknown')}<br>
+                            <b>Count:</b> {point.get('individual_count', 1)}
+                        """
+
+                        # Add to appropriate group based on human modification level
+                        if ghm_value <= 0.2:
+                            folium.CircleMarker(
+                                location=[lat, lon],
+                                radius=5,
+                                color='black',
+                                fill=True,
+                                fill_color='green',
+                                fill_opacity=0.7,
+                                weight=1,
+                                popup=folium.Popup(popup_content, max_width=300)
+                            ).add_to(low_mod_group)
+                            low_count += 1
+                        elif ghm_value >= 0.6:
+                            folium.CircleMarker(
+                                location=[lat, lon],
+                                radius=5,
+                                color='black',
+                                fill=True,
+                                fill_color='red',
+                                fill_opacity=0.7,
+                                weight=1,
+                                popup=folium.Popup(popup_content, max_width=300)
+                            ).add_to(high_mod_group)
+                            high_count += 1
+                        else:
+                            folium.CircleMarker(
+                                location=[lat, lon],
+                                radius=5,
+                                color='black',
+                                fill=True,
+                                fill_color='yellow',
+                                fill_opacity=0.7,
+                                weight=1,
+                                popup=folium.Popup(popup_content, max_width=300)
+                            ).add_to(mid_mod_group)
+                            mid_count += 1
+
+                    # Update names with counts
+                    low_mod_group.layer_name = f"Low Human Modification (0-0.2): {low_count}"
+                    mid_mod_group.layer_name = f"Medium Human Modification (0.2-0.6): {mid_count}"
+                    high_mod_group.layer_name = f"High Human Modification (0.6-1.0): {high_count}"
+
+                    # Add all groups to map
+                    low_mod_group.add_to(m)
+                    mid_mod_group.add_to(m)
+                    high_mod_group.add_to(m)
+                else:
+                    # Use the original cluster approach if no human modification data
+                    cluster = MarkerCluster(name="Observations").add_to(m)
+
+                    for _, row in df.iterrows():
+                        popup_text = f"""
+                        <b>Location:</b> {row['decimallatitude']:.5f}, {row['decimallongitude']:.5f}<br>
+                        <b>Year:</b> {row['observation_year']}<br>
+                        <b>Count:</b> {row['individual_count']}
+                        """
+
+                        folium.Marker(
+                            location=[row['decimallatitude'], row['decimallongitude']],
+                            popup=folium.Popup(popup_text, max_width=300),
+                            icon=folium.Icon(color='red', icon='info-sign')
+                        ).add_to(cluster)
+
                 # Add layer control
                 folium.LayerControl().add_to(m)
-                
+
+                # Add CSS styling for the map
+                st.markdown(
+                    """
+                    <style>
+                    .folium-map {
+                        width: 100% !important;
+                        height: 800px !important;
+                        max-width: none !important;
+                        box-sizing: border-box !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+                    iframe {
+                        width: 100% !important;
+                        height: 900px !important;
+                        border: none !important;
+                    }
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # Display distribution histogram if we have correlation data
+                if 'correlation_data' in data:
+                    self.plot_distribution_histogram(data['correlation_data'], key=f"hm_dist_{message_index}")
+
                 # Display the map
                 folium_static(m, width=700, height=500)
 
-                # Display distribution histogram if we have gHM values
-                if 'all_results' in data and len(data['all_results']) > 0:
-                    self.plot_distribution_histogram(data['all_results'], key=f"hm_dist_{message_index}")
-            
             with col2:
                 # Display correlation statistics
                 if 'correlation_data' in data:
                     corr_data = data['correlation_data']['human_modification']
-                    
+
                     st.markdown("### Human Modification Statistics")
                     st.markdown(f"**Mean value:** {corr_data['mean']:.2f} (0-1 scale)")
                     st.markdown(f"**Standard deviation:** {corr_data['std']:.2f}")
-                    
+
                     # Display correlation value with color based on value
                     corr_value = corr_data['correlation']
                     p_value = corr_data['p_value']
-                    
+
                     corr_color = "gray"
                     interpretation = ""
                     if p_value <= 0.05:  # Statistically significant
@@ -136,23 +238,28 @@ class HumanModificationViz:
                             interpretation = "Species shows weak relationship with human modification"
                     else:
                         interpretation = "No significant relationship with human modification"
-                    
+
                     st.markdown(
                         f"**Correlation:** <span style='color:{corr_color}'>{corr_value:.3f}</span> "
                         f"(p={p_value:.3f})",
                         unsafe_allow_html=True
                     )
-                    
+
                     st.markdown(f"**Interpretation:** {interpretation}")
-                    
+
                     # Add reference scale for human modification
                     self.display_ghm_reference_scale()
-                
-                # Display analysis from LLM
-                if 'analysis' in data:
-                    st.markdown("### Ecological Analysis")
-                    st.markdown(data['analysis'])
-                
+
+                    # Show color legend for human modification categories
+                    if 'all_results' in data and len(data['all_results']) > 0:
+                        st.markdown("### Human Modification Categories")
+                        st.markdown("""
+                        Points on the map are colored by human modification level:
+                        - <span style="color:green">⬤</span> **Green**: Low modification (0-0.2)
+                        - <span style="color:yellow">⬤</span> **Yellow**: Medium modification (0.2-0.6)
+                        - <span style="color:red">⬤</span> **Red**: High modification (0.6-1.0)
+                        """, unsafe_allow_html=True)
+
         except Exception as e:
             self.logger.error("Error drawing human modification correlation: %s", str(e), exc_info=True)
             st.error(f"Error generating visualization: {str(e)}")
@@ -161,24 +268,24 @@ class HumanModificationViz:
         """Display a reference scale for human modification index values."""
         # pylint: disable=no-member
         st.markdown("### Human Modification Scale")
-        
+
         # Create reference data for the color scale
         scale_data = {
             'Level': ['Very Low', 'Low', 'Moderate', 'High', 'Very High'],
             'Range': ['0.0-0.1', '0.1-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0'],
             'Description': [
-                'Pristine or nearly pristine areas', 
+                'Pristine or nearly pristine areas',
                 'Limited human impact (e.g., sparse rural)',
                 'Mixed natural and developed areas',
                 'Predominantly modified (e.g., agriculture, suburban)',
                 'Intensively modified (e.g., urban, industrial)'
             ]
         }
-        
+
         # Create color blocks for each level
         colors = ['#071aff', '#4287f5', '#ffbd03', '#ff6b03', '#ff0000']
         html_blocks = ""
-        
+
         for i, (level, range_val, desc) in enumerate(zip(
             scale_data['Level'], scale_data['Range'], scale_data['Description']
         )):
@@ -190,9 +297,9 @@ class HumanModificationViz:
                 </div>
             </div>
             """
-        
+
         st.markdown(html_blocks, unsafe_allow_html=True)
-        
+
         st.markdown("""
         <small>Data source: Global Human Modification dataset (gHM), Conservation Science Partners.
         Citation: Kennedy et al. 2019, Global Change Biology.</small>
@@ -200,27 +307,27 @@ class HumanModificationViz:
 
     def draw_human_modification_by_species(self, data, parameters, _cache_buster=None):
         """Draw a comparison chart for multiple species and their gHM values.
-        
+
         Args:
             data (dict): Dictionary containing multiple species and their gHM data
             parameters (dict): Visualization parameters
-        """         
-        try:    
-            # pylint: disable=no-member 
+        """
+        try:
+            # pylint: disable=no-member
             message_index = _cache_buster if _cache_buster is not None else int(time.time())
-            
+
             if not data or 'species_data' not in data:
                 st.warning("No data available for visualization")
                 return
-            
+
             species_data = data['species_data']
-            
+
             # Prepare data for plotting
             species_means = []
             species_stds = []
             species_names = []
             species_correlations = []
-            
+
             for species_name, species_info in species_data.items():
                 if 'correlation_data' in species_info and 'human_modification' in species_info['correlation_data']:
                     hm_data = species_info['correlation_data']['human_modification']
@@ -228,25 +335,25 @@ class HumanModificationViz:
                     species_means.append(hm_data['mean'])
                     species_stds.append(hm_data['std'])
                     species_correlations.append(hm_data['correlation'])
-            
+
             if not species_means:
                 st.warning("No valid data for comparison")
                 return
-            
+
             # Create two columns
             col1, col2 = st.columns([3, 1])
-            
+
             with col1:
                 # Create figure for mean values with error bars
                 fig = go.Figure()
-                
+
                 # Sort by mean gHM value
                 sorted_indices = np.argsort(species_means)
                 sorted_names = [species_names[i] for i in sorted_indices]
                 sorted_means = [species_means[i] for i in sorted_indices]
                 sorted_stds = [species_stds[i] for i in sorted_indices]
                 sorted_correlations = [species_correlations[i] for i in sorted_indices]
-                
+
                 # Add mean value bars
                 fig.add_trace(go.Bar(
                     x=sorted_names,
@@ -256,10 +363,10 @@ class HumanModificationViz:
                         array=sorted_stds,
                         visible=True
                     ),
-                    marker_color='rgb(55, 83, 109)',
+                    marker_color='rgb(100, 149, 237)',
                     name='Mean Human Modification'
                 ))
-                
+
                 # Add correlation line on secondary y-axis
                 fig.add_trace(go.Scatter(
                     x=sorted_names,
@@ -278,7 +385,7 @@ class HumanModificationViz:
                     name='Correlation',
                     yaxis='y2'
                 ))
-                
+
                 # Update layout with dual y-axes
                 fig.update_layout(
                     title='Human Modification Index by Species',
@@ -306,49 +413,113 @@ class HumanModificationViz:
                         tickangle=45
                     )
                 )
-                
+
                 # Add horizontal reference lines
                 fig.add_hline(
-                    y=0.4, 
-                    line_dash="dot", 
+                    y=0.4,
+                    line_dash="dot",
                     line_color="orange",
                     annotation_text="Moderate Human Modification",
                     annotation_position="top right"
                 )
-                
+
                 # Add zero line for correlation
                 fig.add_hline(
-                    y=0, 
-                    line_dash="solid", 
+                    y=0,
+                    line_dash="solid",
                     line_color="gray",
                     line_width=1,
                     layer="below",
                     yref="y2"
                 )
-                
+
                 # Display the plot
                 st.plotly_chart(fig, use_container_width=True, key=f"species_comparison_{message_index}")
-            
+
             with col2:
                 # Show color scale reference
                 self.display_ghm_reference_scale()
-                
+
                 # Add interpretation guide
                 st.markdown("### Interpretation Guide")
                 st.markdown("""
-                **Mean gHM Value**  
+                **Mean gHM Value**
                 Higher values indicate species found in more human-modified landscapes
-                
-                **Correlation**  
+
+                **Correlation**
                 - Positive: Species occurs more frequently in modified areas
                 - Negative: Species avoids human-modified areas
                 - Near zero: No clear relationship with human modification
-                
-                **Conservation Implications**  
+
+                **Conservation Implications**
                 - Species with high gHM values may be more adaptable to human disturbance
                 - Species with low gHM values and negative correlation may be more vulnerable to habitat modification
                 """)
-                
+
         except Exception as e:
             self.logger.error("Error drawing human modification comparison: %s", str(e), exc_info=True)
             st.error(f"Error generating comparison visualization: {str(e)}")
+
+    def plot_distribution_histogram(self, data, key=None):
+        """Plot a histogram showing the distribution of human modification values.
+
+        Args:
+            data (dict): Dictionary containing correlation data with distribution
+            key (str, optional): Unique key for the plot
+        """
+        # pylint: disable=no-member
+        try:
+            if 'distribution' not in data:
+                return
+
+            # Extract distribution data
+            distribution = data['distribution']
+
+            # Create figure
+            fig = go.Figure()
+
+            # Convert distribution keys to float using the middle of each range
+            sorted_dist = sorted(
+                [((float(k.split('-')[1]) + float(k.split('-')[0])) / 2, v)
+                 for k, v in distribution.items()],
+                key=lambda x: x[0]
+            )
+            x_values = [k for k, _ in sorted_dist]
+            y_values = [v for _, v in sorted_dist]
+
+            # Add histogram trace
+            fig.add_trace(go.Bar(
+                x=x_values,
+                y=y_values,
+                name='Observations',
+                marker_color='#071aff'
+            ))
+
+            # Update layout
+            fig.update_layout(
+                title='Distribution of Human Modification Values',
+                xaxis_title='Human Modification Index',
+                yaxis_title='Number of Observations',
+                height=300,
+                margin=dict(l=50, r=50, t=50, b=50),
+                showlegend=False,
+                xaxis=dict(
+                    tickangle=45,
+                    tickfont=dict(size=10)
+                )
+            )
+
+            # Add reference lines
+            fig.add_vline(
+                x=float(data['human_modification']['mean']),  # Ensure we get the float value
+                line_dash="dash",
+                line_color="red",
+                annotation_text=f"Mean: {data['human_modification']['mean']:.2f}",
+                annotation_position="top right"
+            )
+
+            # Display the plot
+            st.plotly_chart(fig, use_container_width=True, key=key)
+
+        except Exception as e:
+            self.logger.error("Error plotting distribution histogram: %s", str(e), exc_info=True)

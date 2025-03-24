@@ -1,6 +1,6 @@
 """
 Module for handling various API functions and data processing operations in the Biodiversity App.
-Includes functionality for species data retrieval, GeoJSON processing, 
+Includes functionality for species data retrieval, GeoJSON processing,
 and occurrence data management.
 """
 
@@ -24,6 +24,7 @@ from .species_handler import SpeciesHandler
 from .base_handler import BaseHandler
 from .correlation_handler import CorrelationHandler
 from .forest_handler_ee import ForestHandlerEE
+from .human_modification_handler_ee import HumanModificationHandlerEE
 
 class FunctionHandler(BaseHandler):
     """
@@ -61,6 +62,7 @@ class FunctionHandler(BaseHandler):
                 "species": SpeciesHandler(),
                 "correlation": CorrelationHandler(),
                 "forest": ForestHandlerEE(),
+                "human_modification": HumanModificationHandlerEE(),
             }
 
             # Combine world data into a single dictionary
@@ -117,14 +119,14 @@ class FunctionHandler(BaseHandler):
                 "get_species_occurrences_in_protected_area":
                     self.handlers["species"].get_species_occurrences_in_protected_area,
                 "read_terrestrial_hci": self.read_terrestrial_hci,
-                "get_yearly_occurrences": self.get_yearly_occurrences,      
+                "get_yearly_occurrences": self.get_yearly_occurrences,
                 "read_population_density": self.read_population_density,
                 "endangered_species_hci_correlation":
                 self.handlers["endangered"].endangered_species_hci_correlation,
                 "endangered_species_for_countries":
                 self.handlers["endangered"].endangered_species_for_countries,
                 "get_species_images": self.get_species_images,
-                "get_endangered_species_by_country": 
+                "get_endangered_species_by_country":
                     self.handlers["species"].get_endangered_species_by_country,
                 "get_species_hci_correlation":
                     self.handlers["correlation"].get_species_hci_correlation,
@@ -136,6 +138,9 @@ class FunctionHandler(BaseHandler):
                     self.handlers["correlation"].get_species_shared_habitat,
                 "calculate_species_forest_correlation":
                     self.handlers["forest"].calculate_species_forest_correlation_ee,
+                "calculate_species_humanmod_correlation":
+                    self.handlers["human_modification"].calculate_species_humanmod_correlation_ee,
+
             }
         except (ValueError, ImportError) as e:
             self.logger.error("Setup error: %s", str(e), exc_info=True)
@@ -161,7 +166,7 @@ class FunctionHandler(BaseHandler):
                 "protectedplanet.net",       # Protected Planet
                 "worldwildlife.org",         # World Wildlife Fund
                 "fauna-flora.org",           # Fauna & Flora International
-                "https://blogs.worldbank.org/en/opendata/fostering-human-wildlife-coexistence-to-protect-biodiversity--in", 
+                "https://blogs.worldbank.org/en/opendata/fostering-human-wildlife-coexistence-to-protect-biodiversity--in",
                 "blogs.worldbank.org",       # World Bank Blogs
                 "statistics.laerd.com",      # Statistics explanations
                 "statisticshowto.com",       # Statistics definitions
@@ -198,7 +203,7 @@ class FunctionHandler(BaseHandler):
                 - species_name (str): Name of the species
                 - country_code (str): Single country code or comma-separated list of country codes
                 - chart_type (str): Type of visualization
-                
+
         Returns:
             list: List of dictionaries containing occurrence data with latitude and longitude
 
@@ -243,7 +248,7 @@ class FunctionHandler(BaseHandler):
             # Parse the JSON response and check for errors
             translated_result = json.loads(scientific_name)
             if ("error" in translated_result or
-                    "scientific_name" not in translated_result or 
+                    "scientific_name" not in translated_result or
                     not translated_result["scientific_name"]):
                 _self.logger.warning(
                     "Could not translate species name: %s - %s",
@@ -263,14 +268,14 @@ class FunctionHandler(BaseHandler):
             )
             # Base query with parameterization
             base_query = """
-                SELECT 
+                SELECT
                     decimallatitude,
                     decimallongitude
                 FROM `{project_id}.biodiversity.occurances_endangered_species_mammals`
                 WHERE LOWER(species) = LOWER(@species_name)
                     AND decimallatitude IS NOT NULL
-                    AND decimallongitude IS NOT NULL 
-                    AND eventdate IS NOT NULL 
+                    AND decimallongitude IS NOT NULL
+                    AND eventdate IS NOT NULL
                     {where_clause}
             """
 
@@ -636,7 +641,7 @@ class FunctionHandler(BaseHandler):
 
         query = f"""
             SELECT {property_name}, decimallongitude, decimallatitude
-            FROM `***REMOVED***.biodiversity.hci` 
+            FROM `***REMOVED***.biodiversity.hci`
             WHERE decimallatitude is not null
             AND decimallongitude is not null
             AND {property_name} is not null
@@ -716,7 +721,7 @@ class FunctionHandler(BaseHandler):
             project=project_id,
             join_clause=f"""
                 INNER JOIN `{project_id}.biodiversity.countries` c
-                ON ST_CONTAINS(c.geometry, 
+                ON ST_CONTAINS(c.geometry,
                     ST_GEOGPOINT(o.decimallongitude, o.decimallatitude))
             """,
             where_clause=f"AND c.{code_field} = @country_code",
@@ -764,13 +769,13 @@ class FunctionHandler(BaseHandler):
 
             # Base query template
             base_query = """
-                SELECT 
+                SELECT
                     EXTRACT(YEAR FROM eventdate) as year,
                     COUNT(*) as count
                 FROM `{project}.biodiversity.occurances_endangered_species_mammals` o
                 {join_clause}
                 WHERE LOWER(o.species) = LOWER(@species_name)
-                AND eventdate IS NOT NULL and eventdate > '1980-01-01' 
+                AND eventdate IS NOT NULL and eventdate > '1980-01-01'
                 {where_clause}
                 GROUP BY year
                 ORDER BY year
@@ -842,7 +847,7 @@ class FunctionHandler(BaseHandler):
     def get_species_images(_self, content):  # pylint: disable=no-self-argument
         """
         Retrieves images for a species from GBIF API.
-        
+
         Args:
             content (dict): Dictionary containing:
                 - species_name (str): Name of the species
@@ -925,3 +930,4 @@ class FunctionHandler(BaseHandler):
                 exc_info=True
             )
             raise
+
