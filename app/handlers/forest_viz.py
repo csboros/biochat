@@ -31,7 +31,7 @@ class ForestViz:
             parameters (dict): Visualization parameters
         """
         try:
-             # pylint: disable=no-member
+            # pylint: disable=no-member
             message_index = _cache_buster if _cache_buster is not None else int(time.time())
 
             # Create DataFrame from observations
@@ -52,12 +52,29 @@ class ForestViz:
                 )
                 st.markdown(f"**Total Observations**: {len(df):,}")
 
-                # Create a Folium map with full width
+                # Create a Folium map with multiple base layers
                 m = folium.Map(
                     location=[df['decimallatitude'].mean(), df['decimallongitude'].mean()],
                     zoom_start=5,
-                    tiles="CartoDB dark_matter"
+                    tiles=None  # Start with no default tiles
                 )
+
+                # Add base layers
+                folium.TileLayer('CartoDB dark_matter', name='Dark Map').add_to(m)
+                folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                                attr='Esri',
+                                name='Satellite').add_to(m)
+                folium.TileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                                attr='Google',
+                                name='Google Maps').add_to(m)
+                folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                                attr='Google',
+                                name='Google Satellite').add_to(m)
+
+                # Set satellite as the default layer
+                m.options['preferCanvas'] = True
+
+                # Add fullscreen control
                 Fullscreen().add_to(m)
 
                 # Add Earth Engine forest layers if available
@@ -103,38 +120,115 @@ class ForestViz:
                         overlay=True
                     ).add_to(m)
 
-                # Add observation points with controlled clustering
-                cluster = MarkerCluster(
-                    name="Observations",
-                    options={
-                        'disableClusteringAtZoom': 10,  # Markers won't cluster beyond zoom level 10
-                        'maxClusterRadius': 80,         # Maximum radius (in pixels) that a cluster will cover
-                        'spiderfyOnMaxZoom': True       # Spiderfy markers when zoomed to max
-                    }
-                ).add_to(m)
+                # Check if we have processed results with forest cover data
+                if 'all_results' in data and len(data['all_results']) > 0:
+                    # Create separate feature groups for different forest cover categories
+                    low_cover_group = folium.FeatureGroup(name="Low Forest Cover (0-10%)")
+                    mid_cover_group = folium.FeatureGroup(name="Medium Forest Cover (10-90%)")
+                    high_cover_group = folium.FeatureGroup(name="High Forest Cover (90-100%)")
 
-                for _, row in df.iterrows():
-                    popup_text = f"""
-                    <b>Location:</b> {row['decimallatitude']:.5f}, {row['decimallongitude']:.5f}<br>
-                    <b>Year:</b> {row['observation_year']}<br>
-                    <b>Count:</b> {row['individual_count']}
-                    """
+                    # Keep track of counts
+                    low_count = 0
+                    mid_count = 0
+                    high_count = 0
 
-                    folium.Marker(
-                        location=[row['decimallatitude'], row['decimallongitude']],
-                        popup=folium.Popup(popup_text, max_width=300),
-                        icon=folium.Icon(color='red', icon='info-sign')
-                    ).add_to(cluster)
+                    # Process each point
+                    for point in data['all_results']:
+                        if 'geometry' not in point or 'coordinates' not in point['geometry']:
+                            continue
+
+                        coords = point['geometry']['coordinates']
+                        if not coords or len(coords) < 2:
+                            continue
+
+                        lon, lat = coords[0], coords[1]
+                        forest_cover = point.get('remaining_cover', 0)
+
+                        # Create popup content
+                        popup_content = f"""
+                            <b>Location:</b> {lat:.4f}, {lon:.4f}<br>
+                            <b>Forest Cover:</b> {forest_cover:.1f}%<br>
+                            <b>Forest Loss:</b> {'Yes' if point.get('forest_loss', 0) > 0 else 'No'}<br>
+                            <b>Year:</b> {point.get('year', 'Unknown')}
+                        """
+
+                        # Add to appropriate group based on forest cover
+                        if forest_cover <= 10:
+                            folium.CircleMarker(
+                                location=[lat, lon],
+                                radius=5,
+                                color='magenta',
+                                fill=True,
+                                fill_color='magenta',
+                                fill_opacity=0.7,
+                                popup=folium.Popup(popup_content, max_width=300)
+                            ).add_to(low_cover_group)
+                            low_count += 1
+                        elif forest_cover >= 90:
+                            folium.CircleMarker(
+                                location=[lat, lon],
+                                radius=5,
+                                color='darkgreen',
+                                fill=True,
+                                fill_color='darkgreen',
+                                fill_opacity=0.7,
+                                popup=folium.Popup(popup_content, max_width=300)
+                            ).add_to(high_cover_group)
+                            high_count += 1
+                        else:
+                            folium.CircleMarker(
+                                location=[lat, lon],
+                                radius=5,
+                                color='blue',
+                                fill=True,
+                                fill_color='blue',
+                                fill_opacity=0.7,
+                                popup=folium.Popup(popup_content, max_width=300)
+                            ).add_to(mid_cover_group)
+                            mid_count += 1
+
+                    # Update names with counts
+                    low_cover_group.layer_name = f"Low Forest Cover (0-10%): {low_count}"
+                    mid_cover_group.layer_name = f"Medium Forest Cover (10-90%): {mid_count}"
+                    high_cover_group.layer_name = f"High Forest Cover (90-100%): {high_count}"
+
+                    # Add all groups to map
+                    low_cover_group.add_to(m)
+                    mid_cover_group.add_to(m)
+                    high_cover_group.add_to(m)
+                else:
+                    # Use the original cluster approach if no forest metrics
+                    cluster = MarkerCluster(
+                        name="Observations",
+                        options={
+                            'disableClusteringAtZoom': 6,
+                            'maxClusterRadius': 80,
+                            'spiderfyOnMaxZoom': True
+                        }
+                    ).add_to(m)
+
+                    for _, row in df.iterrows():
+                        popup_text = f"""
+                        <b>Location:</b> {row['decimallatitude']:.5f}, {row['decimallongitude']:.5f}<br>
+                        <b>Year:</b> {row['observation_year']}<br>
+                        <b>Count:</b> {row['individual_count']}
+                        """
+
+                        folium.Marker(
+                            location=[row['decimallatitude'], row['decimallongitude']],
+                            popup=folium.Popup(popup_text, max_width=300),
+                            icon=folium.Icon(color='red', icon='info-sign')
+                        ).add_to(cluster)
 
                 # Add layer control
                 folium.LayerControl().add_to(m)
 
-                 # Check if we have the necessary data for histograms
+                # Check if we have the necessary data for histograms
                 if ('all_results' in data and len(data.get('all_results', [])) > 0 and
                     'correlation_data' in data and 'forest_cover' in data['correlation_data']):
                     self.plot_distribution_histograms(data, key=f"forest_dist_{message_index}")
 
-                # Display the map at full width with stronger CSS
+                # Display the map with CSS
                 st.markdown(
                     """
                     <style>
@@ -155,11 +249,21 @@ class ForestViz:
                     """,
                     unsafe_allow_html=True
                 )
-                folium_static(m, width=3000 )
+                folium_static(m, width=3000)
             with col2:
                 # Display correlation statistics
                 if 'correlation_data' in data:
                     self.display_forest_correlation_stats(data['correlation_data'])
+
+                    # Show color legend for forest cover categories
+                    if 'all_results' in data and len(data['all_results']) > 0:
+                        st.markdown("### Forest Cover Categories")
+                        st.markdown("""
+                        Points on the map are colored by forest cover:
+                        - <span style="color:magenta">⬤</span> **Magenta**: Low cover (0-10%)
+                        - <span style="color:blue">⬤</span> **Blue**: Medium cover (10-90%)
+                        - <span style="color:darkgreen">⬤</span> **Green**: High cover (90-100%)
+                        """, unsafe_allow_html=True)
 
         except Exception as e:
             self.logger.error("Error drawing forest correlation: %s", str(e), exc_info=True)

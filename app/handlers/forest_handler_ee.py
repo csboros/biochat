@@ -22,8 +22,8 @@ class ForestHandlerEE(EarthEngineHandler):
         alpha: float = 0.5,     # Alpha parameter for the alpha shape
         eps: float = 1.0,
         min_samples: int = 3,
-        avoid_overlaps: bool = True,  # New parameter to control overlap avoidance
-        scale: int = 200            # Resolution in meters for Earth Engine analysis
+        avoid_overlaps: bool = True,
+        scale: int = 200
     ) -> Dict[str, Any]:
         """Calculate correlation between species observations and forest metrics using Earth Engine.
 
@@ -65,23 +65,17 @@ class ForestHandlerEE(EarthEngineHandler):
             # Get species observations from BigQuery
             observations = self.get_species_observations(species_name, min_observations)
 
-            # Instead of using alpha shapes, create point features from individual observations
+            # Create point features from individual observations
             ee_point_features = self.create_ee_point_features(observations)
 
-            # Generate alpha shapes for visualization only (completely separate process)
+            # Generate alpha shapes for visualization only (if needed)
             all_alpha_shapes = []
-            # all_alpha_shapes = self.generate_alpha_shapes_for_visualization(
-            #     observations,
-            #     alpha=alpha,
-            #     eps=eps,
-            #     min_samples=min_samples,
-            #     avoid_overlaps=avoid_overlaps
-            # )
 
-            # Sample forest metrics at observation points
-            all_results = self.process_sample_results(
-                self.sample_forest_metrics_at_points(ee_point_features, scale)
-            )
+            # Sample forest metrics at observation points - with built-in datamask filtering
+            sampling_results = self.sample_forest_metrics_at_points(ee_point_features, scale)
+
+            # Process results and separate out the filtering statistics
+            all_results, filtering_stats = self.process_sample_results(sampling_results)
 
             # Calculate correlations using all results
             if not all_results:
@@ -97,23 +91,21 @@ class ForestHandlerEE(EarthEngineHandler):
 
             # Calculate correlation data from the results
             correlation_data = self.calculate_correlations(all_results, scale)
-            print(correlation_data)
 
             # Create prompt and get analysis from LLM
             analysis = self.send_to_llm(
-                self.create_analysis_prompt(species_name, correlation_data)
+                self.create_analysis_prompt(species_name, correlation_data, filtering_stats)
             )
 
-            # Return with alpha shapes included, but note these are just for visualization
+            # Return with filtering statistics included
             return {
                 'correlation_data': correlation_data,
                 'analysis': analysis,
                 'all_results': all_results,
                 'species_name': species_name,
                 'observations': observations,
- #               'alpha_shapes': all_alpha_shapes,
+                'filtering_stats': filtering_stats,
                 'forest_layers': self.get_forest_layers(
- #                   alpha_shapes=all_alpha_shapes,
                     avoid_overlaps=avoid_overlaps
                 )
             }
@@ -126,8 +118,7 @@ class ForestHandlerEE(EarthEngineHandler):
                 scale=scale,
                 avoid_overlaps=avoid_overlaps,
                 error_message=str(e),
-                analysis_message="Analysis failed. Please try with different parameters "
-                "or a smaller area."
+                analysis_message="Analysis failed. Please try with different parameters or a smaller area."
             )
 
     def calculate_correlations(self, all_results: list, scale: int) -> Dict[str, Any]:
@@ -153,11 +144,11 @@ class ForestHandlerEE(EarthEngineHandler):
                          min(forest_losses) if forest_losses else 0,
                          max(forest_losses) if forest_losses else 0)
 
-        # Create distribution bins for forest cover (10 equal bins from 0 to 100%)
+        # Create distribution bins for forest cover (20 equal bins from 0 to 100%)
         forest_cover_bins = {}
-        for i in range(10):  # 10 bins: 0-10%, 10-20%, ..., 90-100%
-            bin_start = i * 10
-            bin_end = (i + 1) * 10
+        for i in range(20):  # 20 bins: 0-5%, 5-10%, ..., 95-100%
+            bin_start = i * 5
+            bin_end = (i + 1) * 5
             bin_label = f"{bin_start}-{bin_end}%"
             forest_cover_bins[bin_label] = 0
 
@@ -169,11 +160,11 @@ class ForestHandlerEE(EarthEngineHandler):
 
         # Bin the observations
         for r in all_results:
-            # Bin forest cover (0-100%)
+            # Bin forest cover (0-100%) with 5% increments
             cover_value = r['remaining_cover']
-            bin_index = min(9, int(cover_value / 10))  # Ensure max index is 9
-            bin_start = bin_index * 10
-            bin_end = (bin_index + 1) * 10
+            bin_index = min(19, int(cover_value / 5))  # Ensure max index is 19
+            bin_start = bin_index * 5
+            bin_end = (bin_index + 1) * 5
             bin_label = f"{bin_start}-{bin_end}%"
             forest_cover_bins[bin_label] += r['individual_count']
 
@@ -279,11 +270,28 @@ class ForestHandlerEE(EarthEngineHandler):
         }
         return correlation_data
 
-    def process_sample_results(self, point_sample_results: list) -> list:
-        """Process sample results from Earth Engine point features with temporal awareness."""
+    def process_sample_results(self, point_sample_results: list) -> tuple:
+        """Process sample results from Earth Engine point features with temporal awareness and datamask filtering.
+
+        Args:
+            point_sample_results (list): List of feature results from Earth Engine
+
+        Returns:
+            tuple: (all_results, filtering_stats)
+                - all_results: List of processed results with calculated forest metrics
+                - filtering_stats: Dictionary with statistics about filtered points
+        """
         all_results = []
+
+        # All points are now valid since datamask filtering is done at Earth Engine level
+        valid_count = len(point_sample_results)
+
         for sample in point_sample_results:
             props = sample['properties']
+
+            # No need to check datamask value - all points should be on land (datamask=1)
+            # due to the mask applied in sample_forest_metrics_at_points
+
             year = props.get('year', 2000)  # Observation year
             individual_count = props.get('individual_count', 1)
 
@@ -310,7 +318,6 @@ class ForestHandlerEE(EarthEngineHandler):
             # Was the forest lost before or after the observation?
             if actual_loss_year == 0 or year < actual_loss_year:
                 # No loss occurred or observation was before loss
-                # Calculate forest cover at time of observation
                 forest_loss = 0.0  # No loss at time of observation
 
                 # Calculate remaining cover with gain if applicable
@@ -338,7 +345,22 @@ class ForestHandlerEE(EarthEngineHandler):
                 'lossyear': actual_loss_year,  # Store actual calendar year of loss
                 'geometry': sample.get('geometry', {})
             })
-        return all_results
+
+        # Create filtering statistics
+        # Note: Statistics will be different now - total filtered will be unknown
+        # since Earth Engine filters before we get the results
+        total_input = valid_count  # We only know about the points that passed the filter
+        filtering_stats = {
+            'total_filtered': 0,  # We don't know how many were filtered
+            'valid_observations': valid_count,
+            'total_observations': total_input,
+            'filtered_at_earth_engine': True  # Flag indicating filtering happened at EE level
+        }
+
+        self.logger.info("Processed %s observations (pre-filtered at Earth Engine level)",
+                         total_input)
+
+        return all_results, filtering_stats
 
     def get_forest_layers(
         self,
@@ -477,16 +499,10 @@ class ForestHandlerEE(EarthEngineHandler):
             self.logger.error(lambda: f"Error creating forest layers: {str(e)}")
             raise
 
-    def create_analysis_prompt(self, species_name: str, correlation_data: Dict[str, Any]) -> str:
-        """Generate a prompt for LLM analysis of species-forest correlations.
-
-        Args:
-            species_name (str): Scientific name of the species being analyzed
-            correlation_data (dict): Dictionary containing correlation results and statistics
-
-        Returns:
-            str: Formatted prompt text for the LLM
-        """
+    def create_analysis_prompt(self, species_name: str, correlation_data: Dict[str, Any],
+                               filtering_stats: Dict[str, Any] = None) -> str:
+        """Generate a prompt for LLM analysis of species-forest correlations."""
+        # Begin with standard prompt
         prompt = """You are a conservation biology expert. Analyze this species
             correlation data between species occurrence and forest cover and forest loss.
 
@@ -506,6 +522,44 @@ class ForestHandlerEE(EarthEngineHandler):
 
         if species_name:
             prompt += f"\nAnalyzing correlations for species: {species_name}\n"
+
+        # Add information about filtering if available
+        if filtering_stats:
+            valid = filtering_stats.get('valid_observations', 0)
+            filtered_at_ee = filtering_stats.get('filtered_at_earth_engine', False)
+
+            if filtered_at_ee:
+                prompt += f"""
+
+                Note on data quality: Observations were pre-filtered at the Earth Engine level
+                to ensure only land-based points are included in the analysis. This filtering
+                removes any observations over water bodies (oceans, lakes, rivers) and areas with
+                no valid forest data coverage. {valid} valid land-based observations were used for analysis.
+
+                This filtering improves data quality by ensuring we're only analyzing observations in
+                potential forest habitat areas, not aquatic environments which would artificially
+                inflate the low forest cover category.
+                """
+            else:
+                # Legacy mode - when filtering was done post-processing
+                total = filtering_stats.get('total_filtered', 0)
+                water = filtering_stats.get('ocean_observations_filtered', 0)
+                no_data = filtering_stats.get('no_data_observations_filtered', 0)
+                total_input = filtering_stats.get('total_observations', 0)
+
+                if total > 0 and total_input > 0:
+                    percent_filtered = round(total / total_input * 100, 1)
+                    prompt += f"""
+
+                    Note on data filtering: {total} observations ({percent_filtered}% of total) were filtered out:
+                    - {water} observations over permanent water bodies (oceans, lakes, rivers)
+                    - {no_data} observations in areas with no valid Hansen dataset coverage
+
+                    After filtering, {valid} valid land-based observations remained for analysis.
+                    This filtering improves data quality by ensuring we're only analyzing observations in
+                    potential forest habitat areas, not aquatic environments which would artificially
+                    inflate the low forest cover category.
+                    """
 
         # Add instructions to analyze the binned distribution data
         prompt += """
@@ -573,7 +627,10 @@ class ForestHandlerEE(EarthEngineHandler):
         # Load Hansen dataset
         hansen = ee.Image('UMD/hansen/global_forest_change_2023_v1_11')
 
-        # Extract the lossyear band directly (contains years 1-23 for 2001-2023)
+        # Extract the datamask band (0=no data, 1=land, 2=water)
+        datamask = hansen.select('datamask')
+
+        # Extract the lossyear band (contains years 1-23 for 2001-2023)
         lossyear = hansen.select('lossyear')
 
         # Create a mask for meaningful tree cover (areas with at least some forest)
@@ -582,10 +639,15 @@ class ForestHandlerEE(EarthEngineHandler):
         # Binary gain mask
         binary_gain = hansen.select('gain')
 
-        # Combine all bands
+        # Combine all bands, including datamask
         combined = hansen.select(['treecover2000']).addBands(lossyear.rename('lossyear'))
         combined = combined.addBands(binary_gain.rename('gain_mask'))
         combined = combined.addBands(forest_mask.rename('forest_mask'))
+        combined = combined.addBands(datamask.rename('datamask'))  # Include datamask
+
+        # Filter to only include land areas (datamask = 1)
+        land_mask = datamask.eq(1)
+        combined = combined.updateMask(land_mask)
 
         # Create feature collection and sample
         try:
