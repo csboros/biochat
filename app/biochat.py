@@ -449,9 +449,11 @@ class BioChat:
             'analyze_species_correlations': lambda c:
                 self.process_species_correlation_analysis(c['response'], c['params']),
             'calculate_species_forest_correlation': lambda c:
-                self.process_species_forest_correlation(c['response'], c['params']),
+                self.process_correlation_result(c['response'], c['params'],
+                                                "species_forest_correlation"),
             'calculate_species_humanmod_correlation': lambda c:
-                self.process_species_humanmod_correlation(c['response'], c['params']),
+                self.process_correlation_result(c['response'], c['params'],
+                                                "species_humanmod_correlation")
         }
 
         if call['name'] in handlers:
@@ -990,48 +992,8 @@ class BioChat:
                 {"text": f"Error processing correlation analysis: {str(e)}"}
             )
 
-    def process_species_forest_correlation(self, data_response, parameters):
-        """
-        Process and display species forest correlation analysis results.
 
-        Args:
-            data_response (dict): Response containing correlation data and analysis
-            parameters (dict): Parameters used for the analysis
-
-        Raises:
-            ValueError: If data response format is invalid
-            TypeError: If data types are incorrect
-            KeyError: If required fields are missing
-        """
-        try:
-            if isinstance(data_response, str):
-                # If it's a string (error message), just display it
-                self.add_message_to_history("assistant", {"text": data_response})
-                return
-
-            if 'observations' in data_response:
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": {
-                        "chart_data": data_response,
-                        "type": "species_forest_correlation",
-                        "parameters": parameters
-                    }
-            })
-
-            # Add the analysis text first
-            if 'analysis' in data_response:
-                self.add_message_to_history("assistant", {"text": data_response['analysis']})
-
-        except (ValueError, TypeError, KeyError) as e:
-            self.logger.error("Error processing forest correlation analysis: %s", str(e),
-                              exc_info=True)
-            self.add_message_to_history(
-                "assistant",
-                {"text": f"Error processing forest correlation analysis: {str(e)}"}
-            )
-
-    def process_species_humanmod_correlation(self, data_response, parameters):
+    def process_correlation_result(self, data_response, parameters, chart_type):
         """
         Process and display species human modification correlation analysis results.
 
@@ -1055,7 +1017,7 @@ class BioChat:
                     "role": "assistant",
                     "content": {
                         "chart_data": data_response,
-                        "type": "species_humanmod_correlation",
+                        "type": chart_type,
                         "parameters": parameters
                     }
             })
