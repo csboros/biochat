@@ -65,10 +65,3 @@
 
   ![Screenshot](screenshots/screenshot_6.png)
 
-## Complex Multi-Function Queries
-- Compare the endangered species for Germany and Spain with status Critically Endangered
-- How does orangutan distribution relate to forest cover?
-- How does orangutan distribution relate to human modification?
-- Which species share habitat with lion?
-- Analyze species-HCI relationships in Kenya
-
