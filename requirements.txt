@@ -16,5 +16,5 @@ plotly>=5.22.0
 earthengine-api>=0.1.375
 tqdm>=4.66.1
 python-dotenv>=1.0.0
-logging>=0.5.1.2
 pydeck-earthengine-layers>=0.2.0
+streamlit-folium>=0.12.0
