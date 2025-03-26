@@ -22,11 +22,10 @@ from vertexai.preview.generative_models import (
 from google.api_core import exceptions as google_exceptions
 import streamlit as st
 from app.utils.logging_config import setup_logging
-from app.handlers.function_handler import FunctionHandler
-from app.handlers.chart_handler import ChartHandler
-import folium
-from folium.plugins import MarkerCluster
-from streamlit_folium import folium_static
+from app.tools.function_handler import FunctionHandler
+from app.tools.visualization.chart_handler import ChartHandler
+from app.tools.visualization.chart_types import ChartType
+
 
 # Setup logging configuration at application startup
 setup_logging()
@@ -82,7 +81,7 @@ class BioChat:
        - Then use get_species_info with the result
 
     9. For species distribution:
-       - Use get_occurences for location data
+       - Use get_occurrences for location data
        - Use get_yearly_occurrences for temporal trends
 
     Remember: Always use the appropriate function based on whether the query is about a single country or multiple countries.
@@ -141,7 +140,7 @@ class BioChat:
             # Initialize handlers
             handlers_start = time.time()
             with st.spinner("Setting up handlers..."):
-                handler = FunctionHandler()
+                function_handler = FunctionHandler()
                 chart_handler = ChartHandler()
                 logger.info("Handlers initialized in %.2f seconds",
                           time.time() - handlers_start)
@@ -149,7 +148,7 @@ class BioChat:
             # Initialize model with timeout
             model_start = time.time()
             with st.spinner("Loading Gemini model..."):
-                tools = Tool(function_declarations=handler.declarations)
+                tools = Tool(function_declarations=function_handler.get_all_function_declarations())
                 model = GenerativeModel(
                     "gemini-2.0-flash",
                     generation_config=GenerationConfig(temperature=0),
@@ -170,7 +169,7 @@ class BioChat:
             total_time = time.time() - start_time
             logger.info("Total initialization completed in %.2f seconds", total_time)
             return {
-                'handler': handler,
+                'handler': function_handler,
                 'chart_handler': chart_handler,
                 'model': model,
                 'chat': chat
@@ -204,8 +203,8 @@ class BioChat:
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
         try:
             resources = self.initialize_app_resources()
-            self.function_handler = resources['handler'].function_handler
-            self.function_declarations = resources['handler'].declarations
+            self.function_handler = resources['handler'].get_all_function_mappings()
+            self.function_declarations = resources['handler'].get_all_function_declarations()
             self.chart_handler = resources['chart_handler']
             self.gemini_model = resources['model']
             self.chat = resources['chat']
@@ -261,7 +260,7 @@ class BioChat:
     def render_cached_chart(_self, _df, _chart_type, _parameters, message_index):  # pylint: disable=no-self-argument
         """Cache chart rendering for each message"""
         return _self.chart_handler.draw_chart(_df, _chart_type, _parameters,
-                                              _cache_buster=message_index)
+                                              cache_buster=message_index)
 
     def display_message_history(self):
         """
@@ -416,7 +415,7 @@ class BioChat:
         handlers = {
             'get_yearly_occurrences': lambda c:
                 self.process_yearly_observations(c['response'], c['params']),
-            'get_occurences': self._handle_occurrences,
+            'get_occurrences': self._handle_occurrences,
             'get_species_occurrences_in_protected_area': self._handle_occurrences,
             'get_protected_areas_geojson': lambda c:
                 self.process_geojson_data(c['response'], c['params']),
@@ -450,10 +449,10 @@ class BioChat:
                 self.process_species_correlation_analysis(c['response'], c['params']),
             'calculate_species_forest_correlation': lambda c:
                 self.process_correlation_result(c['response'], c['params'],
-                                                "species_forest_correlation"),
+                                                ChartType.FOREST_CORRELATION),
             'calculate_species_humanmod_correlation': lambda c:
                 self.process_correlation_result(c['response'], c['params'],
-                                                "species_humanmod_correlation")
+                                                ChartType.HUMANMOD_CORRELATION)
         }
 
         if call['name'] in handlers:
@@ -491,11 +490,10 @@ class BioChat:
                 self.logger.info("Received final response from Gemini")
                 self.add_message_to_history("assistant", {"text": response_text})
 
-                # Reinforce the system message without reinitializing the chat
-                self.chat.send_message(
-                    "Remember: You must use the provided functions for queries about "
-                    "species, countries, or biodiversity data. Do not rely on general knowledge."
-                )
+                # Only send the reminder message if it's not empty
+                reminder = "Remember: You must use the provided functions for queries about species, countries, or biodiversity data. Do not rely on general knowledge."
+                if reminder.strip():  # Check if reminder is not empty
+                    self.chat.send_message(reminder)
 
         except (ValueError, AttributeError) as e:
             self.logger.error("Final response error: %s", str(e), exc_info=True)
@@ -519,7 +517,7 @@ class BioChat:
                     "role": "assistant",
                     "content": {
                         "chart_data": data_response,
-                        "type": "geojson",
+                        "type": ChartType.GEOJSON_MAP,
                         "parameters": parameters
                     }
                 })
@@ -554,7 +552,7 @@ class BioChat:
                         "role": "assistant",
                         "content": {
                             "chart_data": data_response,
-                            "type": "json",
+                            "type": ChartType.JSON,
                             "parameters": parameters
                         }
                     })
@@ -570,7 +568,7 @@ class BioChat:
                         "role": "assistant",
                         "content": {
                             "chart_data": data_response,
-                            "type": "json",
+                            "type": ChartType.JSON,
                             "parameters": parameters
                         }
                     })
@@ -607,32 +605,33 @@ class BioChat:
         try:
             # Data normalization timing
             norm_start = time.time()
-#            df = pd.json_normalize(data_response)
             self.logger.debug("Data normalization took %.2f seconds",
                             time.time() - norm_start)
             if data_response.get("occurrences") is None \
                 or len(data_response.get("occurrences")) == 0:
                 self.logger.info("No data to display (took %.2f seconds)",
                                time.time() - start_time)
-#                st.markdown("No data to display")
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": {"text": "No data to display"}
                 })
             else:
-                chart_type = parameters.get("chart_type", "hexagon")
+                # Get chart type from parameters or use default
+                chart_type_str = parameters.get("chart_type", "HEXAGON_MAP")
+                try:
+                    chart_type = ChartType.from_string(chart_type_str)
+                except ValueError as e:
+                    self.logger.warning("Invalid chart type %s, defaulting to HEXAGON_MAP", chart_type_str)
+                    chart_type = ChartType.HEXAGON_MAP
+
                 self.logger.debug("Parameters: %s", parameters)
-                # Chart rendering timing
-#                render_start = time.time()
-#                self.chart_handler.draw_chart(df, chart_type, parameters)
-#                self.logger.debug("Chart rendering took %.2f seconds",
-#                                time.time() - render_start)
+                self.logger.debug("Chart Type: %s", chart_type)
                 # Session state update timing
                 session_start = time.time()
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": {
-                        "chart_data": data_response,
+                        "chart_data": data_response,  # Pass the entire data_response
                         "type": chart_type,
                         "parameters": parameters
                     }
@@ -660,7 +659,7 @@ class BioChat:
         """
         self.logger.debug("Processing terrestrial HCI data")
         try:
-            chart_type = parameters.get("chart_type", "3d_scatterplot")
+            chart_type = parameters.get("chart_type", ChartType.SCATTER_PLOT_3D)
             if data_response.get("error"):
                 st.session_state.messages.append({"role": "assistant",
                                     "content": {"text": data_response.get("error")}})
@@ -697,7 +696,7 @@ class BioChat:
                     "role": "assistant",
                     "content": {
                         "chart_data": data_response,
-                        "type": "yearly_observations",
+                        "type": ChartType.YEARLY_OBSERVATIONS,
                         "parameters": parameters
                     }
                 })
@@ -727,7 +726,7 @@ class BioChat:
                 "role": "assistant",
                 "content": {
                     "chart_data": data_response,
-                    "type": "correlation_scatter",
+                    "type": ChartType.CORRELATION_SCATTER,
                     "parameters": parameters
                 }
             })
@@ -751,7 +750,7 @@ class BioChat:
                 "role": "assistant",
                 "content": {
                     "chart_data": images_data,
-                    "type": "images",
+                    "type": ChartType.IMAGES,
                     "parameters": parameters
                 }
             })
@@ -771,7 +770,7 @@ class BioChat:
             chart_type (str): Type of visualization to use (default: circle_packing)
         """
         try:
-            chart_type = parameters.get("chart_type", "force_directed_graph")
+            chart_type = parameters.get("chart_type", ChartType.FORCE_DIRECTED_GRAPH)
             if not data_response:
                 st.session_state.messages.append({
                     "role": "assistant",
@@ -820,7 +819,7 @@ class BioChat:
                 "role": "assistant",
                 "content": {
                     "chart_data": data_response,
-                    "type": "occurrence_map",
+                    "type": ChartType.OCCURRENCE_MAP,
                     "parameters": parameters
                 }
             })
@@ -859,7 +858,7 @@ class BioChat:
                 "role": "assistant",
                 "content": {
                     "chart_data": data_response,
-                    "type": "species_hci_correlation",
+                    "type": ChartType.SPECIES_HCI_CORRELATION,
                     "parameters": parameters
                 }
             })
@@ -893,7 +892,7 @@ class BioChat:
                 "role": "assistant",
                 "content": {
                     "chart_data": data_response,
-                    "type": "species_hci_correlation",
+                    "type": ChartType.SPECIES_HCI_CORRELATION,
                     "parameters": parameters
                 }
             })
@@ -933,7 +932,7 @@ class BioChat:
                 "role": "assistant",
                 "content": {
                     "chart_data": data_response,
-                    "type": "species_shared_habitat",
+                    "type": ChartType.SPECIES_SHARED_HABITAT,
                     "parameters": parameters
                 }
             }
@@ -977,7 +976,7 @@ class BioChat:
                     "role": "assistant",
                     "content": {
                         "chart_data": data_response['correlation_data'],
-                        "type": "species_hci_correlation",
+                        "type": ChartType.SPECIES_HCI_CORRELATION,
                         "parameters": parameters
                     }
                 })

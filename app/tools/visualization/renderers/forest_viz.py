@@ -1,7 +1,8 @@
-"""Module for visualizing forest data and species correlations."""
-
-import logging
+"""
+Renderer for species-forest correlation visualizations.
+"""
 import time
+from typing import Any, Dict, Optional
 import folium
 from folium.plugins import MarkerCluster, Fullscreen
 import pandas as pd
@@ -9,15 +10,20 @@ import numpy as np
 import plotly.graph_objects as go
 from streamlit_folium import folium_static
 import streamlit as st
+from ..base import BaseChartRenderer
+from ..chart_types import ChartType
 
-class ForestViz:
-    """Visualization handler for forest data and species correlations."""
+# pylint: disable=no-member
+class ForestRenderer(BaseChartRenderer):
+    """
+    Renderer for species-forest correlation visualization.
+    """
+    @property
+    def supported_chart_types(self) -> list[ChartType]:
+        return [ChartType.FOREST_CORRELATION]
 
-    def __init__(self):
-        """Initialize the ForestViz class."""
-        self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
-
-    def draw_species_forest_correlation(self, data, parameters, _cache_buster=None):
+    def render(self, data: Any, parameters: Optional[Dict] = None,
+               _cache_buster: Optional[str] = None) -> Any:
         """Draw a map showing species observations, alpha shapes, and forest layers using Folium.
 
         Args:

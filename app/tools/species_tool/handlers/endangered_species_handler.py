@@ -2,10 +2,11 @@
 
 import os
 import logging
+import json
 from typing import List, Optional
 import google.api_core.exceptions
 from google.cloud import bigquery
-from .base_handler import BaseHandler
+from ...base_handler import BaseHandler
 
 class EndangeredSpeciesHandler(BaseHandler):
     """Handles queries related to endangered species."""
@@ -38,11 +39,11 @@ class EndangeredSpeciesHandler(BaseHandler):
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
             query = """
-                SELECT class, count(class) as cnt 
-                FROM `{project_id}.biodiversity.endangered_species` 
-                WHERE LOWER(kingdom) = LOWER(@kingdom) 
-                    AND class IS NOT NULL 
-                GROUP BY class 
+                SELECT class, count(class) as cnt
+                FROM `{project_id}.biodiversity.endangered_species`
+                WHERE LOWER(kingdom) = LOWER(@kingdom)
+                    AND class IS NOT NULL
+                GROUP BY class
                 ORDER BY class
             """
 
@@ -95,11 +96,11 @@ class EndangeredSpeciesHandler(BaseHandler):
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
             query = """
-                SELECT order_name, count(order_name) as cnt 
-                FROM `{project_id}.biodiversity.endangered_species` 
-                WHERE LOWER(class) = LOWER(@class_name) 
-                    AND order_name IS NOT NULL 
-                GROUP BY order_name 
+                SELECT order_name, count(order_name) as cnt
+                FROM `{project_id}.biodiversity.endangered_species`
+                WHERE LOWER(class) = LOWER(@class_name)
+                    AND order_name IS NOT NULL
+                GROUP BY order_name
                 ORDER BY order_name
             """
 
@@ -416,13 +417,13 @@ class EndangeredSpeciesHandler(BaseHandler):
         """Build the BigQuery query string for conservation status counts."""
         # pylint: disable=duplicate-code
         base_query = """
-            SELECT conservation_status, 
+            SELECT conservation_status,
                    COUNT(DISTINCT CONCAT(genus_name, ' ', species_name)) as species_count
             FROM `{project_id}.biodiversity.endangered_species` sp
-            JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
-                ON CONCAT(genus_name, ' ', species_name) = oc.species 
-            WHERE species_name IS NOT NULL 
-                AND genus_name IS NOT NULL 
+            JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc
+                ON CONCAT(genus_name, ' ', species_name) = oc.species
+            WHERE species_name IS NOT NULL
+                AND genus_name IS NOT NULL
                 {where_clause}
             GROUP BY conservation_status
             ORDER BY species_count DESC
@@ -506,39 +507,305 @@ class EndangeredSpeciesHandler(BaseHandler):
 
     def endangered_species_for_countries(self, content) -> str:
         """
-        Retrieves endangered species for MULTIPLE countries.
-        Use this function when comparing species across two or more countries.
+        Retrieves endangered species for multiple specified countries.
 
         Args:
             content (dict): Dictionary containing:
-                - country_codes (list[str]): List of two-letter country codes (e.g., ['NA', 'KE'])
-                - conservation_status (str, optional):
-                    Status to filter by (e.g., 'Critically Endangered')
+                - country_codes (list): List of two-letter country codes to query
+                - conservation_status (str, optional): Status to filter by
 
         Returns:
-            str: Formatted string with endangered species for all specified countries
+            dict: Dictionary containing visualization data for all countries
         """
         try:
-            # Get list of countries to process
-            country_codes = content.get('country_codes', [])  # Remove default European countries
+            country_codes = content.get('country_codes', [])
             conservation_status = content.get('conservation_status')
 
-            if not country_codes:  # Add validation for empty country list
-                raise ValueError("No country codes provided")
+            if not country_codes:
+                return {"error": "No country codes provided"}
 
-            # Rest of the method remains the same
+            # Collect results for each country
             all_results = []
             for country_code in country_codes:
                 params = {
-                    'country_code': country_code,  # Remove list wrapping
+                    'country_code': country_code,
                     'conservation_status': conservation_status
                 }
                 country_results = self.endangered_species_for_country(params)
                 all_results.append(country_results)
 
-            return ("\n\n".join(all_results) if all_results 
-                    else "No results found for any of the specified countries.")
+            # Return the combined results as a dictionary
+            return {
+                "type": "multiple_countries",
+                "data": all_results
+            }
 
         except Exception as e:
             self.logger.error("Error in endangered_species_for_countries: %s", str(e))
             raise
+
+    def get_occurrences(_self, content):  # pylint: disable=no-self-argument
+        """
+        Retrieves species occurrence data from BigQuery.
+        If country_code is provided, the function will return the occurrences
+        for the specified country.
+        If country_code is not provided, the function will return the distribution for the species.
+
+        Args:
+            content (dict): Dictionary containing:
+                - species_name (str): Name of the species
+                - country_code (str): Single country code or comma-separated list of country codes
+                - chart_type (str): Type of visualization
+
+        Returns:
+            list: List of dictionaries containing occurrence data with latitude and longitude
+
+        Raises:
+            ValueError: If species_name is invalid or not found
+            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
+            TypeError: If content is not in expected format
+            KeyError: If required fields are missing from the response
+        """
+        try:
+            species_name = content["species_name"]
+              # Query setup timing
+            if "country_code" in content:
+                # Handle both string and list inputs
+                if isinstance(content["country_code"], str):
+                    country_codes = [code.strip() for code in content["country_code"].split(',')]
+                elif isinstance(content["country_code"], list):
+                    # Filter out None values and empty strings
+                    country_codes = [code for code in content["country_code"] if code]
+                else:
+                    country_codes = [content["country_code"]]
+
+                # Only proceed with country filter if we have valid codes
+                if country_codes:
+                    _self.logger.info(
+                        "Fetching occurrences for species: %s and countries: %s (type: %s)",
+                        species_name,
+                        country_codes,
+                        type(country_codes)
+                    )
+                else:
+                    country_codes = None
+                    _self.logger.info("Fetching occurrences for species: %s", species_name)
+            else:
+                country_codes = None
+                _self.logger.info("Fetching occurrences for species: %s", species_name)
+
+            scientific_name = _self.translate_to_scientific_name_from_api(
+                {"name": species_name}
+            )
+
+            # Parse the JSON response and check for errors
+            translated_result = json.loads(scientific_name)
+            if ("error" in translated_result or
+                    "scientific_name" not in translated_result or
+                    not translated_result["scientific_name"]):
+                _self.logger.warning(
+                    "Could not translate species name: %s - %s",
+                    species_name,
+                    translated_result["error"],
+                )
+                return {
+                    "species": species_name,
+                    "occurrence_count": 0,
+                    "occurrences": [],
+                }
+
+            species_name = translated_result["scientific_name"]
+
+            client = bigquery.Client(
+                project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            )
+            # Base query with parameterization
+            base_query = """
+                SELECT
+                    decimallatitude,
+                    decimallongitude
+                FROM `{project_id}.biodiversity.occurances_endangered_species_mammals`
+                WHERE LOWER(species) = LOWER(@species_name)
+                    AND decimallatitude IS NOT NULL
+                    AND decimallongitude IS NOT NULL
+                    AND eventdate IS NOT NULL
+                    {where_clause}
+            """
+
+            if country_codes:
+                where_clause = "AND countrycode IN UNNEST(@country_codes)"
+                # Ensure country_codes is a list of strings
+                country_codes = [str(code) for code in country_codes]
+                _self.logger.info("Query parameters - country_codes: %s", country_codes)
+                parameters = [
+                    bigquery.ScalarQueryParameter("species_name", "STRING", species_name),
+                    bigquery.ArrayQueryParameter("country_codes", "STRING", country_codes)
+                ]
+            else:
+                where_clause = ""
+                parameters = [
+                    bigquery.ScalarQueryParameter("species_name", "STRING", species_name)
+                ]
+
+            query = _self.build_query(
+                base_query, where_clause=where_clause
+            )
+
+            job_config = bigquery.QueryJobConfig(query_parameters=parameters)
+            query_job = client.query(query, job_config=job_config)
+            total_occurrences = [
+                {
+                    "species": species_name,
+                    "decimallatitude": row.decimallatitude,
+                    "decimallongitude": row.decimallongitude,
+                }
+                for row in query_job
+            ]
+            return {
+                "species": species_name,
+                "occurrence_count": len(total_occurrences),
+                "occurrences": total_occurrences,
+            }
+
+        except google.api_core.exceptions.GoogleAPIError as e:
+            _self.logger.error(
+                "BigQuery error: %s",
+                str(e),
+                exc_info=True,
+            )
+            raise
+        except KeyError as e:
+            _self.logger.error(
+                "Missing required field: %s",
+                str(e),
+                exc_info=True,
+            )
+            raise
+        except (TypeError, ValueError) as e:
+            _self.logger.error(
+                "Invalid input: %s",
+                str(e),
+                exc_info=True,
+            )
+            raise
+
+    def get_yearly_occurrences(self, content):
+        """
+        Get yearly occurrence counts for a species, optionally filtered by countries.
+
+        Args:
+            content (dict): Dictionary containing:
+                - species_name (str): Common name of the species
+                - country_codes (list, optional): List of 2 or 3-letter country codes
+
+        Returns:
+            dict: Yearly occurrence data or error message
+        """
+        try:
+            if not content.get("species_name"):
+                return {"error": "Species name is required"}
+
+            # Translate name and validate
+            translated = json.loads(
+                self.translate_to_scientific_name_from_api(
+                    {"name": content["species_name"]}
+                )
+            )
+            if "error" in translated or not translated.get("scientific_name"):
+                return {
+                    "error": f"Could not find valid scientific name for: {content['species_name']}"
+                }
+
+            # Base query template
+            base_query = """
+                SELECT
+                    EXTRACT(YEAR FROM eventdate) as year,
+                    COUNT(*) as count
+                FROM `{project}.biodiversity.occurances_endangered_species_mammals` o
+                {join_clause}
+                WHERE LOWER(o.species) = LOWER(@species_name)
+                AND eventdate IS NOT NULL and eventdate > '1980-01-01'
+                {where_clause}
+                GROUP BY year
+                ORDER BY year
+            """
+
+            results = {}
+            if content.get("country_codes"):
+                # Process each country
+                for code in content["country_codes"]:
+                    country_data = self._query_country_occurrences(
+                        os.getenv("GOOGLE_CLOUD_PROJECT"),
+                        base_query,
+                        code,
+                        translated["scientific_name"],
+                    )
+                    if country_data:
+                        results[code] = country_data
+            else:
+                # Query without country filter
+                client = bigquery.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
+                query_job = client.query(
+                    base_query.format(
+                        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+                        join_clause="",
+                        where_clause="",
+                    ),
+                    bigquery.QueryJobConfig(
+                        query_parameters=[
+                            bigquery.ScalarQueryParameter(
+                                "species_name", "STRING", translated["scientific_name"]
+                            )
+                        ]
+                    ),
+                )
+                results = [{"year": row.year, "count": row.count} for row in query_job]
+
+            if not results:
+                return {
+                    "error": f"No occurrence data found for "
+                    f"{content['species_name']} ({translated['scientific_name']})"
+                }
+
+            return {
+                "common_name": content["species_name"],
+                "scientific_name": translated["scientific_name"],
+                "yearly_data": results,
+                "type": "temporal",
+            }
+
+        except Exception as e:
+            self.logger.error(
+                "Error getting yearly occurrences: %s", str(e), exc_info=True
+            )
+            raise
+
+    def _query_country_occurrences(
+        self, project_id: str, base_query: str, country_code: str, scientific_name: str
+    ) -> list:
+        """Query species occurrences for a specific country."""
+        code_length = len(country_code)
+        code_field = "ISO_A2" if code_length == 2 else "ISO_A3"
+
+        query = base_query.format(
+            project=project_id,
+            join_clause=f"""
+                INNER JOIN `{project_id}.biodiversity.countries` c
+                ON ST_CONTAINS(c.geometry,
+                    ST_GEOGPOINT(o.decimallongitude, o.decimallatitude))
+            """,
+            where_clause=f"AND c.{code_field} = @country_code",
+        )
+
+        client = bigquery.Client(project=project_id)
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter(
+                    "species_name", "STRING", scientific_name
+                ),
+                bigquery.ScalarQueryParameter("country_code", "STRING", country_code),
+            ]
+        )
+
+        query_job = client.query(query, job_config=job_config)
+        return [{"year": row.year, "count": row.count} for row in query_job]

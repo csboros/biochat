@@ -3,9 +3,12 @@
 import os
 import logging
 from typing import Dict, Any
+import requests
+import streamlit as st
+import json
 from google.cloud import bigquery
 from vertexai.preview.generative_models import (GenerativeModel, GenerationConfig)
-from .base_handler import BaseHandler
+from app.tools.base_handler import BaseHandler
 
 class CorrelationHandler(BaseHandler):
     """Handles queries related to species-HCI correlations."""
@@ -13,6 +16,11 @@ class CorrelationHandler(BaseHandler):
     def __init__(self):
         super().__init__()
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
+        self.world_data = {
+                "gdf": None,
+                "geojson_url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+                "master/geojson/ne_110m_admin_0_countries.geojson",
+            }
 
     def get_species_hci_correlation(self, country_code: str) -> Dict[str, Any]:
         """
@@ -39,7 +47,7 @@ class CorrelationHandler(BaseHandler):
 
             query = """
             WITH species_hci AS (
-              SELECT 
+              SELECT
                  CONCAT(sp.genus_name, ' ', sp.species_name) as species_name,
                 sp.species_name_en,
                 sp.conservation_status,
@@ -49,7 +57,7 @@ class CorrelationHandler(BaseHandler):
                 SUM(COALESCE(oc.individualcount, 1)) as total_individuals_in_cell,
                 AVG(h.terrestrial_hci) as cell_hci
               FROM `{project_id}.biodiversity.endangered_species` sp
-              INNER JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
+              INNER JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc
                 ON CONCAT(sp.genus_name, ' ', sp.species_name) = oc.species
               INNER JOIN `{project_id}.biodiversity.hci` h
                 ON ROUND(oc.decimallongitude * 4) / 4 = ROUND(h.decimallongitude * 4) / 4
@@ -60,7 +68,7 @@ class CorrelationHandler(BaseHandler):
                   c.geometry,
                   ST_GEOGPOINT(oc.decimallongitude, oc.decimallatitude)
                 )
-              GROUP BY 
+              GROUP BY
                 sp.species_name,
                 sp.genus_name,
                 sp.species_name_en,
@@ -72,7 +80,7 @@ class CorrelationHandler(BaseHandler):
             ),
 
             species_stats AS (
-              SELECT 
+              SELECT
                 species_name,
                 species_name_en,
                 conservation_status,
@@ -82,8 +90,8 @@ class CorrelationHandler(BaseHandler):
                 AVG(cell_hci) as avg_hci,
                 AVG(total_individuals_in_cell) as avg_individuals_per_cell,
                 ROW_NUMBER() OVER (
-                  PARTITION BY species_name 
-                  ORDER BY 
+                  PARTITION BY species_name
+                  ORDER BY
                    CASE conservation_status
                     WHEN 'Extinct' THEN 7
                     WHEN 'Critically Endangered' THEN 6
@@ -96,14 +104,14 @@ class CorrelationHandler(BaseHandler):
                   END DESC
                 ) as status_rank
               FROM species_hci
-              GROUP BY 
+              GROUP BY
                 species_name,
                 species_name_en,
                 conservation_status
               HAVING COUNT(DISTINCT CONCAT(grid_lon, ',', grid_lat)) >= 5
             )
 
-            SELECT 
+            SELECT
               species_name,
               species_name_en,
               conservation_status,
@@ -113,10 +121,10 @@ class CorrelationHandler(BaseHandler):
               avg_hci,
               avg_individuals_per_cell
             FROM species_stats
-            WHERE correlation_coefficient IS NOT NULL 
+            WHERE correlation_coefficient IS NOT NULL
               AND IS_NAN(correlation_coefficient) = FALSE
               AND status_rank = 1
-            ORDER BY correlation_coefficient DESC 
+            ORDER BY correlation_coefficient DESC
             """
 
             # Build query with project ID
@@ -175,7 +183,7 @@ class CorrelationHandler(BaseHandler):
 
             # Lower temperature for more analytical responses
             model = GenerativeModel(
-                "gemini-2.0-flash-lite", 
+                "gemini-2.0-flash-lite",
                 generation_config=GenerationConfig(
                     temperature=0.5,  # Lower temperature for more precise analysis
                     max_output_tokens=8192,  # Ensure we get detailed response
@@ -199,7 +207,7 @@ class CorrelationHandler(BaseHandler):
 
         Args:
             conservation_status (str): Conservation status to filter by (default: 'Critically Endangered')
-                                     Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable', 
+                                     Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable',
                                                  'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'
 
         Returns:
@@ -221,7 +229,7 @@ class CorrelationHandler(BaseHandler):
 
             # Validate conservation status
             valid_statuses = [
-                'Critically Endangered', 'Endangered', 'Vulnerable', 
+                'Critically Endangered', 'Endangered', 'Vulnerable',
                 'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'
             ]
 
@@ -237,7 +245,7 @@ class CorrelationHandler(BaseHandler):
 
             query = """
             WITH species_hci AS (
-              SELECT 
+              SELECT
                 CONCAT(sp.genus_name, ' ', sp.species_name) as species_name,
                 sp.species_name_en,
                 sp.conservation_status,
@@ -246,13 +254,13 @@ class CorrelationHandler(BaseHandler):
                 SUM(COALESCE(oc.individualcount, 1)) as total_individuals_in_cell,
                 AVG(h.terrestrial_hci) as cell_hci
               FROM `{project_id}.biodiversity.endangered_species` sp
-              INNER JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
+              INNER JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc
                 ON CONCAT(sp.genus_name, ' ', sp.species_name) = oc.species
               INNER JOIN `{project_id}.biodiversity.hci` h
                 ON ROUND(oc.decimallongitude * 4) / 4 = ROUND(h.decimallongitude * 4) / 4
                 AND ROUND(oc.decimallatitude * 4) / 4 = ROUND(h.decimallatitude * 4) / 4
               WHERE sp.conservation_status = @conservation_status
-              GROUP BY 
+              GROUP BY
                 species_name,
                 species_name_en,
                 conservation_status,
@@ -261,7 +269,7 @@ class CorrelationHandler(BaseHandler):
             ),
 
             species_stats AS (
-              SELECT 
+              SELECT
                 species_name,
                 species_name_en,
                 conservation_status,
@@ -271,14 +279,14 @@ class CorrelationHandler(BaseHandler):
                 AVG(cell_hci) as avg_hci,
                 AVG(total_individuals_in_cell) as avg_individuals_per_cell
               FROM species_hci
-              GROUP BY 
+              GROUP BY
                 species_name,
                 species_name_en,
                 conservation_status
               HAVING COUNT(DISTINCT CONCAT(grid_lon, ',', grid_lat)) >= 5
             )
 
-            SELECT 
+            SELECT
               species_name,
               species_name_en,
               conservation_status,
@@ -288,7 +296,7 @@ class CorrelationHandler(BaseHandler):
               avg_hci,
               avg_individuals_per_cell
             FROM species_stats
-            WHERE correlation_coefficient IS NOT NULL 
+            WHERE correlation_coefficient IS NOT NULL
               AND IS_NAN(correlation_coefficient) = FALSE
             ORDER BY ABS(correlation_coefficient) DESC
             """
@@ -391,7 +399,7 @@ class CorrelationHandler(BaseHandler):
                 correlation_data = self.get_species_hci_correlation(country_code)
 
             # Send to LLM for analysis
-            prompt = """You are a conservation biology expert. Analyze this species 
+            prompt = """You are a conservation biology expert. Analyze this species
                 correlation data between species occurrence and Human Coexistence Index (HCI).
 
             Context:
@@ -458,7 +466,7 @@ class CorrelationHandler(BaseHandler):
             print(f"Fetching shared habitat correlations for species: {species_name}")  # Debug log
 
             query = """
-            SELECT 
+            SELECT
                 species_1,
                 species_1_en,
                 species_1_status,
@@ -515,4 +523,188 @@ class CorrelationHandler(BaseHandler):
         except Exception as e:
             print(f"Error in get_species_shared_habitat: {str(e)}")  # Debug log
             self.logger.error("Error fetching shared habitat data: %s", str(e), exc_info=True)
+            raise
+
+    def read_indicator_values(self, content):
+        """
+        Retrieves property data (e.g., terrestrial_hci, popden) for specified countries.
+
+        Args:
+            content (dict): Dictionary containing:
+                - country_names (list, optional): List of country names
+                - country_codes (list, optional): List of 2 or 3-letter country codes
+                - property_name: Name of the property to query (e.g., 'terrestrial_hci', 'popden')
+
+        Returns:
+            dict: Dictionary containing data for each country or error message
+        """
+        property_name = content.get("property_name", "terrestrial_hci")
+        country_names = content.get("country_names", [])
+        country_codes = content.get("country_codes", [])
+
+        if not country_names and not country_codes:
+            return {"error": "No countries specified"}
+
+        try:
+            self.load_world_geojson()
+            results = {}
+
+            # Process countries specified by name
+            for country_name in country_names:
+                self.logger.info("Processing country name: %s", country_name)
+                country_data = next(
+                    (
+                        feature
+                        for feature in self.world_data["gdf"].get("features", [])
+                        if feature["properties"]["NAME_EN"].lower()
+                        == country_name.lower()
+                    ),
+                    None,
+                )
+                if country_data:
+                    results[country_name] = self._process_country_data(
+                        country_data, property_name
+                    )
+                else:
+                    self.logger.warning("Country not found: %s", country_name)
+                    results[country_name] = {
+                        "error": f"Country not found: {country_name}"
+                    }
+
+            # Process countries specified by code
+            for country_code in country_codes:
+                code_length = len(country_code)
+                country_data = None
+
+                if code_length == 2:
+                    country_data = next(
+                        (
+                            feature
+                            for feature in self.world_data["gdf"].get("features", [])
+                            if feature["properties"]["ISO_A2"].lower()
+                            == country_code.lower()
+                        ),
+                        None,
+                    )
+                elif code_length == 3:
+                    country_data = next(
+                        (
+                            feature
+                            for feature in self.world_data["gdf"].get("features", [])
+                            if feature["properties"]["ISO_A3"].lower()
+                            == country_code.lower()
+                        ),
+                        None,
+                    )
+
+                if country_data:
+                    country_name = country_data["properties"]["NAME_EN"]
+                    results[country_name] = self._process_country_data(
+                        country_data, property_name
+                    )
+                else:
+                    self.logger.warning("Country not found for code: %s", country_code)
+                    results[country_code] = {
+                        "error": f"Country not found for code: {country_code}"
+                    }
+
+            if all("error" in country_data for country_data in results.values()):
+                return {"error": "No data found for any of the specified countries"}
+
+            return {
+                "countries": results,
+                "property_name": property_name,
+                "type": "comparison",
+            }
+
+        except Exception as e:
+            self.logger.error(
+                "Error fetching %s: %s", property_name, str(e), exc_info=True
+            )
+            raise
+
+    def _process_country_data(self, country_data, property_name):
+        """Helper method to process country data and run the query."""
+        country_geojson = country_data.get("geometry")
+        country_properties = country_data.get("properties", {})
+        country_name = country_properties.get("NAME_EN")
+
+        query = f"""
+            SELECT {property_name}, decimallongitude, decimallatitude
+            FROM `***REMOVED***.biodiversity.hci`
+            WHERE decimallatitude is not null
+            AND decimallongitude is not null
+            AND {property_name} is not null
+            AND ST_DWithin(
+                ST_GeogFromGeoJson(
+                    @geojson
+                ),
+                ST_GeogPoint(decimallongitude, decimallatitude),
+                100
+            )
+        """
+
+        client = bigquery.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter(
+                    "geojson", "STRING", json.dumps(country_geojson)
+                )
+            ]
+        )
+        query_job = client.query(query, job_config=job_config)
+
+        country_results = [
+            {
+                property_name: getattr(row, property_name),
+                "decimallatitude": row.decimallatitude,
+                "decimallongitude": row.decimallongitude,
+            }
+            for row in query_job
+        ]
+
+        return {
+            "data": country_results,
+            "geojson": country_data,
+            "property_name": property_name,
+            "country_codes": {
+                "iso_a2": country_properties.get("ISO_A2", ""),
+                "iso_a3": country_properties.get("ISO_A3", ""),
+            },
+            "country_name": country_name,
+        }
+
+    def read_terrestrial_hci(self, content):
+        """
+        Retrieves terrestrial human coexistence index data for a specified country.
+
+        Args:
+            content (dict): Dictionary containing country_name or country_code
+
+        Returns:
+            list: List of HCI values with coordinates or dict with error message
+        """
+        content["property_name"] = "terrestrial_hci"
+        return self.read_indicator_values(content)
+
+    # pylint: disable=no-member
+    def load_world_geojson(self):
+        """
+        Loads world GeoJSON data.
+
+        Raises:
+            requests.RequestException: If GeoJSON download fails
+            json.JSONDecodeError: If GeoJSON is malformed
+        """
+        try:
+            if "gdf" not in st.session_state or st.session_state.gdf is None:
+                response = requests.get(self.world_data["geojson_url"], timeout=30)
+                response.raise_for_status()
+                self.world_data["gdf"] = response.json()
+                st.session_state.gdf = self.world_data["gdf"]
+        except requests.RequestException as e:
+            self.logger.error("Failed to download GeoJSON: %s", str(e), exc_info=True)
+            raise
+        except json.JSONDecodeError as e:
+            self.logger.error("Invalid GeoJSON format: %s", str(e), exc_info=True)
             raise

@@ -13,7 +13,7 @@ class BaseHandler:
     # Add base query templates
     SPECIES_QUERY_TEMPLATE = """
             WITH RankedSpecies AS (
-                SELECT 
+                SELECT
                     CONCAT(genus_name, ' ', species_name) as species_name,
                     species_name_en,
                     family_name as family,
@@ -22,7 +22,7 @@ class BaseHandler:
                     class,
                     ROW_NUMBER() OVER (
                         PARTITION BY species_name
-                        ORDER BY 
+                        ORDER BY
                             CASE conservation_status
                                 WHEN 'Extinct' THEN 7
                                 WHEN 'Critically Endangered' THEN 6
@@ -35,14 +35,14 @@ class BaseHandler:
                             END DESC
                     ) as rank
                 FROM `{project_id}.biodiversity.endangered_species` sp
-                JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc 
-                    ON CONCAT(genus_name, ' ', species_name) = oc.species 
-                WHERE species_name IS NOT NULL 
-                    AND genus_name IS NOT NULL 
+                JOIN `{project_id}.biodiversity.occurances_endangered_species_mammals` oc
+                    ON CONCAT(genus_name, ' ', species_name) = oc.species
+                WHERE species_name IS NOT NULL
+                    AND genus_name IS NOT NULL
                     {where_clause}
                     {conservation_status_filter}
             )
-            SELECT 
+            SELECT
                 species_name,
                 species_name_en,
                 family,

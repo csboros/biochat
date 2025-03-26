@@ -4,7 +4,7 @@ import logging
 from typing import Dict, Any, Optional
 import ee
 from app.utils.alpha_shape_utils import AlphaShapeUtils
-from app.handlers.earth_engine_handler import EarthEngineHandler
+from .earth_engine_handler import EarthEngineHandler
 
 class HumanModificationHandlerEE(EarthEngineHandler):
     """Handles human modification data processing and analysis using Google Earth Engine."""
@@ -15,7 +15,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
         self.alpha_shape_utils = AlphaShapeUtils()
 
-    def calculate_species_humanmod_correlation_ee(
+    def calculate_species_humanmod_correlation(
         self,
         species_name: str,
         min_observations: int = 10,
