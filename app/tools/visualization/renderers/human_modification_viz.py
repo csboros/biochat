@@ -1,6 +1,7 @@
-"""Module for visualizing human modification data and species correlations."""
-
-import logging
+"""
+Renderer for human modification visualizations.
+"""
+from typing import Any, Dict, Optional
 import time
 import folium
 import pandas as pd
@@ -9,15 +10,20 @@ from folium.plugins import MarkerCluster, Fullscreen
 from streamlit_folium import folium_static
 import numpy as np
 import streamlit as st
+from ..base import BaseChartRenderer
+from ..chart_types import ChartType
 
-class HumanModificationViz:
-    """Visualization handler for human modification data and species correlations."""
+# pylint: disable=no-member
+class HumanModificationVizRenderer(BaseChartRenderer):
+    """
+    Renderer for human modification visualization.
+    """
+    @property
+    def supported_chart_types(self) -> list[ChartType]:
+        return [ChartType.HUMANMOD_CORRELATION]
 
-    def __init__(self):
-        """Initialize the HumanModificationViz class."""
-        self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
-
-    def draw_species_humanmod_correlation(self, data, parameters, _cache_buster=None):
+    def render(self, data: Any, parameters: Optional[Dict] = None,
+               cache_buster: Optional[str] = None) -> Any:
         """Draw a map showing species observations and human modification using Folium.
 
         Args:
@@ -32,7 +38,7 @@ class HumanModificationViz:
         """
         try:
              # pylint: disable=no-member
-            message_index = _cache_buster if _cache_buster is not None else int(time.time())
+            message_index = cache_buster if cache_buster is not None else int(time.time())
 
             # Create DataFrame from observations
             df = pd.DataFrame(data['observations'])
@@ -305,7 +311,7 @@ class HumanModificationViz:
         Citation: Kennedy et al. 2019, Global Change Biology.</small>
         """, unsafe_allow_html=True)
 
-    def draw_human_modification_by_species(self, data, parameters, _cache_buster=None):
+    def draw_human_modification_by_species(self, data, parameters, cache_buster=None):
         """Draw a comparison chart for multiple species and their gHM values.
 
         Args:
@@ -314,7 +320,7 @@ class HumanModificationViz:
         """
         try:
             # pylint: disable=no-member
-            message_index = _cache_buster if _cache_buster is not None else int(time.time())
+            message_index = cache_buster if cache_buster is not None else int(time.time())
 
             if not data or 'species_data' not in data:
                 st.warning("No data available for visualization")

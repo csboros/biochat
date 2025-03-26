@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 import numpy as np
 import ee
 from scipy import stats
-from app.handlers.earth_engine_handler import EarthEngineHandler
+from .earth_engine_handler import EarthEngineHandler
 
 class ForestHandlerEE(EarthEngineHandler):
     """Handles forest data processing and analysis using Google Earth Engine."""
@@ -15,7 +15,7 @@ class ForestHandlerEE(EarthEngineHandler):
         super().__init__()
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
 
-    def calculate_species_forest_correlation_ee(
+    def calculate_species_forest_correlation(
         self,
         species_name: str,
         min_observations: int = 10,
