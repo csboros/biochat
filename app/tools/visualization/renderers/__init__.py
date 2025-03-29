@@ -18,6 +18,7 @@ from .force_directed_graph import ForceDirectedGraphRenderer
 from .tree_viz import TreeRenderer
 from .json_viz import JSONRenderer
 from .habitat_viz import HabitatViz
+from .topography_viz import TopographyViz
 
 # Register all renderers
 RendererRegistry.register(HeatmapRenderer)
@@ -36,5 +37,6 @@ RendererRegistry.register(ForceDirectedGraphRenderer)
 RendererRegistry.register(TreeRenderer)
 RendererRegistry.register(JSONRenderer)
 RendererRegistry.register(HabitatViz)
+RendererRegistry.register(TopographyViz)
 
 __all__ = ['HabitatViz']

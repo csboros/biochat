@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 import numpy as np
 import ee
 from scipy import stats
+from app.tools.message_bus import message_bus
 from .earth_engine_handler import EarthEngineHandler
 
 class ForestHandlerEE(EarthEngineHandler):
@@ -59,26 +60,58 @@ class ForestHandlerEE(EarthEngineHandler):
                   is based on observation frequency in habitat bins, not individual counts.
         """
         try:
+            message_bus.publish("status_update", {
+                "message": "Starting forest correlation analysis...",
+                "state": "running",
+                "progress": 0,
+                "expanded": True
+            })
+
             # Get species observations from BigQuery
+            message_bus.publish("status_update", {
+                "message": "📍 Fetching species observations...",
+                "state": "running",
+                "progress": 10
+            })
             observations = self.filter_marine_observations(
                 self.get_species_observations(species_name, min_observations))
 
             # Create point features from individual observations
+            message_bus.publish("status_update", {
+                "message": "🌍 Converting to Earth Engine features...",
+                "state": "running",
+                "progress": 20
+            })
             ee_point_features = self.create_ee_point_features(observations)
 
             # Generate alpha shapes for visualization only (if needed)
             all_alpha_shapes = []
 
             # Sample forest metrics at observation points - with built-in datamask filtering
+            message_bus.publish("status_update", {
+                "message": "📊 Sampling forest metrics...",
+                "state": "running",
+                "progress": 30
+            })
             sampling_results = self.sample_forest_metrics_at_points(ee_point_features, scale)
 
             # Process results and separate out the filtering statistics
+            message_bus.publish("status_update", {
+                "message": "📈 Processing sampling results...",
+                "state": "running",
+                "progress": 40
+            })
             all_results, filtering_stats = self.process_forest_sample_results(sampling_results)
 
             # Calculate correlations using all results
             if not all_results:
                 self.logger.warning("No valid results were obtained from Earth Engine. "
                                     "Cannot calculate correlations.")
+                message_bus.publish("status_update", {
+                    "message": "❌ No valid results found",
+                    "state": "error",
+                    "progress": 0
+                })
                 return self.create_forest_error_response(
                     species_name=species_name,
                     observations=observations,
@@ -88,12 +121,36 @@ class ForestHandlerEE(EarthEngineHandler):
                 )
 
             # Calculate correlation data from the results
+            message_bus.publish("status_update", {
+                "message": "📊 Calculating correlations...",
+                "state": "running",
+                "progress": 50
+            })
             correlation_data = self.calculate_forest_correlations(all_results, scale)
 
             # Create prompt and get analysis from LLM
+            message_bus.publish("status_update", {
+                "message": "🤖 Generating expert analysis...",
+                "state": "running",
+                "progress": 75
+            })
             analysis = self.send_to_llm(
                 self.create_analysis_prompt(species_name, correlation_data, filtering_stats)
             )
+
+            # Generate visualizations
+            message_bus.publish("status_update", {
+                "message": "🎨 Creating visualizations...",
+                "state": "running",
+                "progress": 90
+            })
+
+            message_bus.publish("status_update", {
+                "message": "✅ Analysis complete!",
+                "state": "complete",
+                "progress": 100,
+                "expanded": False
+            })
 
             # Return with filtering statistics included
             return {

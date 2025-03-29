@@ -1,11 +1,11 @@
 """Handler for habitat analysis using Earth Engine."""
 
 from typing import Dict, Any
-import ee
-import streamlit as st
-from app.tools.earth_engine_tool.handlers.earth_engine_handler import EarthEngineHandler
-from ...visualization.config.land_cover_config import LandCoverConfig
 import logging
+import ee
+from app.tools.earth_engine_tool.handlers.earth_engine_handler import EarthEngineHandler
+from app.tools.message_bus import message_bus
+from ...visualization.config.land_cover_config import LandCoverConfig
 
 
 # pylint: disable=no-member
@@ -23,48 +23,79 @@ class HabitatAnalyzer(EarthEngineHandler):
     ) -> Dict[str, Any]:
         """Analyze species habitat distribution using Copernicus land cover data."""
         try:
-            # Create status messages
-            st.write("🔍 Starting habitat analysis...")
+            message_bus.publish("status_update", {
+                "message": "Starting habitat analysis...",
+                "state": "running",
+                "progress": 0,
+                "expanded": True
+            })
 
-            with st.status("Analyzing habitat distribution...", expanded=True) as status:
-                # Get species occurrence points
-                st.write("📍 Fetching species observations...")
-                observations = self.filter_marine_observations(
-                    self.get_species_observations(species_name)
-                )
-                status.update(label="Processing species data...", expanded=True)
+            # Get species occurrence points
+            message_bus.publish("status_update", {
+                "message": "📍 Fetching species observations...",
+                "state": "running",
+                "progress": 10
+            })
+            observations = self.filter_marine_observations(
+                self.get_species_observations(species_name)
+            )
 
-                # Convert observations to Earth Engine features
-                st.write("🌍 Converting to Earth Engine features...")
-                species_points = ee.FeatureCollection(
-                    [ee.Feature(
-                        ee.Geometry.Point([obs["decimallongitude"], obs["decimallatitude"]]),
-                        {'individual_count': obs["individual_count"]}
-                    ) for obs in observations]
-                )
+            # Convert observations to Earth Engine features
+            message_bus.publish("status_update", {
+                "message": "🌍 Converting to Earth Engine features...",
+                "state": "running",
+                "progress": 15
+            })
+            species_points = ee.FeatureCollection(
+                [ee.Feature(
+                    ee.Geometry.Point([obs["decimallongitude"], obs["decimallatitude"]]),
+                    {'individual_count': obs["individual_count"]}
+                ) for obs in observations]
+            )
 
-                # Get land cover data
-                st.write("🗺️ Loading land cover data...")
-                landcover = ee.Image('COPERNICUS/Landcover/100m/Proba-V-C3/Global/2019')
-                status.update(label="Analyzing habitat patterns...", expanded=True)
+            # Get land cover data
+            message_bus.publish("status_update", {
+                "message": "🗺️ Loading land cover data...",
+                "state": "running",
+                "progress": 20
+            })
+            landcover = ee.Image('COPERNICUS/Landcover/100m/Proba-V-C3/Global/2019')
 
-                # Perform analysis
-                st.write("📊 Calculating habitat usage...")
-                results = self.analyze(landcover, species_points, species_points.geometry())
+            # Perform analysis
+            message_bus.publish("status_update", {
+                "message": "📊 Calculating habitat usage...",
+                "state": "running",
+                "progress": 25
+            })
+            results = self.analyze(landcover, species_points, species_points.geometry())
 
-                # Get analysis from Gemini
-                st.write("🤖 Generating expert analysis...")
-                analysis = self.send_to_llm(
-                    self.create_analysis_prompt(species_name, results)
-                )
+            # Get analysis from Gemini
+            message_bus.publish("status_update", {
+                "message": "🤖 Generating expert analysis...",
+                "state": "running",
+                "progress": 75
+            })
+            analysis = self.send_to_llm(
+                self.create_analysis_prompt(species_name, results)
+            )
 
-                # Generate visualizations if requested
-                st.write("🎨 Creating visualizations...")
-                visualizations = self._generate_visualizations(
-                        landcover,
-                        species_points
-                )
-                status.update(label="Analysis complete!", state="complete", expanded=False)
+            # Generate visualizations
+            message_bus.publish("status_update", {
+                "message": "🎨 Creating visualizations...",
+                "state": "running",
+                "progress": 90
+            })
+            visualizations = self._generate_visualizations(
+                    landcover,
+                    species_points
+            )
+
+            message_bus.publish("status_update", {
+                "message": "✅ Analysis complete!",
+                "state": "complete",
+                "progress": 100,
+                "expanded": False
+            })
 
             return {
                 'success': True,
@@ -76,7 +107,12 @@ class HabitatAnalyzer(EarthEngineHandler):
             }
 
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            message_bus.publish("status_update", {
+                "message": f"❌ Error: {str(e)}",
+                "state": "error",
+                "progress": 0,
+                "expanded": True
+            })
             return {
                 'success': False,
                 'error': str(e),
@@ -91,7 +127,6 @@ class HabitatAnalyzer(EarthEngineHandler):
 
         Context:
         - The data shows the species' distribution across different land cover types
-        - Forest dependency analysis shows how reliant the species is on forest habitats
         - Habitat fragmentation metrics indicate the quality and connectivity of preferred habitats
         - The analysis uses Copernicus land cover data at 100m resolution from 2019
         """
@@ -99,10 +134,24 @@ class HabitatAnalyzer(EarthEngineHandler):
         if species_name:
             prompt += f"\nAnalyzing habitat distribution for species: {species_name}\n"
 
+        # Add forest dependency context only if forest is the primary habitat
+        if results.get('is_forest_primary', False):
+            prompt += """
+            - Forest dependency analysis shows how reliant the species is on forest habitats
+            """
+
         prompt += """
         Please analyze:
         1. Primary habitat preferences and their ecological significance
+        """
+
+        # Add forest dependency analysis point only if forest is the primary habitat
+        if results.get('is_forest_primary', False):
+            prompt += """
         2. Forest dependency and its implications for conservation
+            """
+
+        prompt += """
         3. Habitat fragmentation patterns and their impact on species viability
         4. Data limitations and caveats
         5. Conservation recommendations based on the analysis
@@ -120,17 +169,7 @@ class HabitatAnalyzer(EarthEngineHandler):
         species_points: ee.FeatureCollection,
         region: ee.Geometry
     ) -> Dict[str, Any]:
-        """
-        Analyze habitat types and their distribution.
-
-        Args:
-            landcover: Land cover classification image
-            species_points: Feature collection of species observation points
-            region: Region of interest
-
-        Returns:
-            Dictionary containing analysis results
-        """
+        """Analyze habitat types and their distribution."""
         # Sample land cover values at species points
         points_with_landcover = landcover.select('discrete_classification')\
             .sampleRegions(
@@ -139,20 +178,55 @@ class HabitatAnalyzer(EarthEngineHandler):
                 geometries=True
             )
 
-        # Calculate habitat usage
+        # Calculate habitat usage first
+        message_bus.publish("status_update", {
+            "message": "📊 Analyzing habitat usage",
+            "state": "running",
+            "progress": 30
+        })
         habitat_usage = self._calculate_habitat_usage(points_with_landcover)
 
-        # Analyze forest dependency
-        forest_analysis = self._analyze_forest_dependency(points_with_landcover)
+        # Determine if forest is the primary habitat
+        forest_codes = [111, 112, 113, 114, 115, 116, 121, 122, 123, 124, 125, 126]
+        forest_percentage = sum(
+            percentage for name, percentage in habitat_usage.items()
+            if any(str(code) in name for code in forest_codes)
+        )
+        is_primary_habitat = forest_percentage > 0 and forest_percentage == max(habitat_usage.values())
 
-        # Analyze habitat fragmentation
-        fragmentation = None
-        fragmentation = self._analyze_habitat_fragmentation(landcover, region)
+        # Only analyze forest dependency if forest is the primary habitat
+        forest_analysis = None
+        if is_primary_habitat:
+            message_bus.publish("status_update", {
+                "message": "📊 Analyzing forest dependency",
+                "state": "running",
+                "progress": 40
+            })
+            forest_analysis = self._analyze_forest_dependency(points_with_landcover)
+        else:
+            message_bus.publish("status_update", {
+                "message": "📊 Skipping forest dependency analysis (not primary habitat)",
+                "state": "running",
+                "progress": 50
+            })
+
+        # Analyze habitat fragmentation with habitat usage information
+        message_bus.publish("status_update", {
+            "message": "📊 Analyzing habitat fragmentation",
+            "state": "running",
+            "progress": 60
+        })
+        fragmentation = self._analyze_habitat_fragmentation(
+            landcover,
+            region,
+            habitat_usage
+        )
 
         return {
             'habitat_usage': habitat_usage,
             'forest_analysis': forest_analysis,
-            'habitat_fragmentation': fragmentation
+            'habitat_fragmentation': fragmentation,
+            'is_forest_primary': is_primary_habitat
         }
 
     def _calculate_habitat_usage(self, points_with_habitat: ee.FeatureCollection) -> Dict[str, float]:
@@ -200,25 +274,67 @@ class HabitatAnalyzer(EarthEngineHandler):
     def _analyze_habitat_fragmentation(
         self,
         landcover: ee.Image,
-        region: ee.Geometry
+        region: ee.Geometry,
+        habitat_usage: Dict[str, float] = None
     ) -> Dict[str, Any]:
-        """Analyze habitat fragmentation metrics."""
+        """
+        Analyze habitat fragmentation metrics for the species' primary habitat type.
+        """
         try:
-            # Use simple progress messages instead of nested status
-            st.write("🌲 Analyzing forest fragmentation...")
+            # Define habitat type groups with their corresponding codes and names
+            habitat_groups = {
+                'Forest': {
+                    'codes': [111, 112, 113, 114, 115, 116, 121, 122, 123, 124, 125, 126],
+                    'keywords': ['forest', 'tree']
+                },
+                'Shrubland': {
+                    'codes': [20],
+                    'keywords': ['shrub', 'shrubland']
+                },
+                'Grassland': {
+                    'codes': [30],
+                    'keywords': ['grass', 'grassland']
+                },
+                'Wetland': {
+                    'codes': [90],
+                    'keywords': ['wetland', 'marsh']
+                },
+                'Cropland': {
+                    'codes': [40],
+                    'keywords': ['crop', 'cropland']
+                }
+            }
 
-            # Define forest codes
-            forest_codes = [111, 112, 113, 114, 115, 116, 121, 122, 123, 124, 125, 126]
+            # Determine primary habitat type and its usage percentage
+            primary_habitat_group = 'Forest'
+            primary_habitat_percentage = 0
+            if habitat_usage:
+                group_percentages = {}
+                for group_name, group_info in habitat_groups.items():
+                    total_percentage = sum(
+                        percentage for name, percentage in habitat_usage.items()
+                        if any(keyword.lower() in name.lower() for keyword in group_info['keywords'])
+                    )
+                    group_percentages[group_name] = total_percentage
 
-            # Create forest mask
-            forest_mask = landcover.select('discrete_classification').remap(
-                forest_codes,
-                ee.List.repeat(1, len(forest_codes)),
+                # Find the habitat group with highest percentage
+                primary_habitat_group, primary_habitat_percentage = max(
+                    group_percentages.items(),
+                    key=lambda x: x[1]
+                )
+
+            # Get the codes for the primary habitat group
+            habitat_codes = habitat_groups[primary_habitat_group]['codes']
+
+            # Create habitat mask
+            habitat_mask = landcover.select('discrete_classification').remap(
+                habitat_codes,
+                ee.List.repeat(1, len(habitat_codes)),
                 0
             )
 
             # Identify patches
-            patches = forest_mask.connectedComponents(
+            patches = habitat_mask.connectedComponents(
                 connectedness=ee.Kernel.square(1),
                 maxSize=1024
             )
@@ -244,7 +360,7 @@ class HabitatAnalyzer(EarthEngineHandler):
             total_pixels = pixel_stats.get('labels', 0)
             total_patches = patch_stats.get('labels', 0) - 1
 
-            forest_coverage = forest_mask.reduceRegion(
+            habitat_coverage = habitat_mask.reduceRegion(
                 reducer=ee.Reducer.mean(),
                 geometry=region,
                 scale=scale,
@@ -253,31 +369,35 @@ class HabitatAnalyzer(EarthEngineHandler):
 
             mean_patch_size = (total_pixels * pixel_area / total_patches) if total_patches > 0 else 0
 
-            st.write("✅ Fragmentation analysis complete")
-
             return {
                 'patch_statistics': {
+                    'habitat_type': primary_habitat_group,
                     'total_patches': int(max(0, total_patches)),
                     'mean_patch_size': float(mean_patch_size),
-                    'forest_coverage': float(forest_coverage or 0),
+                    'habitat_coverage': float(primary_habitat_percentage),
                     'area_unit': 'hectares',
                     'connectivity_type': '8-connected (including diagonals)',
                     'description': {
+                        'habitat_type': f'Analysis performed for {primary_habitat_group} habitat',
                         'connectivity': 'Using 8-connectivity: patches are connected if they share edges or corners',
-                        'total_patches': 'Number of separate forest areas (8-connected)',
-                        'mean_patch_size': 'Average size of forest patches in hectares',
-                        'forest_coverage': 'Percentage of total area covered by forest'
+                        'total_patches': f'Number of separate {primary_habitat_group.lower()} areas (8-connected)',
+                        'mean_patch_size': 'Average size of habitat patches in hectares',
+                        'habitat_coverage': f'Percentage of observations in {primary_habitat_group.lower()} habitat'
                     }
                 }
             }
 
         except Exception as e:
-            st.error(f"❌ Error in fragmentation analysis: {str(e)}")
+            message_bus.publish("status_update", {
+                "message": f"❌ Error in fragmentation analysis: {str(e)}",
+                "state": "error"
+            })
             return {
                 'patch_statistics': {
+                    'habitat_type': 'Unknown',
                     'total_patches': 0,
                     'mean_patch_size': 0,
-                    'forest_coverage': 0,
+                    'habitat_coverage': 0,
                     'area_unit': 'hectares',
                     'connectivity_type': '8-connected (including diagonals)'
                 }
@@ -290,8 +410,6 @@ class HabitatAnalyzer(EarthEngineHandler):
     ) -> Dict[str, Any]:
         """Generate visualization data for habitat analysis results."""
         try:
-            st.write("🎨 Preparing visualizations...")
-
             # Sample land cover values at species points
             points_with_landcover = (
                 landcover.select('discrete_classification')
@@ -308,14 +426,11 @@ class HabitatAnalyzer(EarthEngineHandler):
             # Get map ID for the landcover layer
             landcover_layer = landcover_vis.getMapId()
 
-            st.write("- Converting points to GeoJSON")
             # Convert to GeoJSON while preserving all properties
             species_points_geojson = points_with_landcover.getInfo()
 
             # Get the center of the points for map centering
             center = species_points.geometry().centroid().getInfo()['coordinates']
-
-            st.write("✅ Visualization data prepared")
 
             return {
                 'landcover': {
@@ -330,7 +445,10 @@ class HabitatAnalyzer(EarthEngineHandler):
             }
 
         except Exception as e:
-            st.error(f"❌ Error generating visualizations: {str(e)}")
+            message_bus.publish("status_update", {
+                "message": f"❌ Error generating visualizations: {str(e)}",
+                "state": "error"
+            })
             logging.error(f"Visualization error: {str(e)}")
             # Return original points if sampling fails
             return {
