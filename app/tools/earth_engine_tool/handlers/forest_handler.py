@@ -19,9 +19,6 @@ class ForestHandlerEE(EarthEngineHandler):
         self,
         species_name: str,
         min_observations: int = 10,
-        alpha: float = 0.5,     # Alpha parameter for the alpha shape
-        eps: float = 1.0,
-        min_samples: int = 3,
         avoid_overlaps: bool = True,
         scale: int = 30
     ) -> Dict[str, Any]:
@@ -63,7 +60,8 @@ class ForestHandlerEE(EarthEngineHandler):
         """
         try:
             # Get species observations from BigQuery
-            observations = self.get_species_observations(species_name, min_observations)
+            observations = self.filter_marine_observations(
+                self.get_species_observations(species_name, min_observations))
 
             # Create point features from individual observations
             ee_point_features = self.create_ee_point_features(observations)

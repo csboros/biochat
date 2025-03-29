@@ -452,7 +452,9 @@ class BioChat:
                                                 ChartType.FOREST_CORRELATION),
             'calculate_species_humanmod_correlation': lambda c:
                 self.process_correlation_result(c['response'], c['params'],
-                                                ChartType.HUMANMOD_CORRELATION)
+                                                ChartType.HUMANMOD_CORRELATION),
+            'analyze_habitat_distribution': lambda c:
+                self.process_habitat_analysis(c['response'], c['params'])
         }
 
         if call['name'] in handlers:
@@ -1032,4 +1034,43 @@ class BioChat:
                 "assistant",
                 {"text": f"Error processing human modification correlation analysis: {str(e)}"}
             )
+
+    def process_habitat_analysis(self, data_response, parameters):
+        """
+        Process and visualize habitat analysis results.
+
+        Args:
+            data_response (dict): Response containing habitat analysis results and visualizations
+            parameters (dict): Parameters used for the analysis
+        """
+        try:
+            if not data_response or data_response.get("error"):
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "text": data_response.get("error", "No habitat analysis data available.")
+                    }
+                })
+                return
+
+            # Add visualizations if available
+            st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": ChartType.HABITAT_ANALYSIS,
+                        "parameters": parameters
+                    }
+            })
+
+            # Add analysis text if available
+            if data_response.get("analysis"):
+                self.add_message_to_history("assistant", {"text": data_response["analysis"]})
+
+        except Exception as e:  # pylint: disable=broad-except
+            self.logger.error("Error processing habitat analysis data: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing habitat analysis data: {str(e)}"}
+            })
 

@@ -5,6 +5,7 @@ from vertexai.generative_models import FunctionDeclaration
 from app.tools.tool import Tool
 from app.tools.correlation_tool.handlers.correlation_handler import CorrelationHandler
 
+
 class CorrelationTool(Tool):
     """Tool for species-HCI correlation analysis."""
 
@@ -32,8 +33,9 @@ class CorrelationTool(Tool):
              FunctionDeclaration(
                 name="read_terrestrial_hci",
                 description=(
-                    "Read and compare terrestrial human coexistence index (HCI) data between countries. "
-                    "IMPORTANT: Use this function for ANY questions about: "
+                    "Read and compare terrestrial human coexistence index (HCI) data "
+                    "between countries. IMPORTANT: Use this function for ANY questions "
+                    "about: "
                     "- terrestrial HCI data "
                     "- human impact on wildlife "
                     "- human-wildlife coexistence comparisons "
@@ -52,15 +54,19 @@ class CorrelationTool(Tool):
                             "type": "array",
                             "items": {"type": "string"},
                             "description": (
-                                "List of country names to compare. For queries about HCI data, "
-                                "human impact on wildlife, or coexistence comparisons between countries."
+                                "List of country names to compare. For queries about HCI "
+                                "data, human impact on wildlife, or coexistence "
+                                "comparisons between countries."
                             ),
                             "minItems": 1
                         },
                         "country_codes": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of three letter country codes (e.g., ['KEN', 'UGA'])",
+                            "description": (
+                                "List of three letter country codes "
+                                "(e.g., ['KEN', 'UGA'])"
+                            ),
                             "minItems": 1
                         },
                     },
@@ -70,23 +76,27 @@ class CorrelationTool(Tool):
             FunctionDeclaration(
                 name="get_species_hci_correlation",
                 description=(
-                    "Get correlation data between species occurrence and Human Coexistence Index (HCI) "
-                    "for a specific country. Use this for questions about: \n"
+                    "Get correlation data between species occurrence and Human "
+                    "Coexistence Index (HCI) for a specific country. Use this for "
+                    "questions about: \n"
                     "- How species distribution relates to human impact\n"
                     "- Where endangered species live relative to human activity\n"
                     "- Correlation between species presence and HCI\n"
                     "Examples:\n"
                     "- 'How do endangered species relate to human activity in Kenya?'\n"
                     "- 'Show correlation between species and HCI in Tanzania'\n"
-                    "- 'What's the relationship between endangered animals and human impact in Uganda?'"
+                    "- 'What's the relationship between endangered animals and human "
+                    "impact in Uganda?'"
                 ),
                 parameters={
                     "type": "object",
                     "properties": {
                         "country_code": {
                             "type": "string",
-                            "description": "ISO Alpha-3 country code (e.g., 'KEN' for Kenya, "
-                            "'TZA' for Tanzania)"
+                            "description": (
+                                "ISO Alpha-3 country code (e.g., 'KEN' for Kenya, "
+                                "'TZA' for Tanzania)"
+                            )
                         }
                     },
                     "required": ["country_code"]
@@ -95,10 +105,12 @@ class CorrelationTool(Tool):
             FunctionDeclaration(
                 name="get_species_hci_correlation_by_status",
                 description=(
-                    "Get correlation data between species occurrence and Human Coexistence Index (HCI) "
-                    "filtered by conservation status. Use this for questions about: \n"
+                    "Get correlation data between species occurrence and Human "
+                    "Coexistence Index (HCI) filtered by conservation status. Use this "
+                    "for questions about: \n"
                     "- How specific conservation status species relate to human impact\n"
-                    "- Correlation patterns for critically endangered/endangered/vulnerable species\n"
+                    "- Correlation patterns for critically endangered/endangered/"
+                    "vulnerable species\n"
                     "- Understanding how different threat levels relate to human presence\n"
                     "Examples:\n"
                     "- 'Show correlation for critically endangered species'\n"
@@ -110,9 +122,12 @@ class CorrelationTool(Tool):
                     "properties": {
                         "conservation_status": {
                             "type": "string",
-                            "description": "Conservation status to filter by. Valid values: "
-                            "'Critically Endangered', 'Endangered', 'Vulnerable', "
-                            "'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'",
+                            "description": (
+                                "Conservation status to filter by. Valid values: "
+                                "'Critically Endangered', 'Endangered', 'Vulnerable', "
+                                "'Near Threatened', 'Least Concern', 'Data Deficient', "
+                                "'Extinct'"
+                            ),
                             "enum": [
                                 "Critically Endangered",
                                 "Endangered",
@@ -130,12 +145,17 @@ class CorrelationTool(Tool):
             FunctionDeclaration(
                 name="analyze_species_correlations",
                 description=(
-                    "Analyze correlation patterns between species occurrences and human impact (HCI). "
-                    "Can analyze by either country or conservation status. Use this for questions about:\n"
-                    "- How different species relate to human presence in a specific country\n"
-                    "- How species of a particular conservation status relate to human areas globally\n"
-                    "- Understanding conservation implications of species-human relationships\n"
-                    "Examples: (Shows only the most significant and notable correlations to avoid information overload.)\n"
+                    "Analyze correlation patterns between species occurrences and human "
+                    "impact (HCI). Can analyze by either country or conservation status. "
+                    "Use this for questions about:\n"
+                    "- How different species relate to human presence in a specific "
+                    "country\n"
+                    "- How species of a particular conservation status relate to human "
+                    "areas globally\n"
+                    "- Understanding conservation implications of species-human "
+                    "relationships\n"
+                    "Examples: (Shows only the most significant and notable correlations "
+                    "to avoid information overload.)\n"
                     "- 'Analyze correlation patterns for endangered species in Kenya'\n"
                     "- 'How do critically endangered species relate to human impact?'\n"
                     "- 'Analyze species-HCI relationships in Tanzania'\n"
@@ -146,16 +166,20 @@ class CorrelationTool(Tool):
                     "properties": {
                         "country_code": {
                             "type": "string",
-                            "description": "ISO Alpha-3 country code "
-                            "(e.g., 'KEN' for Kenya, 'TZA' for Tanzania). "
-                            "Optional if conservation_status is provided."
+                            "description": (
+                                "ISO Alpha-3 country code (e.g., 'KEN' for Kenya, "
+                                "'TZA' for Tanzania). Optional if conservation_status "
+                                "is provided."
+                            )
                         },
                         "conservation_status": {
                             "type": "string",
-                            "description": "Conservation status to analyze. "
-                            "Optional if country_code is provided. "
-                            "Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable', "
-                            "'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'",
+                            "description": (
+                                "Conservation status to analyze. Optional if country_code "
+                                "is provided. Valid values: 'Critically Endangered', "
+                                "'Endangered', 'Vulnerable', 'Near Threatened', "
+                                "'Least Concern', 'Data Deficient', 'Extinct'"
+                            ),
                             "enum": [
                                 "Critically Endangered",
                                 "Endangered",
@@ -172,9 +196,8 @@ class CorrelationTool(Tool):
             FunctionDeclaration(
                 name="get_species_shared_habitat",
                 description=(
-                    "Get correlation data between a specific species "
-                    " and other species that share its habitat. "
-                    "Use this for questions about:\n"
+                    "Get correlation data between a specific species and other species "
+                    "that share its habitat. Use this for questions about:\n"
                     "- Which species share habitat with a particular species\n"
                     "- How different species correlate in their occurrence patterns\n"
                     "- Understanding species relationships and co-occurrence\n"
@@ -191,9 +214,11 @@ class CorrelationTool(Tool):
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "Scientific name of the species "
-                            "(e.g., 'Panthera leo' for Lion). "
-                            "For common names, first use translate_to_scientific_name."
+                            "description": (
+                                "Scientific name of the species (e.g., 'Panthera leo' "
+                                "for Lion). For common names, first use "
+                                "translate_to_scientific_name."
+                            )
                         }
                     },
                     "required": ["species_name"]
@@ -208,9 +233,17 @@ class CorrelationTool(Tool):
             Dict[str, Any]: Dictionary mapping function names to their implementations
         """
         return {
-            "get_species_hci_correlation": self.correlation_handler.get_species_hci_correlation,
-            "get_species_hci_correlation_by_status": self.correlation_handler.get_species_hci_correlation_by_status,
-            "analyze_species_correlations": self.correlation_handler.analyze_species_correlations,
-            "get_species_shared_habitat": self.correlation_handler.get_species_shared_habitat,
+            "get_species_hci_correlation": (
+                self.correlation_handler.get_species_hci_correlation
+            ),
+            "get_species_hci_correlation_by_status": (
+                self.correlation_handler.get_species_hci_correlation_by_status
+            ),
+            "analyze_species_correlations": (
+                self.correlation_handler.analyze_species_correlations
+            ),
+            "get_species_shared_habitat": (
+                self.correlation_handler.get_species_shared_habitat
+            ),
             "read_terrestrial_hci": self.correlation_handler.read_terrestrial_hci
         }

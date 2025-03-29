@@ -510,3 +510,53 @@ class EarthEngineHandler:
                         filtered_points)
 
         return all_results, filtering_stats
+
+    def filter_marine_observations(self, observations: list) -> list:
+        """Filter out observations that are over water bodies (oceans, seas).
+
+        Args:
+            observations (list): List of observation dictionaries with coordinates
+
+        Returns:
+            list: Filtered list of observations on land only
+        """
+        try:
+            # Create EE points from observations
+            points = [ee.Geometry.Point([obs["decimallongitude"], obs["decimallatitude"]])
+                     for obs in observations]
+
+            # Create a FeatureCollection from the points
+            points_fc = ee.FeatureCollection([ee.Feature(point) for point in points])
+
+            # Get the land mask from ESA WorldCover
+            worldcover = ee.ImageCollection("ESA/WorldCover/v200").first()
+
+            # Sample the worldcover values at each point
+            points_with_landcover = worldcover.sampleRegions(
+                collection=points_fc,
+                properties=['system:index'],
+                scale=10
+            )
+
+            # Get the results
+            results = points_with_landcover.getInfo()['features']
+
+            # Filter observations based on the land cover value
+            # ESA WorldCover class 80 is permanent water bodies
+            filtered_observations = []
+            for obs, result in zip(observations, results):
+                landcover_value = result['properties'].get('Map', None)
+                if landcover_value is not None and landcover_value != 80:  # Not water
+                    filtered_observations.append(obs)
+
+            self.logger.info(
+                "Filtered %d marine observations out of %d total observations",
+                len(observations) - len(filtered_observations),
+                len(observations)
+            )
+
+            return filtered_observations
+
+        except Exception as e:
+            self.logger.error("Error filtering marine observations: %s", str(e))
+            return observations  # Return original observations if filtering fails
