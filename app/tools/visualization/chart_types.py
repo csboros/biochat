@@ -1,6 +1,9 @@
+"""Chart types supported by the visualization system."""
+
 from enum import Enum, auto
 
 class ChartType(Enum):
+    """Enumeration of supported chart types."""
     HEATMAP = auto()
     HEXAGON_MAP = auto()
     GEOJSON_MAP = auto()
@@ -17,6 +20,7 @@ class ChartType(Enum):
     JSON = auto()
     SPECIES_SHARED_HABITAT = auto()
     HABITAT_ANALYSIS = auto()
+    TOPOGRAPHY_ANALYSIS = auto()
 
     @classmethod
     def from_string(cls, chart_type: str) -> 'ChartType':

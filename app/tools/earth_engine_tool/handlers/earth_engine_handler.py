@@ -8,8 +8,11 @@ import numpy as np
 import ee
 from google.cloud import bigquery
 from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
+import streamlit as st
 from app.utils.alpha_shape_utils import AlphaShapeUtils
+from app.tools.message_bus import message_bus
 
+# pylint: disable=no-member
 class EarthEngineHandler:
     """Base class for Earth Engine data processing and analysis."""
 
@@ -25,6 +28,20 @@ class EarthEngineHandler:
             self.logger.error("Failed to initialize Earth Engine: %s", str(e))
             raise
 
+    def check_cancellation(self) -> None:
+        """Check if the operation has been cancelled by the user.
+
+        Raises:
+            Exception: If the operation has been cancelled
+        """
+        if st.session_state.get("cancel_operation", False):
+            message_bus.publish("status_update", {
+                "message": "Analysis cancelled by user",
+                "state": "error",
+                "progress": 0
+            })
+            raise Exception("Analysis cancelled by user")
+
     def get_species_observations(self, species_name: str, min_observations: int = 10) -> list:
         """Retrieve species observations from BigQuery.
 
@@ -38,48 +55,64 @@ class EarthEngineHandler:
         Raises:
             ValueError: If insufficient observations are found for the species
         """
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        client = bigquery.Client(project=project_id)
+        try:
+            # Check for cancellation before starting
+            self.check_cancellation()
 
-        query = f"""
-        SELECT
-            decimallongitude,
-            decimallatitude,
-            EXTRACT(YEAR FROM eventdate) as observation_year,
-            COALESCE(individualcount, 1) as individual_count
-        FROM `{project_id}.biodiversity.occurances_endangered_species_mammals`
-        WHERE species = @species_name
-            AND decimallongitude IS NOT NULL
-            AND decimallatitude IS NOT NULL
-            AND eventdate IS NOT NULL
-            AND EXTRACT(YEAR FROM eventdate) > 2000
-        """
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+            client = bigquery.Client(project=project_id)
 
-        if isinstance(species_name, dict) and 'species_name' in species_name:
-            species_name = species_name['species_name']
+            query = f"""
+            SELECT
+                decimallongitude,
+                decimallatitude,
+                EXTRACT(YEAR FROM eventdate) as observation_year,
+                COALESCE(individualcount, 1) as individual_count
+            FROM `{project_id}.biodiversity.occurances_endangered_species_mammals`
+            WHERE species = @species_name
+                AND decimallongitude IS NOT NULL
+                AND decimallatitude IS NOT NULL
+                AND eventdate IS NOT NULL
+                AND EXTRACT(YEAR FROM eventdate) > 2000
+            ORDER BY eventdate DESC
+            LIMIT 10000
+            """
 
-        params = [bigquery.ScalarQueryParameter("species_name", "STRING", species_name)]
-        job_config = bigquery.QueryJobConfig(query_parameters=params)
+            if isinstance(species_name, dict) and 'species_name' in species_name:
+                species_name = species_name['species_name']
 
-        # Convert query results to a list of dictionaries
-        observations_raw = list(client.query(query, job_config=job_config).result())
-        observations = [
-            {
-                "decimallongitude": obs.decimallongitude,
-                "decimallatitude": obs.decimallatitude,
-                "observation_year": obs.observation_year,
-                "individual_count": obs.individual_count
-            }
-            for obs in observations_raw
-        ]
+            params = [bigquery.ScalarQueryParameter("species_name", "STRING", species_name)]
+            job_config = bigquery.QueryJobConfig(query_parameters=params)
 
-        if len(observations) < min_observations:
-            raise ValueError(
-                f"Insufficient observations ({len(observations)}) "
-                f"for species {species_name}"
-            )
+            # Execute query
+            query_job = client.query(query, job_config=job_config)
 
-        return observations
+            # Check for cancellation after query execution
+            self.check_cancellation()
+
+            # Convert query results to a list of dictionaries
+            observations_raw = list(query_job.result())
+            observations = [
+                {
+                    "decimallongitude": obs.decimallongitude,
+                    "decimallatitude": obs.decimallatitude,
+                    "observation_year": obs.observation_year,
+                    "individual_count": obs.individual_count
+                }
+                for obs in observations_raw
+            ]
+
+            if len(observations) < min_observations:
+                raise ValueError(
+                    f"Insufficient observations ({len(observations)}) "
+                    f"for species {species_name}"
+                )
+
+            return observations
+
+        except Exception as e:
+            self.logger.error(f"Error getting species observations: {str(e)}")
+            raise
 
     def create_ee_point_features(self, observations: list, buffer_radius: int = None) -> list:
         """Create Earth Engine features from individual observation points.
@@ -472,30 +505,35 @@ class EarthEngineHandler:
         all_results = []
         total_points = len(point_sample_results)
         filtered_points = 0
+        batch_size = 1000  # Process points in batches to avoid collection size limit
 
-        for sample in point_sample_results:
-            props = sample['properties']
+        # Process results in batches
+        for i in range(0, len(point_sample_results), batch_size):
+            batch = point_sample_results[i:i + batch_size]
 
-            # Skip points with no data
-            if not all(props.get(metric, 0) is not None for metric in metric_names):
-                filtered_points += 1
-                continue
+            for sample in batch:
+                props = sample['properties']
 
-            year = props.get('year', default_year)
-            individual_count = props.get('individual_count', 1)
+                # Skip points with no data
+                if not all(props.get(metric, 0) is not None for metric in metric_names):
+                    filtered_points += 1
+                    continue
 
-            # Create result dictionary with all metrics
-            result = {
-                'year': year,
-                'individual_count': individual_count,
-                'geometry': sample.get('geometry', {})
-            }
+                year = props.get('year', default_year)
+                individual_count = props.get('individual_count', 1)
 
-            # Add all metrics to the result
-            for metric in metric_names:
-                result[metric] = props.get(metric, 0)
+                # Create result dictionary with all metrics
+                result = {
+                    'year': year,
+                    'individual_count': individual_count,
+                    'geometry': sample.get('geometry', {})
+                }
 
-            all_results.append(result)
+                # Add all metrics to the result
+                for metric in metric_names:
+                    result[metric] = props.get(metric, 0)
+
+                all_results.append(result)
 
         # Create filtering statistics
         filtering_stats = {
@@ -521,33 +559,42 @@ class EarthEngineHandler:
             list: Filtered list of observations on land only
         """
         try:
-            # Create EE points from observations
-            points = [ee.Geometry.Point([obs["decimallongitude"], obs["decimallatitude"]])
-                     for obs in observations]
-
-            # Create a FeatureCollection from the points
-            points_fc = ee.FeatureCollection([ee.Feature(point) for point in points])
+            # Check for cancellation before starting
+            self.check_cancellation()
 
             # Get the land mask from ESA WorldCover
             worldcover = ee.ImageCollection("ESA/WorldCover/v200").first()
-
-            # Sample the worldcover values at each point
-            points_with_landcover = worldcover.sampleRegions(
-                collection=points_fc,
-                properties=['system:index'],
-                scale=10
-            )
-
-            # Get the results
-            results = points_with_landcover.getInfo()['features']
-
-            # Filter observations based on the land cover value
-            # ESA WorldCover class 80 is permanent water bodies
             filtered_observations = []
-            for obs, result in zip(observations, results):
-                landcover_value = result['properties'].get('Map', None)
-                if landcover_value is not None and landcover_value != 80:  # Not water
-                    filtered_observations.append(obs)
+            batch_size = 1000  # Process points in batches to avoid collection size limit
+
+            # Process observations in batches
+            for i in range(0, len(observations), batch_size):
+                self.check_cancellation()
+                batch = observations[i:i + batch_size]
+
+                # Create EE points from batch
+                points = [ee.Geometry.Point([obs["decimallongitude"], obs["decimallatitude"]])
+                         for obs in batch]
+
+                # Create a FeatureCollection from the points
+                points_fc = ee.FeatureCollection([ee.Feature(point) for point in points])
+
+                # Sample the worldcover values at each point
+                points_with_landcover = worldcover.sampleRegions(
+                    collection=points_fc,
+                    properties=['system:index'],
+                    scale=10
+                )
+
+                # Get the results
+                results = points_with_landcover.getInfo()['features']
+
+                # Filter observations based on the land cover value
+                # ESA WorldCover class 80 is permanent water bodies
+                for obs, result in zip(batch, results):
+                    landcover_value = result['properties'].get('Map', None)
+                    if landcover_value is not None and landcover_value != 80:  # Not water
+                        filtered_observations.append(obs)
 
             self.logger.info(
                 "Filtered %d marine observations out of %d total observations",

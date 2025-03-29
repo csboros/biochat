@@ -6,6 +6,7 @@ from app.tools.tool import Tool
 from app.tools.earth_engine_tool.handlers.forest_handler import ForestHandlerEE
 from app.tools.earth_engine_tool.handlers.human_modification_handler import HumanModificationHandlerEE
 from app.tools.earth_engine_tool.handlers.habitat_analyzer import HabitatAnalyzer
+from app.tools.earth_engine_tool.handlers.topography_analyzer import TopographyAnalyzer
 
 class EarthEngineTool(Tool):
     """Tool for Earth Engine data processing and analysis."""
@@ -15,6 +16,7 @@ class EarthEngineTool(Tool):
         self.forest_handler = ForestHandlerEE()
         self.human_modification_handler = HumanModificationHandlerEE()
         self.habitat_analyzer = HabitatAnalyzer()
+        self.topography_analyzer = TopographyAnalyzer()
 
     def get_handlers(self) -> Dict[str, Any]:
         """Get all handlers associated with this tool.
@@ -25,7 +27,8 @@ class EarthEngineTool(Tool):
         return {
             "forest": self.forest_handler,
             "human_modification": self.human_modification_handler,
-            "habitat": self.habitat_analyzer
+            "habitat": self.habitat_analyzer,
+            "topography": self.topography_analyzer
         }
 
     def get_function_declarations(self) -> List[FunctionDeclaration]:
@@ -113,6 +116,36 @@ class EarthEngineTool(Tool):
                     },
                     "required": ["species_name"]
                 }
+            ),
+            FunctionDeclaration(
+                name="analyze_topography",
+                description=(
+                    "Analyze topography characteristics of species habitat. "
+                    "This analyzes the topographical features of a species' habitat. "
+                    "Examples:\n"
+                    "- 'Analyze topography for Gorilla beringei'\n"
+                    "- 'Show topography for Bornean orangutans'"
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "species_name": {
+                            "type": "string",
+                            "description": "Scientific name of the species"
+                        },
+                        "min_observations": {
+                            "type": "integer",
+                            "description": "Minimum number of observations required",
+                            "default": 10
+                        },
+                        "scale": {
+                            "type": "integer",
+                            "description": "Resolution in meters for Earth Engine analysis",
+                            "default": 30
+                        }
+                    },
+                    "required": ["species_name"]
+                }
             )
         ]
 
@@ -125,5 +158,6 @@ class EarthEngineTool(Tool):
         return {
             "calculate_species_forest_correlation": self.forest_handler.calculate_species_forest_correlation,
             "calculate_species_humanmod_correlation": self.human_modification_handler.calculate_species_humanmod_correlation,
-            "analyze_habitat_distribution": self.habitat_analyzer.analyze_habitat_distribution
+            "analyze_habitat_distribution": self.habitat_analyzer.analyze_habitat_distribution,
+            "analyze_topography": self.topography_analyzer.analyze_topography
         }

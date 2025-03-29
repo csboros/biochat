@@ -50,9 +50,7 @@ class HabitatViz(BaseChartRenderer):
 
                 # Get the data from the correct structure
                 analysis_results = data.get('data', {})
-                print(analysis_results)
                 visualizations = data.get('visualizations', {})
-                print(visualizations)
                 if not visualizations:
                     st.error("No visualization data available")
                     return
@@ -65,10 +63,15 @@ class HabitatViz(BaseChartRenderer):
                     st.plotly_chart(habitat_usage_chart, use_container_width=True)
 
                 with chart_col2:
-                    forest_dependency_chart = self._create_forest_dependency_chart(
-                        analysis_results.get('forest_analysis', {})
-                    )
-                    st.plotly_chart(forest_dependency_chart, use_container_width=True)
+                    # Only show forest dependency chart if forest analysis was performed
+                    if analysis_results.get('forest_analysis') is not None:
+                        forest_dependency_chart = self._create_forest_dependency_chart(
+                            analysis_results.get('forest_analysis', {})
+                        )
+                        st.plotly_chart(forest_dependency_chart, use_container_width=True)
+                    else:
+                        st.markdown("#### Forest Dependency Analysis")
+                        st.info("Forest dependency analysis was not performed as forest is not the primary habitat type.")
 
                 with chart_col3:
                     fragmentation_chart = self._create_fragmentation_chart(
@@ -346,12 +349,13 @@ class HabitatViz(BaseChartRenderer):
         fig = go.Figure()
 
         stats = fragmentation['patch_statistics']
+        habitat_type = stats['habitat_type'].lower()
 
-        # Add patch statistics
+        # Add patch statistics with dynamic habitat type labels
         metrics = [
             ('Total Patches', stats['total_patches'], '#d9ef8b'),
-            ('Mean Patch Size (ha)', stats['mean_patch_size'], '#91cf60'),
-            ('Forest Coverage (%)', stats['forest_coverage'], '#1a9850')
+            (f'Mean Patch Size (ha)', stats['mean_patch_size'], '#91cf60'),
+            (f'{habitat_type.title()} Coverage (%)', stats['habitat_coverage'], '#1a9850')
         ]
 
         for name, value, color in metrics:
@@ -371,7 +375,7 @@ class HabitatViz(BaseChartRenderer):
 
         fig.update_layout(
             title=dict(
-                text='Habitat Fragmentation Analysis',
+                text=f'{habitat_type.title()} Fragmentation Analysis',
                 y=0.95,
                 x=0.5,
                 xanchor='center',
