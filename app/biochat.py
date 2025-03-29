@@ -11,6 +11,7 @@ import json
 import logging
 import time
 import os
+from typing import Dict
 import google.cloud.aiplatform as vertexai
 from vertexai.preview.generative_models import (
     GenerationConfig,
@@ -25,6 +26,7 @@ from app.utils.logging_config import setup_logging
 from app.tools.function_handler import FunctionHandler
 from app.tools.visualization.chart_handler import ChartHandler
 from app.tools.visualization.chart_types import ChartType
+from app.tools.message_bus import message_bus
 
 
 # Setup logging configuration at application startup
@@ -195,7 +197,7 @@ class BioChat:
         """
         # Set page config to wide mode
         st.set_page_config(
-            page_title="AI Chat Assistant",
+            page_title="Biodiversity Chat",
             layout="wide",
             initial_sidebar_state="expanded"
         )
@@ -209,6 +211,14 @@ class BioChat:
             self.gemini_model = resources['model']
             self.chat = resources['chat']
             self.initialize_session_state()
+            self.status_message_container = None
+            self.current_status = None
+            self.status_placeholder = None
+
+            # Subscribe to status updates only once
+            if "status_subscribed" not in st.session_state:
+                message_bus.subscribe("status_update", self._handle_status_update)
+                st.session_state.status_subscribed = True
         except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
             self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
             st.error("API quota has been exceeded. Please wait a few minutes and try again.")
@@ -242,6 +252,7 @@ class BioChat:
             # Core functionality
             self.handle_user_input()
             self.display_message_history()
+
         except ResponseValidationError as e:
             # response has been blocked by safety filters, show the message history
             # and ask for a different prompt
@@ -291,7 +302,11 @@ class BioChat:
                                         time.time() - chart_start)
                     else:
                         text_start = time.time()
-                        st.markdown(message["content"]["text"])
+                        # Only stream the last assistant message
+                        if message["role"] == "assistant" and i == len(st.session_state.messages) - 1:
+                            st.write_stream(self._stream_text(message["content"]["text"]))
+                        else:
+                            st.markdown(message["content"]["text"])
                         self.logger.debug("Text rendering took %.2f seconds",
                                         time.time() - text_start)
             self.logger.debug("Message iteration for history took %.2f seconds",
@@ -304,10 +319,59 @@ class BioChat:
             self.logger.debug("Total message history display took %.2f seconds",
                             time.time() - start_time)
 
+    def _stream_text(self, text: str):
+        """Generator function to stream text character by character."""
+        for char in text:
+            yield char
+            time.sleep(0.001)  # Small delay for smooth streaming
+
     def handle_user_input(self):
         """
         Processes user input.
         """
+        # Create a fixed position container for status updates at the bottom of the viewport
+        if "status_container" not in st.session_state:
+            st.markdown("""
+                <style>
+                .fixed-status {
+                    position: fixed;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    z-index: 1000;
+                    padding: 10px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+                .status-text {
+                    white-space: nowrap;
+                }
+                .progress-bar {
+                    flex-grow: 1;
+                    height: 4px;
+                    background-color: #f0f2f6;
+                    border-radius: 2px;
+                    overflow: hidden;
+                }
+                .progress-bar-fill {
+                    height: 100%;
+                    width: 0%;
+                    transition: width 0.3s ease-in-out;
+                }
+                .progress-bar.running .progress-bar-fill {
+                    background-color: #1f77b4;
+                }
+                .progress-bar.complete .progress-bar-fill {
+                    background-color: #2ecc71;
+                }
+                .progress-bar.error .progress-bar-fill {
+                    background-color: #e74c3c;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            st.session_state.status_container = st.empty()
+
         if prompt := st.chat_input("Can I help you?"):
             self.logger.info("Received new user prompt: %s", prompt)
             self.add_message_to_history("user", {"text": prompt})
@@ -454,7 +518,9 @@ class BioChat:
                 self.process_correlation_result(c['response'], c['params'],
                                                 ChartType.HUMANMOD_CORRELATION),
             'analyze_habitat_distribution': lambda c:
-                self.process_habitat_analysis(c['response'], c['params'])
+                self.process_habitat_analysis(c['response'], c['params']),
+            'analyze_topography': lambda c:
+                self.process_topography_analysis(c['response'], c['params'])
         }
 
         if call['name'] in handlers:
@@ -1074,3 +1140,84 @@ class BioChat:
                 "content": {"text": f"Error processing habitat analysis data: {str(e)}"}
             })
 
+    def process_topography_analysis(self, data_response, parameters):
+        """
+        Process and visualize topography analysis results.
+
+        Args:
+            data_response (dict): Response containing topography analysis results and visualizations
+            parameters (dict): Parameters used for the analysis
+        """
+        try:
+            if not data_response or data_response.get("error"):
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "text": data_response.get("error", "No topography analysis data available.")
+                    }
+                })
+                return
+
+            # Add visualizations if available
+            st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": ChartType.TOPOGRAPHY_ANALYSIS,
+                        "parameters": parameters
+                    }
+            })
+
+            # Add analysis text if available
+            if data_response.get("analysis"):
+                self.add_message_to_history("assistant", {"text": data_response["analysis"]})
+
+        except Exception as e:  # pylint: disable=broad-except
+            self.logger.error("Error processing topography analysis data: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing topography analysis data: {str(e)}"}
+            })
+
+    def _handle_status_update(self, data: Dict):
+        """Handle status updates from various handlers."""
+        # Update the status container if it exists
+        if "status_container" in st.session_state:
+            # Get progress value from data, default to 50 for running state if not provided
+            progress = data.get("progress", 50 if data.get("state") == "running" else 100)
+
+            if data.get("state") == "running":
+                st.session_state.status_container.markdown(
+                    f"<div class='status-spacer'></div>"
+                    f"<div class='fixed-status'>"
+                    f"<div class='status-text'>{data.get('message', 'Processing...')} ({progress}%)</div>"
+                    f"<div class='progress-bar running'><div class='progress-bar-fill' style='width: {progress}%;'></div></div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            elif data.get("state") == "complete":
+                st.session_state.status_container.markdown(
+                    f"<div class='status-spacer'></div>"
+                    f"<div class='fixed-status'>"
+                    f"<div class='status-text'>{data.get('message', 'Complete')} (100%)</div>"
+                    f"<div class='progress-bar complete'><div class='progress-bar-fill' style='width: 100%;'></div></div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+                # Clear after a short delay
+                time.sleep(1)
+                st.session_state.status_container.empty()
+                del st.session_state.status_container
+            elif data.get("state") == "error":
+                st.session_state.status_container.markdown(
+                    f"<div class='status-spacer'></div>"
+                    f"<div class='fixed-status'>"
+                    f"<div class='status-text'>{data.get('message', 'Error')} (0%)</div>"
+                    f"<div class='progress-bar error'><div class='progress-bar-fill' style='width: 0%;'></div></div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+                # Clear after a short delay
+                time.sleep(1)
+                st.session_state.status_container.empty()
+                del st.session_state.status_container
