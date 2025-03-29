@@ -16,6 +16,7 @@ class ChartType(Enum):
     TREE_CHART = auto()
     JSON = auto()
     SPECIES_SHARED_HABITAT = auto()
+    HABITAT_ANALYSIS = auto()
 
     @classmethod
     def from_string(cls, chart_type: str) -> 'ChartType':

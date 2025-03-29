@@ -5,6 +5,7 @@ from vertexai.generative_models import FunctionDeclaration
 from app.tools.tool import Tool
 from app.tools.earth_engine_tool.handlers.forest_handler import ForestHandlerEE
 from app.tools.earth_engine_tool.handlers.human_modification_handler import HumanModificationHandlerEE
+from app.tools.earth_engine_tool.handlers.habitat_analyzer import HabitatAnalyzer
 
 class EarthEngineTool(Tool):
     """Tool for Earth Engine data processing and analysis."""
@@ -13,6 +14,7 @@ class EarthEngineTool(Tool):
         """Initialize the EarthEngineTool with its handlers."""
         self.forest_handler = ForestHandlerEE()
         self.human_modification_handler = HumanModificationHandlerEE()
+        self.habitat_analyzer = HabitatAnalyzer()
 
     def get_handlers(self) -> Dict[str, Any]:
         """Get all handlers associated with this tool.
@@ -22,7 +24,8 @@ class EarthEngineTool(Tool):
         """
         return {
             "forest": self.forest_handler,
-            "human_modification": self.human_modification_handler
+            "human_modification": self.human_modification_handler,
+            "habitat": self.habitat_analyzer
         }
 
     def get_function_declarations(self) -> List[FunctionDeclaration]:
@@ -79,6 +82,37 @@ class EarthEngineTool(Tool):
                     },
                     "required": ["species_name"]
                 }
+            ),
+            FunctionDeclaration(
+                name="analyze_habitat_distribution",
+                description=(
+                    "Analyze species habitat distribution and preferences using "
+                    "Copernicus land cover data. Use this for questions about:\n"
+                    "- What types of habitats does a species use\n"
+                    "- How dependent is a species on forests\n"
+                    "- Is the species' habitat fragmented\n"
+                    "- What is the primary habitat type for a species\n"
+                    "Examples:\n"
+                    "- 'What habitats does the lion use?'\n"
+                    "- 'Analyze elephant habitat distribution'\n"
+                    "- 'Show habitat preferences for gorillas'"
+                    "- 'Show habitat preferences for Bornean orangutans'"
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "species_name": {
+                            "type": "string",
+                            "description": "Scientific name of the species"
+                        },
+                        "visualize": {
+                            "type": "boolean",
+                            "description": "Whether to generate visualizations (map and charts)",
+                            "default": True
+                        }
+                    },
+                    "required": ["species_name"]
+                }
             )
         ]
 
@@ -90,5 +124,6 @@ class EarthEngineTool(Tool):
         """
         return {
             "calculate_species_forest_correlation": self.forest_handler.calculate_species_forest_correlation,
-            "calculate_species_humanmod_correlation": self.human_modification_handler.calculate_species_humanmod_correlation
+            "calculate_species_humanmod_correlation": self.human_modification_handler.calculate_species_humanmod_correlation,
+            "analyze_habitat_distribution": self.habitat_analyzer.analyze_habitat_distribution
         }

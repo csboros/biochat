@@ -40,6 +40,7 @@ class ForestRenderer(BaseChartRenderer):
             # pylint: disable=no-member
             message_index = _cache_buster if _cache_buster is not None else int(time.time())
 
+            print(data)
             # Create DataFrame from observations
             df = pd.DataFrame(data['observations'])
 
