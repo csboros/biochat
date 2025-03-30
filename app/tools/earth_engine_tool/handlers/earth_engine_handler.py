@@ -34,7 +34,7 @@ class EarthEngineHandler:
         Raises:
             Exception: If the operation has been cancelled
         """
-        if st.session_state.get("cancel_operation", False):
+        if st.session_state.get("is_cancelled", False):
             message_bus.publish("status_update", {
                 "message": "Analysis cancelled by user",
                 "state": "error",

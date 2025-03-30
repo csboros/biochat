@@ -186,13 +186,27 @@ class HabitatAnalyzer(EarthEngineHandler):
         })
         habitat_usage = self._calculate_habitat_usage(points_with_landcover)
 
+        # Log habitat usage for debugging
+        self.logger.info("Habitat usage: %s", habitat_usage)
+
         # Determine if forest is the primary habitat
-        forest_codes = [111, 112, 113, 114, 115, 116, 121, 122, 123, 124, 125, 126]
         forest_percentage = sum(
             percentage for name, percentage in habitat_usage.items()
-            if any(str(code) in name for code in forest_codes)
+            if 'forest' in name.lower()
         )
-        is_primary_habitat = forest_percentage > 0 and forest_percentage == max(habitat_usage.values())
+
+        # Get the maximum percentage among all habitats
+        max_percentage = max(habitat_usage.values())
+
+        # Log percentages for debugging
+        self.logger.info("Forest percentage: %.2f, Max percentage: %.2f",
+                        forest_percentage, max_percentage)
+
+        # Forest is primary if it has the highest percentage (allowing for ties)
+        is_primary_habitat = forest_percentage > 0 and forest_percentage >= max_percentage
+
+        # Log the decision for debugging
+        self.logger.info("Is forest primary habitat? %s", is_primary_habitat)
 
         # Only analyze forest dependency if forest is the primary habitat
         forest_analysis = None
