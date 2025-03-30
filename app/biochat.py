@@ -369,47 +369,67 @@ class BioChat:
                     background-color: #e74c3c;
                 }
                 </style>
+                <script>
+                function cancelOperation() {
+                    // Send message to Streamlit
+                    window.parent.postMessage({
+                        type: 'streamlit:setComponentValue',
+                        value: true,
+                        dataType: 'bool',
+                        key: 'is_cancelled'
+                    }, '*');
+                }
+                </script>
             """, unsafe_allow_html=True)
             st.session_state.status_container = st.empty()
+            st.session_state.is_cancelled = False
 
         if prompt := st.chat_input("Can I help you?"):
             self.logger.info("Received new user prompt: %s", prompt)
+            st.session_state.is_cancelled = False  # Reset cancellation state
             self.add_message_to_history("user", {"text": prompt})
             self.process_assistant_response(prompt)
 
     def process_assistant_response(self, prompt: str) -> None:
         """
         Processes the assistant's response to user input and manages the conversation flow.
-
-        This method handles the interaction with the Gemini model, processes any function
-        calls requested by the model, and manages the display of responses in the chat interface.
-
-        Parameters
-        ----------
-        prompt : str
-            The user's input text to be processed by the assistant
-
         """
         self.logger.info("Starting to process assistant response")
         try:
-            # Send initial message with explicit function calling configuration
+            # Check for cancellation before starting
+            if st.session_state.get("is_cancelled", False):
+                self.logger.info("Operation cancelled by user")
+                message_bus.publish("status_update", {
+                    "message": "Operation cancelled",
+                    "state": "error",
+                    "progress": 0
+                })
+                return
+
             response = self.chat.send_message(
                 content=prompt,
                 generation_config=GenerationConfig(
-                    temperature=0.1,  # Keep temperature low for consistent responses
+                    temperature=0.1,
                     candidate_count=1,
                 )
             )
 
-            # If we get a non-function response, accept it as a valid response
-            if not response.candidates[0].content.parts[0].function_call:
-                self.logger.info("No function call detected, using direct LLM response")
-                self.handle_final_response(response)
-                return
-
-            # Process function calls as normal
             while True:
+                # Check for cancellation in the loop
+                if st.session_state.get("is_cancelled", False):
+                    self.logger.info("Operation cancelled by user")
+                    message_bus.publish("status_update", {
+                        "message": "Operation cancelled",
+                        "state": "error",
+                        "progress": 0
+                    })
+                    return
+
                 try:
+                    if not response.candidates[0].content.parts[0].function_call:
+                        self.handle_final_response(response)
+                        break
+
                     parts = response.candidates[0].content.parts
                     function_calls = self.collect_function_calls(parts)
                     if not function_calls:
@@ -418,6 +438,7 @@ class BioChat:
                     response = self.process_function_calls(function_calls)
                     if response is None:
                         break
+
                 except IndexError as e:
                     self.logger.error("Invalid response format: %s", str(e))
                     break
@@ -1181,23 +1202,38 @@ class BioChat:
 
     def _handle_status_update(self, data: Dict):
         """Handle status updates from various handlers."""
-        # Update the status container if it exists
         if "status_container" in st.session_state:
-            # Get progress value from data, default to 50 for running state if not provided
             progress = data.get("progress", 50 if data.get("state") == "running" else 100)
+
+            # Add CSS for the cancel button
+            button_css = """
+                .cancel-btn {
+                    background-color: #ff4b4b;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    margin-left: 10px;
+                    font-size: 14px;
+                }
+                .cancel-btn:hover {
+                    background-color: #ff3333;
+                }
+            """
 
             if data.get("state") == "running":
                 st.session_state.status_container.markdown(
-                    f"<div class='status-spacer'></div>"
+                    f"<style>{button_css}</style>"
                     f"<div class='fixed-status'>"
                     f"<div class='status-text'>{data.get('message', 'Processing...')} ({progress}%)</div>"
                     f"<div class='progress-bar running'><div class='progress-bar-fill' style='width: {progress}%;'></div></div>"
+                    f"<button class='cancel-btn' onclick='cancelOperation(); this.disabled=true;'>Cancel</button>"
                     f"</div>",
                     unsafe_allow_html=True
                 )
             elif data.get("state") == "complete":
                 st.session_state.status_container.markdown(
-                    f"<div class='status-spacer'></div>"
                     f"<div class='fixed-status'>"
                     f"<div class='status-text'>{data.get('message', 'Complete')} (100%)</div>"
                     f"<div class='progress-bar complete'><div class='progress-bar-fill' style='width: 100%;'></div></div>"
@@ -1210,7 +1246,6 @@ class BioChat:
                 del st.session_state.status_container
             elif data.get("state") == "error":
                 st.session_state.status_container.markdown(
-                    f"<div class='status-spacer'></div>"
                     f"<div class='fixed-status'>"
                     f"<div class='status-text'>{data.get('message', 'Error')} (0%)</div>"
                     f"<div class='progress-bar error'><div class='progress-bar-fill' style='width: 0%;'></div></div>"
