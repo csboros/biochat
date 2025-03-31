@@ -19,6 +19,8 @@ from .tree_viz import TreeRenderer
 from .json_viz import JSONRenderer
 from .habitat_viz import HabitatViz
 from .topography_viz import TopographyViz
+from .climate_viz import ClimateViz
+
 
 # Register all renderers
 RendererRegistry.register(HeatmapRenderer)
@@ -38,5 +40,4 @@ RendererRegistry.register(TreeRenderer)
 RendererRegistry.register(JSONRenderer)
 RendererRegistry.register(HabitatViz)
 RendererRegistry.register(TopographyViz)
-
-__all__ = ['HabitatViz']
+RendererRegistry.register(ClimateViz)

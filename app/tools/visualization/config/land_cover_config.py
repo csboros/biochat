@@ -5,6 +5,16 @@ class LandCoverConfig:
 
     # Define the land cover classes with their descriptions
     LAND_COVER_CLASSES = {
+        0: "Unknown.",
+        20: "Shrubland.",
+        30: "Herbaceous vegetation.",
+        40: "Cropland.",
+        50: "Urban/built up.",
+        60: "Bare/sparse vegetation.",
+        70: "Snow and ice.",
+        80: "Permanent water bodies.",
+        90: "Herbaceous wetland.",
+        100: "Moss and lichen.",
         111: "Closed forest, evergreen needle leaf.",
         112: "Closed forest, evergreen broad leaf.",
         113: "Closed forest, deciduous needle leaf.",
@@ -17,15 +27,6 @@ class LandCoverConfig:
         124: "Open forest, deciduous broad leaf.",
         125: "Open forest, mixed.",
         126: "Open forest, not matching any of the other definitions.",
-        20: "Shrubland.",
-        30: "Herbaceous vegetation.",
-        40: "Cropland.",
-        50: "Urban/built up.",
-        60: "Bare/sparse vegetation.",
-        70: "Snow and ice.",
-        80: "Permanent water bodies.",
-        90: "Herbaceous wetland.",
-        100: "Moss and lichen.",
         200: "Oceans, seas."
     }
 
@@ -87,7 +88,31 @@ class LandCoverConfig:
     VIS_PARAMS = {
         'min': 0,
         'max': 200,
-        'palette': COLOR_PALETTE
+        'palette': [
+            CODE_TO_COLOR[0],    # Unknown
+            CODE_TO_COLOR[20],   # Shrubs
+            CODE_TO_COLOR[30],   # Herbaceous vegetation
+            CODE_TO_COLOR[40],   # Cultivated and managed vegetation
+            CODE_TO_COLOR[50],   # Urban / built up
+            CODE_TO_COLOR[60],   # Bare / sparse vegetation
+            CODE_TO_COLOR[70],   # Snow and ice
+            CODE_TO_COLOR[80],   # Permanent water bodies
+            CODE_TO_COLOR[90],   # Herbaceous wetland
+            CODE_TO_COLOR[100],  # Moss and lichen
+            CODE_TO_COLOR[111],  # Closed forest, evergreen needle leaf
+            CODE_TO_COLOR[112],  # Closed forest, evergreen broad leaf
+            CODE_TO_COLOR[113],  # Closed forest, deciduous needle leaf
+            CODE_TO_COLOR[114],  # Closed forest, deciduous broad leaf
+            CODE_TO_COLOR[115],  # Closed forest, mixed
+            CODE_TO_COLOR[116],  # Closed forest, not matching other definitions
+            CODE_TO_COLOR[121],  # Open forest, evergreen needle leaf
+            CODE_TO_COLOR[122],  # Open forest, evergreen broad leaf
+            CODE_TO_COLOR[123],  # Open forest, deciduous needle leaf
+            CODE_TO_COLOR[124],  # Open forest, deciduous broad leaf
+            CODE_TO_COLOR[125],  # Open forest, mixed
+            CODE_TO_COLOR[126],  # Open forest, not matching other definitions
+            CODE_TO_COLOR[200]   # Oceans, seas
+        ]
     }
 
     @classmethod

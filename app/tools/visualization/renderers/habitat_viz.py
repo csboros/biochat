@@ -39,14 +39,12 @@ class HabitatViz(BaseChartRenderer):
         Render habitat analysis results on a map and as charts.
         """
         try:
-            # Remove status messages that might interfere with visualization
-
             # Create two columns for the main layout
             left_col, right_col = st.columns([3, 1])
 
             with left_col:
-                # Create three columns for the charts
-                chart_col1, chart_col2, chart_col3 = st.columns(3)
+                # Create two columns for the charts
+                chart_col1, chart_col2 = st.columns(2)
 
                 # Get the data from the correct structure
                 analysis_results = data.get('data', {})
@@ -60,7 +58,7 @@ class HabitatViz(BaseChartRenderer):
                     habitat_usage_chart = self._create_habitat_usage_chart(
                         analysis_results.get('habitat_usage', {})
                     )
-                    st.plotly_chart(habitat_usage_chart, use_container_width=True)
+                    st.plotly_chart(habitat_usage_chart, use_container_width=True, config={'displayModeBar': False})
 
                 with chart_col2:
                     # Only show forest dependency chart if forest analysis was performed
@@ -68,16 +66,28 @@ class HabitatViz(BaseChartRenderer):
                         forest_dependency_chart = self._create_forest_dependency_chart(
                             analysis_results.get('forest_analysis', {})
                         )
-                        st.plotly_chart(forest_dependency_chart, use_container_width=True)
+                        st.plotly_chart(forest_dependency_chart, use_container_width=True, config={'displayModeBar': False})
                     else:
                         st.markdown("#### Forest Dependency Analysis")
                         st.info("Forest dependency analysis was not performed as forest is not the primary habitat type.")
+
+                # Create second row of charts
+                chart_col3, chart_col4 = st.columns(2)
 
                 with chart_col3:
                     fragmentation_chart = self._create_fragmentation_chart(
                         analysis_results.get('habitat_fragmentation', {})
                     )
-                    st.plotly_chart(fragmentation_chart, use_container_width=True)
+                    st.plotly_chart(fragmentation_chart, use_container_width=True, config={'displayModeBar': False})
+
+                with chart_col4:
+                    connectivity_chart = self._create_connectivity_chart(
+                        analysis_results.get('connectivity', {})
+                    )
+                    if connectivity_chart:
+                        st.plotly_chart(connectivity_chart, use_container_width=True, config={'displayModeBar': False})
+                    else:
+                        st.info("Connectivity analysis data is not available.")
 
                 # Create and display map below charts
                 map_viz = self._create_map(
@@ -110,9 +120,46 @@ class HabitatViz(BaseChartRenderer):
                 folium_static(map_viz, width=1200)
 
             with right_col:
-                # Display legend in the right column
+                # Display main results at the top
+                st.markdown("### Key Results")
+
+                # Habitat Usage Summary
+                habitat_usage = analysis_results.get('habitat_usage', {})
+                if habitat_usage:
+                    st.markdown("#### Habitat Usage")
+                    for habitat, percentage in habitat_usage.items():
+                        st.markdown(f"- {habitat}: {percentage:.1f}%")
+
+                # Forest Analysis Summary
+                forest_analysis = analysis_results.get('forest_analysis', {})
+                if forest_analysis:
+                    st.markdown("#### Forest Analysis")
+                    st.markdown(f"- Forest Dependency: {forest_analysis.get('forest_dependency_ratio', 0):.1f}%")
+
+                # Fragmentation Summary
+                fragmentation = analysis_results.get('habitat_fragmentation', {})
+                if fragmentation and 'patch_statistics' in fragmentation:
+                    stats = fragmentation['patch_statistics']
+                    st.markdown("#### Fragmentation Analysis")
+                    st.markdown(f"- Total Patches: {stats.get('total_patches', 0)}")
+                    st.markdown(f"- Mean Patch Size: {stats.get('mean_patch_size', 0):.1f} ha")
+                    st.markdown(f"- Habitat Coverage: {stats.get('habitat_coverage', 0):.1f}%")
+
+                # Connectivity Summary
+                connectivity = analysis_results.get('connectivity', {})
+                if connectivity:
+                    st.markdown("#### Connectivity Analysis")
+                    st.markdown(f"- Connectivity Score: {connectivity.get('connectivity_score', 0):.2f}")
+
+                # Add a divider
+                st.markdown("---")
+
+                # Display land cover types legend below the results
                 st.markdown("### Land Cover Types")
-                for code, name in LandCoverConfig.LAND_COVER_CLASSES.items():
+                # Sort land cover types by their codes
+                sorted_codes = sorted(LandCoverConfig.LAND_COVER_CLASSES.keys())
+                for code in sorted_codes:
+                    name = LandCoverConfig.LAND_COVER_CLASSES[code]
                     st.markdown(
                         f'<p style="margin: 5px 0;"><span style="color: {LandCoverConfig.get_color_for_code(code)}">■</span> {name}</p>',
                         unsafe_allow_html=True
@@ -395,6 +442,58 @@ class HabitatViz(BaseChartRenderer):
         )
         return fig
 
+    def _create_connectivity_chart(self, connectivity: Dict[str, Any]) -> go.Figure:
+        """Create gauge chart showing habitat connectivity metrics."""
+        if not connectivity:
+            return None
+
+        # Create figure with secondary y-axis
+        fig = go.Figure()
+
+        # Add connectivity score gauge
+        fig.add_trace(
+            go.Indicator(
+                mode="gauge+number",
+                value=connectivity['connectivity_score'] * 100,  # Convert to percentage
+                title={'text': "Connectivity Score"},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'steps': [
+                        {'range': [0, 33], 'color': "#d73027"},    # Red for low connectivity
+                        {'range': [33, 66], 'color': "#f46d43"},   # Orange for medium connectivity
+                        {'range': [66, 100], 'color': "#1a9850"}   # Green for high connectivity
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': connectivity['connectivity_score'] * 100
+                    }
+                }
+            )
+        )
+
+        # Update layout
+        fig.update_layout(
+            title=dict(
+                text='Habitat Connectivity Analysis',
+                y=0.95,
+                x=0.5,
+                xanchor='center',
+                yanchor='top'
+            ),
+            height=500,
+            showlegend=False,
+            margin=dict(l=20, r=20, t=40, b=20),
+            hoverlabel=dict(
+                bgcolor="white",
+                font_size=14,
+                font_family="Arial"
+            ),
+            yaxis_title="Value",
+        )
+
+        return fig
+
     def _create_legend(self) -> str:
         """Create HTML legend for land cover types."""
         legend_html = '''
@@ -402,7 +501,10 @@ class HabitatViz(BaseChartRenderer):
                 <h4>Land Cover Types</h4>
         '''
 
-        for code, name in LandCoverConfig.LAND_COVER_CLASSES.items():
+        # Sort land cover types by their codes
+        sorted_codes = sorted(LandCoverConfig.LAND_COVER_CLASSES.keys())
+        for code in sorted_codes:
+            name = LandCoverConfig.LAND_COVER_CLASSES[code]
             legend_html += f'<p style="margin: 5px 0;"><span style="color: {LandCoverConfig.get_color_for_code(code)}">■</span> {name}</p>'
 
         legend_html += '</div>'

@@ -4,9 +4,10 @@ from typing import Dict, Any, List
 from vertexai.generative_models import FunctionDeclaration
 from app.tools.tool import Tool
 from app.tools.earth_engine_tool.handlers.forest_handler import ForestHandlerEE
-from app.tools.earth_engine_tool.handlers.human_modification_handler import HumanModificationHandlerEE
-from app.tools.earth_engine_tool.handlers.habitat_analyzer import HabitatAnalyzer
-from app.tools.earth_engine_tool.handlers.topography_analyzer import TopographyAnalyzer
+from .handlers.human_modification_handler import HumanModificationHandlerEE
+from .handlers.habitat_analyzer import HabitatAnalyzer
+from .handlers.topography_analyzer import TopographyAnalyzer
+from .handlers.climate_analyzer import ClimateAnalyzer
 
 class EarthEngineTool(Tool):
     """Tool for Earth Engine data processing and analysis."""
@@ -17,6 +18,7 @@ class EarthEngineTool(Tool):
         self.human_modification_handler = HumanModificationHandlerEE()
         self.habitat_analyzer = HabitatAnalyzer()
         self.topography_analyzer = TopographyAnalyzer()
+        self.climate_analyzer = ClimateAnalyzer()
 
     def get_handlers(self) -> Dict[str, Any]:
         """Get all handlers associated with this tool.
@@ -28,7 +30,8 @@ class EarthEngineTool(Tool):
             "forest": self.forest_handler,
             "human_modification": self.human_modification_handler,
             "habitat": self.habitat_analyzer,
-            "topography": self.topography_analyzer
+            "topography": self.topography_analyzer,
+            "climate": self.climate_analyzer
         }
 
     def get_function_declarations(self) -> List[FunctionDeclaration]:
@@ -146,6 +149,35 @@ class EarthEngineTool(Tool):
                     },
                     "required": ["species_name"]
                 }
+            ),
+            FunctionDeclaration(
+                name="analyze_climate",
+                description=(
+                    "Analyze climate characteristics of species habitat "
+                    "using ERA5-Land and CHIRPS data. "
+                    "This analyzes temperature and precipitation patterns, "
+                    "climate trends, and species-climate relationships. "
+                    "Use this for questions about:\n"
+                    "- What are the temperature and precipitation patterns in the species' range\n"
+                    "- How does climate vary across the species' distribution\n"
+                    "- What are the climate preferences of the species\n"
+                    "- How might climate change affect the species\n"
+                    "Examples:\n"
+                    "- 'Analyze climate for Panthera leo'\n"
+                    "- 'Show climate patterns for Bornean orangutans'\n"
+                    "- 'What are the climate preferences of tigers?'\n"
+                    "- 'How does climate affect elephant distribution?'"
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "species_name": {
+                            "type": "string",
+                            "description": "Scientific name of the species"
+                        }
+                    },
+                    "required": ["species_name"]
+                }
             )
         ]
 
@@ -156,8 +188,11 @@ class EarthEngineTool(Tool):
             Dict[str, Any]: Dictionary mapping function names to their implementations
         """
         return {
-            "calculate_species_forest_correlation": self.forest_handler.calculate_species_forest_correlation,
-            "calculate_species_humanmod_correlation": self.human_modification_handler.calculate_species_humanmod_correlation,
+            "calculate_species_forest_correlation":
+                self.forest_handler.calculate_species_forest_correlation,
+            "calculate_species_humanmod_correlation":
+                self.human_modification_handler.calculate_species_humanmod_correlation,
             "analyze_habitat_distribution": self.habitat_analyzer.analyze_habitat_distribution,
-            "analyze_topography": self.topography_analyzer.analyze_topography
+            "analyze_topography": self.topography_analyzer.analyze_topography,
+            "analyze_climate": self.climate_analyzer.analyze
         }

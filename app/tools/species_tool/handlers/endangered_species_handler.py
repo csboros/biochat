@@ -6,6 +6,7 @@ import json
 from typing import List, Optional
 import google.api_core.exceptions
 from google.cloud import bigquery
+from app.tools.message_bus import message_bus
 from ...base_handler import BaseHandler
 
 class EndangeredSpeciesHandler(BaseHandler):
@@ -33,6 +34,13 @@ class EndangeredSpeciesHandler(BaseHandler):
         """
         try:
             kingdom_name = content['kingdom_name']
+
+            message_bus.publish("status_update", {
+                "message": f"Fetching endangered classes for {kingdom_name} kingdom...",
+                "state": "running",
+                "progress": 0
+            })
+
             self.logger.info("Fetching classes for kingdom from BigQuery")
 
             client = bigquery.Client(
@@ -58,17 +66,42 @@ class EndangeredSpeciesHandler(BaseHandler):
                 query,
                 job_config=job_config
             )
+
+            # Processing results
+            message_bus.publish("status_update", {
+                "message": "Processing results...",
+                "state": "running",
+                "progress": 70
+            })
+
             results = []
             intro = f"Here are the classes within the {kingdom_name} kingdom:\n\n"
             for row in query_job:
                 formatted_entry = f"* **{row['class']}**: {row['cnt']} endangered species"
                 results.append(formatted_entry)
+
+            message_bus.publish("status_update", {
+                "message": "Data retrieved successfully",
+                "state": "complete",
+                "progress": 100
+            })
+
             final_text = intro + '\n'.join(results)
             return final_text
         except google.api_core.exceptions.GoogleAPIError as e:
+            message_bus.publish("status_update", {
+                "message": f"Database error: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
         except (TypeError, ValueError) as e:
+            message_bus.publish("status_update", {
+                "message": f"Invalid input: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
@@ -90,6 +123,13 @@ class EndangeredSpeciesHandler(BaseHandler):
         """
         try:
             clazz = content['class_name']
+
+            message_bus.publish("status_update", {
+                "message": f"Fetching endangered orders for {clazz} class...",
+                "state": "running",
+                "progress": 0
+            })
+
             self.logger.info("Fetching families for classes from BigQuery")
 
             client = bigquery.Client(
@@ -118,17 +158,41 @@ class EndangeredSpeciesHandler(BaseHandler):
                 query,
                 job_config=job_config
             )
+
+            message_bus.publish("status_update", {
+                "message": "Processing results...",
+                "state": "running",
+                "progress": 70
+            })
+
             results = []
             intro = f"Here are the orders within the {clazz} class:\n\n"
             for row in query_job:
                 formatted_entry = f"* **{row['order_name']}**: {row['cnt']} endangered species"
                 results.append(formatted_entry)
+
+            message_bus.publish("status_update", {
+                "message": "Data retrieved successfully",
+                "state": "complete",
+                "progress": 100
+            })
+
             final_text = intro + '\n'.join(results)
             return final_text
         except google.api_core.exceptions.GoogleAPIError as e:
+            message_bus.publish("status_update", {
+                "message": f"Database error: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
         except (TypeError, ValueError) as e:
+            message_bus.publish("status_update", {
+                "message": f"Invalid input: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
@@ -149,6 +213,14 @@ class EndangeredSpeciesHandler(BaseHandler):
             TypeError: If content is not in expected format
         """
         try:
+            order_name = content['order_name']
+
+            message_bus.publish("status_update", {
+                "message": f"Fetching endangered families for {order_name} order...",
+                "state": "running",
+                "progress": 0
+            })
+
             self.logger.info("Fetching families for order from BigQuery")
             order_name = content['order_name']
             client = bigquery.Client(
@@ -170,11 +242,28 @@ class EndangeredSpeciesHandler(BaseHandler):
             res = [(row.species_name, row.family, row.status, row.order_name, row['class'],
                    getattr(row, 'species_name_en', None))  # Handle species_name_en
                    for row in query_job]
+
+            message_bus.publish("status_update", {
+                "message": "Data retrieved successfully",
+                "state": "complete",
+                "progress": 100
+            })
+
             return self._format_hierarchy_data(res)
         except google.api_core.exceptions.GoogleAPIError as e:
+            message_bus.publish("status_update", {
+                "message": f"Database error: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
         except (TypeError, ValueError) as e:
+            message_bus.publish("status_update", {
+                "message": f"Invalid input: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
@@ -197,9 +286,15 @@ class EndangeredSpeciesHandler(BaseHandler):
             TypeError: If content is not in expected format
         """
         try:
-            self.logger.info("Fetching endangered species for family from BigQuery")
             family_name = content['family_name']
             conservation_status = content.get('conservation_status')
+
+            message_bus.publish("status_update", {
+                "message": f"Fetching endangered species for {family_name} family...",
+                "state": "running",
+                "progress": 0
+            })
+
 
             client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
             query = self.build_query(
@@ -213,14 +308,38 @@ class EndangeredSpeciesHandler(BaseHandler):
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(query, job_config=job_config)
 
+            message_bus.publish("status_update", {
+                "message": "Processing results...",
+                "state": "running",
+                "progress": 70
+            })
+
             res = [(row.species_name, row.family, row.status, row.order_name, row['class'],
-                   getattr(row, 'species_name_en', None))  # Add species_name_en
+                   getattr(row, 'species_name_en', None))
                    for row in query_job]
+
+            message_bus.publish("status_update", {
+                "message": "Data retrieved successfully",
+                "state": "complete",
+                "progress": 100
+            })
+
             return self._format_hierarchy_data(res)
+
         except google.api_core.exceptions.GoogleAPIError as e:
+            message_bus.publish("status_update", {
+                "message": f"Database error: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
         except (TypeError, ValueError) as e:
+            message_bus.publish("status_update", {
+                "message": f"Invalid input: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
@@ -244,16 +363,50 @@ class EndangeredSpeciesHandler(BaseHandler):
             TypeError: If content is not in expected format
         """
         try:
-            self.logger.info("Fetching species for country from BigQuery")
             country_code = content['country_code']
             conservation_status = content.get('conservation_status')
 
+            message_bus.publish("status_update", {
+                "message": f"Fetching endangered species for country {country_code}...",
+                "state": "running",
+                "progress": 0
+            })
+
+            self.logger.info("Fetching species for country from BigQuery")
+
+            message_bus.publish("status_update", {
+                "message": "Querying database...",
+                "state": "running",
+                "progress": 30
+            })
+
             results_data = self._query_country_species(country_code, conservation_status)
-            return self._format_hierarchy_data(results_data)
+
+
+            formatted_data = self._format_hierarchy_data(results_data)
+
+            message_bus.publish("status_update", {
+                "message": "Data retrieved successfully",
+                "state": "complete",
+                "progress": 100
+            })
+
+            return formatted_data
+
         except google.api_core.exceptions.GoogleAPIError as e:
+            message_bus.publish("status_update", {
+                "message": f"Database error: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("BigQuery error: %s", str(e), exc_info=True)
             raise
         except (TypeError, ValueError) as e:
+            message_bus.publish("status_update", {
+                "message": f"Invalid input: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error("Invalid input: %s", str(e), exc_info=True)
             raise
 
@@ -705,13 +858,30 @@ class EndangeredSpeciesHandler(BaseHandler):
             if not content.get("species_name"):
                 return {"error": "Species name is required"}
 
+            message_bus.publish("status_update", {
+                "message": f"Fetching yearly occurrences for {content['species_name']}...",
+                "state": "running",
+                "progress": 0
+            })
+
             # Translate name and validate
+            message_bus.publish("status_update", {
+                "message": "Validating species name...",
+                "state": "running",
+                "progress": 20
+            })
+
             translated = json.loads(
                 self.translate_to_scientific_name_from_api(
                     {"name": content["species_name"]}
                 )
             )
             if "error" in translated or not translated.get("scientific_name"):
+                message_bus.publish("status_update", {
+                    "message": f"Could not find valid scientific name for: {content['species_name']}",
+                    "state": "error",
+                    "progress": 0
+                })
                 return {
                     "error": f"Could not find valid scientific name for: {content['species_name']}"
                 }
@@ -767,6 +937,12 @@ class EndangeredSpeciesHandler(BaseHandler):
                     f"{content['species_name']} ({translated['scientific_name']})"
                 }
 
+            message_bus.publish("status_update", {
+                "message": "Data retrieved successfully",
+                "state": "complete",
+                "progress": 100
+            })
+
             return {
                 "common_name": content["species_name"],
                 "scientific_name": translated["scientific_name"],
@@ -775,6 +951,11 @@ class EndangeredSpeciesHandler(BaseHandler):
             }
 
         except Exception as e:
+            message_bus.publish("status_update", {
+                "message": f"Error getting yearly occurrences: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error(
                 "Error getting yearly occurrences: %s", str(e), exc_info=True
             )
