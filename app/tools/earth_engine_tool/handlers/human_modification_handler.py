@@ -4,9 +4,10 @@ import logging
 from typing import Dict, Any, Optional
 import ee
 from app.utils.alpha_shape_utils import AlphaShapeUtils
-from .earth_engine_handler import EarthEngineHandler
 from app.tools.message_bus import message_bus
+from .earth_engine_handler import EarthEngineHandler
 
+# pylint: disable=broad-except
 class HumanModificationHandlerEE(EarthEngineHandler):
     """Handles human modification data processing and analysis using Google Earth Engine."""
 
@@ -440,7 +441,6 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             observations=observations,
             all_alpha_shapes=all_alpha_shapes,
             scale=scale,
-            avoid_overlaps=avoid_overlaps,
             error_message=error_message,
             analysis_message=analysis_message,
             correlation_data_structure=correlation_data_structure
@@ -451,5 +451,4 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             alpha_shapes=all_alpha_shapes,
             avoid_overlaps=avoid_overlaps
         )
-
         return error_response

@@ -6,6 +6,7 @@ import ee
 from app.tools.message_bus import message_bus
 from .earth_engine_handler import EarthEngineHandler
 
+# pylint: disable=broad-except
 class TopographyAnalyzer(EarthEngineHandler):
     """Analyzes topography characteristics of species habitats using Earth Engine."""
 
@@ -238,8 +239,8 @@ class TopographyAnalyzer(EarthEngineHandler):
 
             return mask.size().getInfo()
 
-        except Exception as e:
-            self.logger.error(f"Error counting aspect range: {str(e)}")
+        except Exception as e: # pylint: disable=broad-except
+            self.logger.error("Error counting aspect range: %s", str(e))
             return 0
 
     def _count_slope_range(self, points: ee.FeatureCollection, start: float, end: float) -> int:
@@ -251,8 +252,8 @@ class TopographyAnalyzer(EarthEngineHandler):
 
             return mask.size().getInfo()
 
-        except Exception as e:
-            self.logger.error(f"Error counting slope range: {str(e)}")
+        except Exception as e: # pylint: disable=broad-except
+            self.logger.error("Error counting slope range: %s", str(e))
             return 0
 
     def _generate_visualizations(
@@ -319,7 +320,7 @@ class TopographyAnalyzer(EarthEngineHandler):
                 "message": f"❌ Error generating visualizations: {str(e)}",
                 "state": "error"
             })
-            logging.error(f"Visualization error: {str(e)}")
+            logging.error("Visualization error: %s", str(e))
             return {
                 'elevation': None,
                 'slope': None,
@@ -359,5 +360,4 @@ class TopographyAnalyzer(EarthEngineHandler):
         Data:
         """
         prompt += f"\n{results}"
-
         return prompt

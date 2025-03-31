@@ -173,7 +173,8 @@ class ForestHandlerEE(EarthEngineHandler):
                 scale=scale,
                 avoid_overlaps=avoid_overlaps,
                 error_message=str(e),
-                analysis_message="Analysis failed. Please try with different parameters or a smaller area."
+                analysis_message="Analysis failed. Please try with different "
+                "parameters or a smaller area."
             )
 
     def calculate_forest_correlations(self, all_results: list, scale: int) -> Dict[str, Any]:
@@ -289,7 +290,8 @@ class ForestHandlerEE(EarthEngineHandler):
                                     "Setting forest loss correlation to 0.")
 
             # Set the calculation method note
-            correlation_data_notes = "Correlations calculated based on observation frequency in habitat bins"
+            correlation_data_notes = "Correlations calculated based on observation " \
+                                    "frequency in habitat bins"
 
         except Exception as e: # pylint: disable=broad-except
             self.logger.error("Error calculating correlations: %s", str(e))
@@ -326,7 +328,8 @@ class ForestHandlerEE(EarthEngineHandler):
         return correlation_data
 
     def process_forest_sample_results(self, point_sample_results: list) -> tuple:
-        """Process sample results from Earth Engine point features with temporal awareness and datamask filtering.
+        """Process sample results from Earth Engine point features with temporal
+            awareness and datamask filtering.
 
         Args:
             point_sample_results (list): List of feature results from Earth Engine
@@ -557,7 +560,8 @@ class ForestHandlerEE(EarthEngineHandler):
                 Note on data quality: Observations were pre-filtered at the Earth Engine level
                 to ensure only land-based points are included in the analysis. This filtering
                 removes any observations over water bodies (oceans, lakes, rivers) and areas with
-                no valid forest data coverage. {valid} valid land-based observations were used for analysis.
+                no valid forest data coverage. {valid} valid land-based
+                observations were used for analysis.
 
                 This filtering improves data quality by ensuring we're only analyzing observations in
                 potential forest habitat areas, not aquatic environments which would artificially
@@ -574,7 +578,8 @@ class ForestHandlerEE(EarthEngineHandler):
                     percent_filtered = round(total / total_input * 100, 1)
                     prompt += f"""
 
-                    Note on data filtering: {total} observations ({percent_filtered}% of total) were filtered out:
+                    Note on data filtering: {total} observations ({percent_filtered}% of total)
+                    were filtered out:
                     - {water} observations over permanent water bodies (oceans, lakes, rivers)
                     - {no_data} observations in areas with no valid Hansen dataset coverage
 
@@ -692,11 +697,6 @@ class ForestHandlerEE(EarthEngineHandler):
                 result for result in point_sample_results
                 if result['properties'].get('datamask') == 1
             ]
-
-            self.logger.info("Received %d valid sample results (filtered out %d water/no-data points)",
-                             len(filtered_results),
-                             len(point_sample_results) - len(filtered_results))
-
             return filtered_results
 
         except ee.EEException as e:
@@ -711,7 +711,8 @@ class ForestHandlerEE(EarthEngineHandler):
         scale: int,
         avoid_overlaps: bool,
         error_message: str = "No valid results were obtained from Earth Engine analysis.",
-        analysis_message: str = "Analysis failed. Please try with different parameters or a smaller area."
+        analysis_message: str = "Analysis failed. Please try with different "
+        "parameters or a smaller area."
     ) -> Dict[str, Any]:
         """Create a standardized error response for analysis failures.
 

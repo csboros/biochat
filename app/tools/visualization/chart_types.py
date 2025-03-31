@@ -21,7 +21,7 @@ class ChartType(Enum):
     SPECIES_SHARED_HABITAT = auto()
     HABITAT_ANALYSIS = auto()
     TOPOGRAPHY_ANALYSIS = auto()
-
+    CLIMATE_ANALYSIS = auto()
     @classmethod
     def from_string(cls, chart_type: str) -> 'ChartType':
         """Convert string to ChartType enum"""

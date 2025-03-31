@@ -111,8 +111,7 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                             continue
 
                         lon, lat = coords[0], coords[1]
-                        ghm_value = point.get('ghm_value', 0)
-
+                        ghm_value = point.get('first', 0)
                         # Create popup content
                         popup_content = f"""
                             <b>Location:</b> {lat:.4f}, {lon:.4f}<br>
@@ -126,9 +125,9 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                             folium.CircleMarker(
                                 location=[lat, lon],
                                 radius=5,
-                                color='black',
+                                color='white',
                                 fill=True,
-                                fill_color='green',
+                                fill_color='blue',
                                 fill_opacity=0.7,
                                 weight=1,
                                 popup=folium.Popup(popup_content, max_width=300)
@@ -138,7 +137,7 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                             folium.CircleMarker(
                                 location=[lat, lon],
                                 radius=5,
-                                color='black',
+                                color='white',
                                 fill=True,
                                 fill_color='red',
                                 fill_opacity=0.7,
@@ -150,7 +149,7 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                             folium.CircleMarker(
                                 location=[lat, lon],
                                 radius=5,
-                                color='black',
+                                color='white',
                                 fill=True,
                                 fill_color='yellow',
                                 fill_opacity=0.7,
@@ -261,7 +260,7 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                         st.markdown("### Human Modification Categories")
                         st.markdown("""
                         Points on the map are colored by human modification level:
-                        - <span style="color:green">⬤</span> **Green**: Low modification (0-0.2)
+                        - <span style="color:blue">⬤</span> **Blue**: Low modification (0-0.2)
                         - <span style="color:yellow">⬤</span> **Yellow**: Medium modification (0.2-0.6)
                         - <span style="color:red">⬤</span> **Red**: High modification (0.6-1.0)
                         """, unsafe_allow_html=True)

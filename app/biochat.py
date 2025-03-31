@@ -11,7 +11,7 @@ import json
 import logging
 import time
 import os
-from typing import Dict
+from typing import Dict, Any
 import google.cloud.aiplatform as vertexai
 from vertexai.preview.generative_models import (
     GenerationConfig,
@@ -203,6 +203,7 @@ class BioChat:
         )
 
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
+        self.status_container = None  # Initialize status_container
         try:
             resources = self.initialize_app_resources()
             self.function_handler = resources['handler'].get_all_function_mappings()
@@ -336,8 +337,8 @@ class BioChat:
                 .fixed-status {
                     position: fixed;
                     bottom: 0;
-                    left: 0;
-                    right: 0;
+                    left: 30px;
+                    right: 30px;
                     z-index: 1000;
                     padding: 10px;
                     display: flex;
@@ -498,6 +499,12 @@ class BioChat:
     def _handle_function_call(self, call):
         """Helper method to handle different function call types."""
         handlers = {
+            'help': lambda c: self.handle_help_command({
+                'type': 'category' if c.get('params', {}).get('category') else 'general',
+                'category': c.get('params', {}).get('category'),
+                'tool': c.get('params', {}).get('tool'),
+                'function': c.get('params', {}).get('function')
+            }),
             'get_yearly_occurrences': lambda c:
                 self.process_yearly_observations(c['response'], c['params']),
             'get_occurrences': self._handle_occurrences,
@@ -541,7 +548,9 @@ class BioChat:
             'analyze_habitat_distribution': lambda c:
                 self.process_habitat_analysis(c['response'], c['params']),
             'analyze_topography': lambda c:
-                self.process_topography_analysis(c['response'], c['params'])
+                self.process_topography_analysis(c['response'], c['params']),
+            'analyze_climate': lambda c:
+                self.process_climate_analysis(c['response'], c['params'])
         }
 
         if call['name'] in handlers:
@@ -579,9 +588,9 @@ class BioChat:
                 self.logger.info("Received final response from Gemini")
                 self.add_message_to_history("assistant", {"text": response_text})
 
-                # Only send the reminder message if it's not empty
+                # Send the reminder message with proper content
                 reminder = "Remember: You must use the provided functions for queries about species, countries, or biodiversity data. Do not rely on general knowledge."
-                if reminder.strip():  # Check if reminder is not empty
+                if reminder and reminder.strip():
                     self.chat.send_message(reminder)
 
         except (ValueError, AttributeError) as e:
@@ -1200,35 +1209,195 @@ class BioChat:
                 "content": {"text": f"Error processing topography analysis data: {str(e)}"}
             })
 
+    def process_climate_analysis(self, data_response, parameters):
+        """
+        Process and visualize climate analysis results.
+
+        Args:
+            data_response (dict): Response containing climate analysis results and visualizations
+            parameters (dict): Parameters used for the analysis
+        """
+        try:
+            if not data_response or data_response.get("error"):
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "text": data_response.get("error", "No topography analysis data available.")
+                    }
+                })
+                return
+
+            # Add visualizations if available
+            st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": {
+                        "chart_data": data_response,
+                        "type": ChartType.CLIMATE_ANALYSIS,
+                        "parameters": parameters
+                    }
+            })
+
+            # Add analysis text if available
+            if data_response.get("analysis"):
+                self.add_message_to_history("assistant", {"text": data_response["analysis"]})
+
+        except Exception as e:  # pylint: disable=broad-except
+            self.logger.error("Error processing topography analysis data: %s", str(e), exc_info=True)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": f"Error processing topography analysis data: {str(e)}"}
+            })
+
+    def handle_help_command(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle help-related commands and queries.
+
+        Args:
+            arguments: Dictionary containing help command arguments with keys:
+                - type: Type of help requested (general, category, tool, or function)
+                - category: Category name when requesting category-specific help
+                - tool: Tool name when requesting tool-specific help
+                - function: Function name when requesting function-specific help
+
+        Returns:
+            Dictionary containing help information
+        """
+        try:
+            help_type = arguments.get('type', 'general')
+
+            if help_type == 'general':
+                # Get system overview
+                overview = self.get_system_overview()
+                self.add_message_to_history("assistant", {"text": overview})
+                return {"success": True, "data": {"text": overview}}
+
+            elif help_type == 'category':
+                category = arguments.get('category')
+                if not category:
+                    return {"success": False, "error": "Category name is required"}
+
+                # Get category-specific help
+                help_info = self.function_handler['help']({'type': 'category', 'category': category})
+                if help_info.get('success'):
+                    self.add_message_to_history("assistant", {"text": help_info['data']['text']})
+                return help_info
+
+            elif help_type == 'tool':
+                tool = arguments.get('tool')
+                if not tool:
+                    return {"success": False, "error": "Tool name is required"}
+
+                # Get tool-specific help
+                help_info = self.function_handler['help']({'type': 'tool', 'tool': tool})
+                if help_info.get('success'):
+                    self.add_message_to_history("assistant", {"text": help_info['data']['text']})
+                return help_info
+
+            elif help_type == 'function':
+                tool = arguments.get('tool')
+                function = arguments.get('function')
+                if not tool or not function:
+                    return {"success": False, "error": "Both tool and function names are required"}
+
+                # Get function-specific help
+                help_info = self.function_handler['help']({
+                    'type': 'function',
+                    'tool': tool,
+                    'function': function
+                })
+                if help_info.get('success'):
+                    self.add_message_to_history("assistant", {"text": help_info['data']['text']})
+                return help_info
+
+            else:
+                return {"success": False, "error": f"Invalid help type: {help_type}"}
+
+        except Exception as e:
+            self.logger.error("Error handling help command: %s", str(e), exc_info=True)
+            error_message = f"Error processing help request: {str(e)}"
+            self.add_message_to_history("assistant", {"text": error_message})
+            return {"success": False, "error": error_message}
+
+    def get_system_overview(self) -> str:
+        """
+        Get a comprehensive overview of the system's capabilities.
+
+        Returns:
+            str: A formatted string describing the system's capabilities
+        """
+        overview = """# Biodiversity Chat System Overview
+
+This system provides comprehensive tools for analyzing and understanding biodiversity data. Here are the main capabilities:
+
+## 1. Species Analysis
+- Search and retrieve information about species
+- Get species occurrence data
+- Analyze species distribution patterns
+- View species images
+- Track yearly observation trends
+
+## 2. Habitat Analysis
+- Analyze habitat distribution
+- Evaluate habitat connectivity
+- Study habitat fragmentation
+- Assess forest dependency
+- Analyze topography and climate
+
+## 3. Conservation Status
+- Get endangered species information
+- Analyze conservation status by country
+- Track species by conservation category
+- Monitor protected areas
+
+## 4. Human Impact Analysis
+- Calculate Human Coexistence Index (HCI)
+- Analyze species-HCI correlations
+- Study human modification effects
+- Evaluate population density impacts
+
+## 5. Geographic Analysis
+- Country-specific analysis
+- Protected area analysis
+- Multi-country comparisons
+- Geographic distribution mapping
+
+## 6. Data Visualization
+- Interactive maps
+- Statistical charts
+- Correlation plots
+- Distribution visualizations
+- Time series analysis
+
+## Example Queries
+1. "Show me endangered species in Kenya"
+2. "What is the habitat distribution for African elephants?"
+3. "Analyze the correlation between human activity and species presence"
+4. "Show me species distribution in Serengeti National Park"
+5. "What is the forest dependency of gorillas?"
+
+For more specific information about any of these capabilities, you can ask:
+- "Help me with species analysis"
+- "Tell me about habitat analysis tools"
+- "What conservation status functions are available?"
+- "Show me human impact analysis capabilities"
+- "What geographic analysis can you do?"
+- "What visualization options are available?"
+
+Would you like to know more about any specific aspect of the system?
+"""
+        return overview
+
     def _handle_status_update(self, data: Dict):
         """Handle status updates from various handlers."""
         if "status_container" in st.session_state:
             progress = data.get("progress", 50 if data.get("state") == "running" else 100)
 
-            # Add CSS for the cancel button
-            button_css = """
-                .cancel-btn {
-                    background-color: #ff4b4b;
-                    color: white;
-                    border: none;
-                    padding: 5px 10px;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    margin-left: 10px;
-                    font-size: 14px;
-                }
-                .cancel-btn:hover {
-                    background-color: #ff3333;
-                }
-            """
 
             if data.get("state") == "running":
                 st.session_state.status_container.markdown(
-                    f"<style>{button_css}</style>"
                     f"<div class='fixed-status'>"
                     f"<div class='status-text'>{data.get('message', 'Processing...')} ({progress}%)</div>"
                     f"<div class='progress-bar running'><div class='progress-bar-fill' style='width: {progress}%;'></div></div>"
-                    f"<button class='cancel-btn' onclick='cancelOperation(); this.disabled=true;'>Cancel</button>"
                     f"</div>",
                     unsafe_allow_html=True
                 )

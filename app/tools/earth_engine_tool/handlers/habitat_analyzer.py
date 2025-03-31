@@ -1,7 +1,6 @@
 """Handler for habitat analysis using Earth Engine."""
 
 from typing import Dict, Any
-import logging
 import ee
 from app.tools.earth_engine_tool.handlers.earth_engine_handler import EarthEngineHandler
 from app.tools.message_bus import message_bus
@@ -9,6 +8,7 @@ from ...visualization.config.land_cover_config import LandCoverConfig
 
 
 # pylint: disable=no-member
+# pylint: disable=broad-except
 class HabitatAnalyzer(EarthEngineHandler):
     """Analyzes habitat types and their distribution."""
 
@@ -46,12 +46,15 @@ class HabitatAnalyzer(EarthEngineHandler):
                 "state": "running",
                 "progress": 15
             })
-            species_points = ee.FeatureCollection(
-                [ee.Feature(
-                    ee.Geometry.Point([obs["decimallongitude"], obs["decimallatitude"]]),
+            species_points = ee.FeatureCollection([
+                ee.Feature(
+                    ee.Geometry.Point([
+                        obs["decimallongitude"],
+                        obs["decimallatitude"]
+                    ]),
                     {'individual_count': obs["individual_count"]}
-                ) for obs in observations]
-            )
+                ) for obs in observations
+            ])
 
             # Get land cover data
             message_bus.publish("status_update", {
@@ -87,7 +90,8 @@ class HabitatAnalyzer(EarthEngineHandler):
             })
             visualizations = self._generate_visualizations(
                     landcover,
-                    species_points
+                    species_points,
+                    results['connectivity']
             )
 
             message_bus.publish("status_update", {
@@ -153,9 +157,14 @@ class HabitatAnalyzer(EarthEngineHandler):
 
         prompt += """
         3. Habitat fragmentation patterns and their impact on species viability
-        4. Data limitations and caveats
-        5. Conservation recommendations based on the analysis
-        6. Please summarize the key findings in a few sentences at the end.
+        4. Habitat connectivity analysis:
+           - Interpret the connectivity score (0-1) and its implications for species movement
+           - Analyze the distribution of points across different habitat types
+           - Assess potential barriers to species movement based on land cover types
+           - Provide recommendations for improving habitat connectivity
+        5. Data limitations and caveats
+        6. Conservation recommendations based on the analysis
+        7. Please summarize the key findings in a few sentences at the end.
 
         Data:
         """
@@ -236,10 +245,19 @@ class HabitatAnalyzer(EarthEngineHandler):
             habitat_usage
         )
 
+        # Analyze habitat connectivity
+        message_bus.publish("status_update", {
+            "message": "📊 Analyzing habitat connectivity",
+            "state": "running",
+            "progress": 70
+        })
+        connectivity = self._analyze_habitat_connectivity(points_with_landcover, habitat_usage)
+
         return {
             'habitat_usage': habitat_usage,
             'forest_analysis': forest_analysis,
             'habitat_fragmentation': fragmentation,
+            'connectivity': connectivity,
             'is_forest_primary': is_primary_habitat
         }
 
@@ -327,7 +345,10 @@ class HabitatAnalyzer(EarthEngineHandler):
                 for group_name, group_info in habitat_groups.items():
                     total_percentage = sum(
                         percentage for name, percentage in habitat_usage.items()
-                        if any(keyword.lower() in name.lower() for keyword in group_info['keywords'])
+                        if any(
+                            keyword.lower() in name.lower()
+                            for keyword in group_info['keywords']
+                        )
                     )
                     group_percentages[group_name] = total_percentage
 
@@ -392,11 +413,22 @@ class HabitatAnalyzer(EarthEngineHandler):
                     'area_unit': 'hectares',
                     'connectivity_type': '8-connected (including diagonals)',
                     'description': {
-                        'habitat_type': f'Analysis performed for {primary_habitat_group} habitat',
-                        'connectivity': 'Using 8-connectivity: patches are connected if they share edges or corners',
-                        'total_patches': f'Number of separate {primary_habitat_group.lower()} areas (8-connected)',
+                        'habitat_type': (
+                            f'Analysis performed for {primary_habitat_group} habitat'
+                        ),
+                        'connectivity': (
+                            'Using 8-connectivity: patches are connected if they '
+                            'share edges or corners'
+                        ),
+                        'total_patches': (
+                            f'Number of separate {primary_habitat_group.lower()} '
+                            'areas (8-connected)'
+                        ),
                         'mean_patch_size': 'Average size of habitat patches in hectares',
-                        'habitat_coverage': f'Percentage of observations in {primary_habitat_group.lower()} habitat'
+                        'habitat_coverage': (
+                            f'Percentage of observations in '
+                            f'{primary_habitat_group.lower()} habitat'
+                        )
                     }
                 }
             }
@@ -417,10 +449,118 @@ class HabitatAnalyzer(EarthEngineHandler):
                 }
             }
 
+    def _analyze_habitat_connectivity(self, points_with_landcover, habitat_usage: Dict[str, float] = None):
+        """
+        Analyzes habitat connectivity between patches.
+
+        Args:
+            points_with_landcover: ee.FeatureCollection with land cover data
+            habitat_usage: Dictionary of habitat usage percentages
+
+        Returns:
+            dict: Connectivity analysis results
+        """
+        try:
+            # Define resistance values for different land cover types
+            # Base resistance values (can be adjusted based on primary habitat)
+            base_resistance_values = {
+                111: 1,  # Closed forest, evergreen needle leaf
+                112: 1,  # Closed forest, evergreen broad leaf
+                113: 1,  # Closed forest, deciduous needle leaf
+                114: 1,  # Closed forest, deciduous broad leaf
+                115: 1,  # Closed forest, mixed
+                116: 1,  # Closed forest, not matching other definitions
+                121: 2,  # Open forest, evergreen needle leaf
+                122: 2,  # Open forest, evergreen broad leaf
+                123: 2,  # Open forest, deciduous needle leaf
+                124: 2,  # Open forest, deciduous broad leaf
+                125: 2,  # Open forest, mixed
+                126: 2,  # Open forest, not matching other definitions
+                20: 3,   # Shrubland
+                30: 3,   # Herbaceous vegetation
+                40: 4,   # Cropland
+                50: 10,  # Urban/built up
+                60: 5,   # Bare/sparse vegetation
+                70: 8,   # Snow and ice
+                80: 6,   # Permanent water bodies
+                90: 3,   # Herbaceous wetland
+                100: 3,  # Moss and lichen
+                200: 7   # Oceans, seas
+            }
+
+            # Determine primary habitat type and adjust resistance values
+            if habitat_usage:
+                # Find the habitat type with highest percentage
+                primary_habitat = max(habitat_usage.items(), key=lambda x: x[1])[0]
+
+                # Adjust resistance values based on primary habitat
+                resistance_values = base_resistance_values.copy()
+
+                # If primary habitat is not forest, adjust resistance values
+                if not any('forest' in name.lower() for name in habitat_usage.keys()):
+                    # Find the code for the primary habitat
+                    primary_code = None
+                    for code, name in LandCoverConfig.LAND_COVER_CLASSES.items():
+                        if name == primary_habitat:
+                            primary_code = code
+                            break
+
+                    if primary_code:
+                        # Set lowest resistance for primary habitat
+                        resistance_values[primary_code] = 1
+
+                        # Adjust other similar habitats to have lower resistance
+                        for code, name in LandCoverConfig.LAND_COVER_CLASSES.items():
+                            if code != primary_code:
+                                if any(keyword in name.lower() for keyword in primary_habitat.lower().split()):
+                                    resistance_values[code] = 2
+                                elif 'urban' in name.lower() or 'built up' in name.lower():
+                                    resistance_values[code] = 10
+                                elif 'water' in name.lower() or 'ocean' in name.lower():
+                                    resistance_values[code] = 8
+                                else:
+                                    resistance_values[code] = 3
+
+            # Calculate connectivity metrics
+            total_points = points_with_landcover.size()
+
+            # Calculate resistance distribution
+            resistance_histogram = points_with_landcover.aggregate_histogram('discrete_classification').getInfo()
+
+            # Calculate weighted average resistance
+            total_resistance = 0
+            total_count = 0
+            for code, count in resistance_histogram.items():
+                code_int = int(code)
+                resistance = resistance_values.get(code_int, 10)  # Default to 10 for unknown values
+                total_resistance += resistance * count
+                total_count += count
+
+            avg_resistance = total_resistance / total_count if total_count > 0 else 10
+
+            # Calculate connectivity score (0-1)
+            # Higher score means better connectivity
+            connectivity_score = 1 - (avg_resistance / 10)
+
+            # Get the results
+            results = {
+                'connectivity_score': connectivity_score,
+                'average_resistance': avg_resistance,
+                'total_points': total_points.getInfo(),
+                'primary_habitat': primary_habitat if habitat_usage else "Unknown",
+                'habitat_distribution': habitat_usage if habitat_usage else {}
+            }
+            return results
+
+        except Exception as e:
+            self.logger.error("Error in habitat connectivity analysis: %s", str(e))
+            return None
+
     def _generate_visualizations(
         self,
         landcover: ee.Image,
-        species_points: ee.FeatureCollection
+        species_points: ee.FeatureCollection,
+        connectivity_results: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Generate visualization data for habitat analysis results."""
         try:
@@ -434,8 +574,12 @@ class HabitatAnalyzer(EarthEngineHandler):
                 )
             )
 
-            # Get the visualization parameters for landcover
-            landcover_vis = landcover.select('discrete_classification').visualize(**self.landcover_vis)
+            # Get the visualization parameters for landcover directly from LandCoverConfig
+            landcover_vis = landcover.select('discrete_classification')\
+                .visualize()
+#                .visualize(**LandCoverConfig.get_vis_params())
+
+            print(LandCoverConfig.get_vis_params())
 
             # Get map ID for the landcover layer
             landcover_layer = landcover_vis.getMapId()
@@ -455,7 +599,8 @@ class HabitatAnalyzer(EarthEngineHandler):
                     'lat': center[1],
                     'lon': center[0]
                 },
-                'species_points': species_points_geojson
+                'species_points': species_points_geojson,
+                'connectivity': connectivity_results
             }
 
         except Exception as e:
@@ -463,7 +608,7 @@ class HabitatAnalyzer(EarthEngineHandler):
                 "message": f"❌ Error generating visualizations: {str(e)}",
                 "state": "error"
             })
-            logging.error(f"Visualization error: {str(e)}")
+            self.logger.error("Visualization error: %s", str(e))
             # Return original points if sampling fails
             return {
                 'landcover': None,
@@ -471,5 +616,6 @@ class HabitatAnalyzer(EarthEngineHandler):
                 'center': {
                     'lat': species_points.geometry().centroid().getInfo()['coordinates'][1],
                     'lon': species_points.geometry().centroid().getInfo()['coordinates'][0]
-                }
+                },
+                'connectivity': None
             }

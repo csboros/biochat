@@ -13,6 +13,7 @@ from app.utils.alpha_shape_utils import AlphaShapeUtils
 from app.tools.message_bus import message_bus
 
 # pylint: disable=no-member
+# pylint: disable=broad-except
 class EarthEngineHandler:
     """Base class for Earth Engine data processing and analysis."""
 
@@ -320,9 +321,9 @@ class EarthEngineHandler:
         observations: list,
         all_alpha_shapes: list,
         scale: int,
-        avoid_overlaps: bool,
         error_message: str = "No valid results were obtained from Earth Engine analysis.",
-        analysis_message: str = "Analysis failed. Please try with different parameters or a smaller area.",
+        analysis_message: str = "Analysis failed. Please try with "
+                 "different parameters or a smaller area.",
         correlation_data_structure: dict = None
     ) -> Dict[str, Any]:
         """Create a standardized error response for analysis failures.
@@ -607,3 +608,67 @@ class EarthEngineHandler:
         except Exception as e:
             self.logger.error("Error filtering marine observations: %s", str(e))
             return observations  # Return original observations if filtering fails
+
+    def filter_outlier_points(
+        self,
+        observations: list,
+        std_dev_threshold: float = 2.0
+    ) -> list:
+        """Filter out points that are far from the main species range.
+
+        Args:
+            observations: List of observation dictionaries with coordinates
+            std_dev_threshold: Number of standard deviations to use as threshold
+
+        Returns:
+            Filtered list of observations without outliers
+        """
+        try:
+            # Calculate centroid of all points
+            lons = [obs["decimallongitude"] for obs in observations]
+            lats = [obs["decimallatitude"] for obs in observations]
+            centroid_lon = sum(lons) / len(lons)
+            centroid_lat = sum(lats) / len(lats)
+
+            # Calculate distances from centroid to each point
+            distances = []
+            for obs in observations:
+                # Calculate distance using the Haversine formula
+                lon1, lat1 = centroid_lon, centroid_lat
+                lon2, lat2 = obs["decimallongitude"], obs["decimallatitude"]
+
+                # Convert to radians
+                lon1, lat1, lon2, lat2 = map(lambda x: x * 3.14159 / 180, [lon1, lat1, lon2, lat2])
+
+                # Haversine formula
+                dlon = lon2 - lon1
+                dlat = lat2 - lat1
+                a = (dlat/2)**2 + (1 - (dlat/2)**2 - (dlon/2)**2) * (dlon/2)**2
+                c = 2 * (abs(a) ** 0.5)  # Use abs() to handle potential negative values
+                distance = 6371 * c  # Earth's radius in km
+
+                distances.append(distance)
+
+            # Calculate mean and standard deviation
+            mean_distance = sum(distances) / len(distances)
+            std_distance = (sum((d - mean_distance) ** 2 for d in distances)
+                            / len(distances)) ** 0.5
+
+            # Filter points within threshold
+            threshold = mean_distance + (std_dev_threshold * std_distance)
+            filtered_observations = [
+                obs for obs, dist in zip(observations, distances)
+                if dist <= threshold
+            ]
+
+            self.logger.info(
+                "Filtered %d outlier observations out of %d total observations",
+                len(observations) - len(filtered_observations),
+                len(observations)
+            )
+
+            return filtered_observations
+
+        except Exception as e:
+            self.logger.error("Error filtering outlier points: %s", str(e))
+            return observations
