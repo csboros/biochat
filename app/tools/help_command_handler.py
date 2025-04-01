@@ -4,24 +4,98 @@ from typing import Dict, Any
 from app.tools.message_bus import message_bus
 from app.tools.help_system import ApplicationHelpSystem, ToolCategory
 
+# pylint: disable=broad-except
 class HelpCommandHandler:
     """Handles help-related commands and queries."""
 
     def __init__(self):
         """Initialize the help command handler."""
         self.help_system = ApplicationHelpSystem()
+        self._function_handler = None  # Will be set later via dependency injection
+        # Update keywords to match ToolCategory enum values
+        self.category_keywords = {
+            'habitat': 'HABITAT_ANALYSIS',
+            'species': 'SPECIES_ANALYSIS',
+            'correlation': 'CORRELATION_ANALYSIS',
+            'search': 'SEARCH',
+            'visualization': 'VISUALIZATION',
+            'utility': 'UTILITY'
+            # Add more mappings as needed
+        }
 
-    def handle_help_command(self, command: Dict[str, Any]) -> Dict[str, Any]:
+    @property
+    def function_handler(self):
+        """Get the function handler instance."""
+        return self._function_handler
+
+    @function_handler.setter
+    def function_handler(self, handler: Any):
+        """Set the function handler instance."""
+        self._function_handler = handler
+
+    def parse_natural_language_query(self, query: str) -> Dict[str, Any]:
         """
-        Handle help-related commands.
+        Parse natural language query into a structured help command.
 
         Args:
-            command: Dictionary containing the help command and its parameters
+            query: Natural language help request
 
         Returns:
-            Dictionary containing the help response
+            Dictionary containing the structured help command
         """
+        query = query.lower()
+
+        # Check for multi-word category phrases first
+        category_phrases = {
+            'habitat analysis': 'HABITAT_ANALYSIS',
+            'species analysis': 'SPECIES_ANALYSIS',
+            'correlation analysis': 'CORRELATION_ANALYSIS'
+        }
+
+        # Check for full phrases first
+        for phrase, category in category_phrases.items():
+            if phrase in query:
+                return {
+                    'type': 'category',
+                    'category': category
+                }
+
+        # Fall back to single keyword matching
+        for keyword, category in self.category_keywords.items():
+            if keyword in query:
+                return {
+                    'type': 'category',
+                    'category': category
+                }
+
+        # If no specific category is found, return general help
+        return {
+            'type': 'general'
+        }
+
+    def handle_help_command(self, command: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle help-related commands."""
         try:
+            # Handle natural language queries
+            if isinstance(command, str):
+                if self.function_handler is None:
+                    command = {'type': 'general'}
+                else:
+                    result = self.function_handler.handle_function_call({
+                        'name': 'classify_help_category',
+                        'arguments': {
+                            'query': command
+                        }
+                    })
+
+                    if result.get('success'):
+                        command = {
+                            'type': 'category',
+                            'category': result['result']['category']
+                        }
+                    else:
+                        command = {'type': 'general'}
+
             command_type = command.get('type', 'general')
 
             if command_type == 'general':
@@ -140,5 +214,6 @@ class HelpCommandHandler:
         return {
             'success': True,
             'data': help_info,
-            'message': f"Help information for function '{function_name}' in tool '{tool_name}' retrieved successfully"
+            'message': "Help information for function "
+                    "'{function_name}' in tool '{tool_name}' retrieved successfully"
         }

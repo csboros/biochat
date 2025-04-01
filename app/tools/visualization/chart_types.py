@@ -4,24 +4,24 @@ from enum import Enum, auto
 
 class ChartType(Enum):
     """Enumeration of supported chart types."""
-    HEATMAP = auto()
-    HEXAGON_MAP = auto()
-    GEOJSON_MAP = auto()
-    CORRELATION_SCATTER = auto()
-    YEARLY_OBSERVATIONS = auto()
-    SPECIES_IMAGES = auto()
-    OCCURRENCE_MAP = auto()
-    FOREST_CORRELATION = auto()
-    SPECIES_HCI_CORRELATION = auto()
-    HUMANMOD_CORRELATION = auto()
-    SCATTER_PLOT_3D = auto()
-    FORCE_DIRECTED_GRAPH = auto()
-    TREE_CHART = auto()
-    JSON = auto()
-    SPECIES_SHARED_HABITAT = auto()
-    HABITAT_ANALYSIS = auto()
-    TOPOGRAPHY_ANALYSIS = auto()
-    CLIMATE_ANALYSIS = auto()
+    HEATMAP = "heatmap"
+    HEXAGON_MAP = "hexagon_map"
+    GEOJSON_MAP = "geojson_map"
+    CORRELATION_SCATTER = "correlation_scatter"
+    YEARLY_OBSERVATIONS = "yearly_observations"
+    SPECIES_IMAGES = "species_images"
+    OCCURRENCE_MAP = "occurrence_map"
+    FOREST_CORRELATION = "forest_correlation"
+    SPECIES_HCI_CORRELATION = "species_hci_correlation"
+    HUMANMOD_CORRELATION = "humanmod_correlation"
+    SCATTER_PLOT_3D = "scatter_plot_3d"
+    FORCE_DIRECTED_GRAPH = "force_directed_graph"
+    TREE_CHART = "tree_chart"
+    JSON = "json"
+    SPECIES_SHARED_HABITAT = "species_shared_habitat"
+    HABITAT_ANALYSIS = "habitat_analysis"
+    TOPOGRAPHY_ANALYSIS = "topography_analysis"
+    CLIMATE_ANALYSIS = "climate_analysis"
     @classmethod
     def from_string(cls, chart_type: str) -> 'ChartType':
         """Convert string to ChartType enum"""

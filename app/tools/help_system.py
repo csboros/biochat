@@ -3,8 +3,6 @@
 from typing import Dict, Any, List
 from dataclasses import dataclass
 from enum import Enum
-import importlib
-import inspect
 from pathlib import Path
 
 class ToolCategory(Enum):
@@ -36,7 +34,6 @@ class ApplicationHelpSystem:
     def _initialize_tools(self) -> List[Tool]:
         """Initialize the list of available tools by scanning the tools directory."""
         tools = []
-        tools_dir = Path(__file__).parent
 
         # Earth Engine Tool
         tools.append(Tool(
@@ -50,13 +47,15 @@ class ApplicationHelpSystem:
             available_functions=[
                 {
                     'name': 'analyze_habitat_distribution',
-                    'description': 'Analyzes species habitat distribution using Copernicus land cover data',
+                    'description': "Analyzes species habitat distribution "
+                            "using Copernicus land cover data",
                     'parameters': ['species_name: str'],
                     'returns': 'Dict[str, Any]'
                 },
                 {
                     'name': 'analyze_habitat_connectivity',
-                    'description': 'Evaluates habitat connectivity across different land cover types',
+                    'description': "Evaluates habitat connectivity across "
+                                        "different land cover types",
                     'parameters': ['points_with_landcover', 'habitat_usage: Dict[str, float]'],
                     'returns': 'Dict[str, Any]'
                 }
@@ -112,7 +111,8 @@ class ApplicationHelpSystem:
             available_functions=[
                 {
                     'name': 'analyze_correlation',
-                    'description': 'Analyzes correlation between species occurrences and environmental variables',
+                    'description': "Analyzes correlation between species occurrences "
+                        "and environmental variables",
                     'parameters': ['species_id: str', 'variables: List[str]'],
                     'returns': 'Dict[str, Any]'
                 }

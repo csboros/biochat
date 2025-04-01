@@ -3,12 +3,13 @@
 import os
 import logging
 from typing import Dict, Any
-import requests
-import streamlit as st
 import json
+import requests
 from google.cloud import bigquery
 from vertexai.preview.generative_models import (GenerativeModel, GenerationConfig)
+import streamlit as st
 from app.tools.base_handler import BaseHandler
+from app.tools.message_bus import message_bus
 
 class CorrelationHandler(BaseHandler):
     """Handles queries related to species-HCI correlations."""
@@ -17,12 +18,14 @@ class CorrelationHandler(BaseHandler):
         super().__init__()
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
         self.world_data = {
-                "gdf": None,
-                "geojson_url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
-                "master/geojson/ne_110m_admin_0_countries.geojson",
-            }
+            "gdf": None,
+            "geojson_url": (
+                "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+                "master/geojson/ne_110m_admin_0_countries.geojson"
+            ),
+        }
 
-    def get_species_hci_correlation(self, country_code: str) -> Dict[str, Any]:
+    def get_species_hci_correlation(self, country_code: str, handle_finishing: bool = True) -> Dict[str, Any]:
         """
         Retrieves correlation data between species occurrence and HCI for a country.
 
@@ -36,6 +39,12 @@ class CorrelationHandler(BaseHandler):
             google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
         """
         try:
+            message_bus.publish("status_update", {
+                "message": f"Starting species-HCI correlation analysis for {country_code}...",
+                "state": "running",
+                "progress": 0
+            })
+
             # If country_code is a dict, extract the value
             if isinstance(country_code, dict):
                 country_code = country_code.get('country_code')
@@ -139,14 +148,19 @@ class CorrelationHandler(BaseHandler):
                 ]
             )
 
-            # Execute query
+            message_bus.publish("status_update", {
+                "message": "Executing database query...",
+                "state": "running",
+                "progress": 30
+            })
             query_job = client.query(query, job_config=job_config)
-
-            # Print query job ID for debugging
-
             results = query_job.result()
 
-            # Print raw results for debugging
+            message_bus.publish("status_update", {
+                "message": "Processing correlation results...",
+                "state": "running",
+                "progress": 60
+            })
             results_list = list(results)  # Materialize results
 
             # Format results
@@ -163,14 +177,22 @@ class CorrelationHandler(BaseHandler):
                     'avg_individuals_per_cell': row.avg_individuals_per_cell
                 })
 
-            print("Formatted correlation data:", correlation_data)
-
+            if handle_finishing:
+               message_bus.publish("status_update", {
+                    "message": "Correlation analysis complete",
+                    "state": "complete",
+                    "progress": 100
+                })
             return {
                 'country_code': country_code,
                 'correlations': correlation_data
             }
 
         except Exception as e:
+            message_bus.publish("status_update", {
+                "message": f"Error in correlation analysis: {str(e)}",
+                "state": "error"
+            })
             self.logger.error("Error fetching correlation data: %s", str(e), exc_info=True)
             print("Error details:", str(e))
             raise
@@ -201,23 +223,35 @@ class CorrelationHandler(BaseHandler):
             self.logger.error("Error getting response from Gemini: %s", str(e), exc_info=True)
             raise
 
-    def get_species_hci_correlation_by_status(self, conservation_status: str = 'Critically Endangered') -> Dict[str, Any]:
+    def get_species_hci_correlation_by_status(
+        self, conservation_status: str = 'Critically Endangered', handle_finishing: bool = True
+    ) -> Dict[str, Any]:
         """
-        Retrieves correlation data between species occurrence and HCI for a specific conservation status.
+        Retrieves correlation data between species occurrence and HCI for a specific
+        conservation status.
 
         Args:
-            conservation_status (str): Conservation status to filter by (default: 'Critically Endangered')
-                                     Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable',
-                                                 'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'
+            conservation_status (str): Conservation status to filter by
+                (default: 'Critically Endangered')
+                Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable',
+                            'Near Threatened', 'Least Concern', 'Data Deficient',
+                            'Extinct'
 
         Returns:
-            Dict[str, Any]: Dictionary containing correlation data for the specified conservation status
+            Dict[str, Any]: Dictionary containing correlation data for the specified
+                           conservation status
 
         Raises:
             google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
             ValueError: If invalid conservation status is provided
         """
         try:
+            message_bus.publish("status_update", {
+                "message": f"Analyzing correlations for {conservation_status} species...",
+                "state": "running",
+                "progress": 0
+            })
+
             # Normalize input string by stripping whitespace
             if isinstance(conservation_status, dict):
                 conservation_status = conservation_status.get('conservation_status', '').strip()
@@ -237,11 +271,15 @@ class CorrelationHandler(BaseHandler):
             self.logger.info("Valid statuses: %s", valid_statuses)
             self.logger.info("Status in valid_statuses: %s", conservation_status in valid_statuses)
             if conservation_status not in valid_statuses:
-                raise ValueError(f"Invalid conservation status '{conservation_status}'. "
-                                 f"Must be one of: {', '.join(valid_statuses)}")
+                raise ValueError(
+                    f"Invalid conservation status '{conservation_status}'. "
+                    f"Must be one of: {', '.join(valid_statuses)}"
+                )
 
-            self.logger.info("Fetching species-HCI correlation data for status: %s",
-                             conservation_status)
+            self.logger.info(
+                "Fetching species-HCI correlation data for status: %s",
+                conservation_status
+            )
 
             query = """
             WITH species_hci AS (
@@ -309,14 +347,24 @@ class CorrelationHandler(BaseHandler):
             # Set up query parameters
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
-                    bigquery.ScalarQueryParameter("conservation_status", "STRING", conservation_status)
+                    bigquery.ScalarQueryParameter("conservation_status", "STRING",
+                                                  conservation_status)
                 ]
             )
 
-            # Execute query
+            message_bus.publish("status_update", {
+                "message": "Executing database query...",
+                "state": "running",
+                "progress": 40
+            })
             query_job = client.query(query, job_config=job_config)
             results = query_job.result()
 
+            message_bus.publish("status_update", {
+                "message": "Processing correlation results...",
+                "state": "running",
+                "progress": 60
+            })
             # Format results
             correlation_data = []
             for row in results:
@@ -330,26 +378,42 @@ class CorrelationHandler(BaseHandler):
                     'avg_hci': row.avg_hci,
                     'avg_individuals_per_cell': row.avg_individuals_per_cell
                 })
-
+            if handle_finishing:
+                    message_bus.publish("status_update", {
+                    "message": "Analysis complete",
+                    "state": "complete",
+                    "progress": 100
+                })
             return {
                 'conservation_status': conservation_status,
                 'correlations': correlation_data
             }
 
         except Exception as e:
-            self.logger.error("Error fetching correlation data by status: %s", str(e),
-                              exc_info=True)
+            message_bus.publish("status_update", {
+                "message": f"Error analyzing correlations: {str(e)}",
+                "state": "error"
+            })
+            self.logger.error(
+                "Error fetching correlation data by status: %s",
+                str(e),
+                exc_info=True
+            )
             raise
 
-    def analyze_species_correlations(self, country_code: str = None, conservation_status: str = None) -> Dict[str, Any]:
+    def analyze_species_correlations(
+        self, country_code: str = None, conservation_status: str = None
+    ) -> Dict[str, Any]:
         """
-        Analyzes correlation patterns between species occurrences and HCI, either by country or conservation status.
+        Analyzes correlation patterns between species occurrences and HCI, either by
+        country or conservation status.
 
         Args:
             country_code (str, optional): ISO Alpha-3 country code (e.g., 'KEN' for Kenya)
             conservation_status (str, optional): Conservation status to filter by
                 Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable',
-                            'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'
+                            'Near Threatened', 'Least Concern', 'Data Deficient',
+                            'Extinct'
 
         Returns:
             Dict[str, Any]: Dictionary containing correlation analysis results
@@ -358,16 +422,24 @@ class CorrelationHandler(BaseHandler):
             ValueError: If neither country_code nor conservation_status is provided
         """
         try:
+            message_bus.publish("status_update", {
+                "message": "Starting species correlation analysis...",
+                "state": "running",
+                "progress": 0
+            })
+
             # Debug logging for initial parameters
             self.logger.info("Initial parameters in analyze_species_correlations:")
             self.logger.info("country_code: %s (type: %s)", country_code, type(country_code))
-            self.logger.info("conservation_status: %s (type: %s)", conservation_status, type(conservation_status))
+            self.logger.info("conservation_status: %s (type: %s)", conservation_status,
+                             type(conservation_status))
 
             # Special handling for misplaced parameters
             if isinstance(country_code, dict) and 'conservation_status' in country_code:
                 conservation_status = country_code['conservation_status']
                 country_code = None
-                self.logger.info("Extracted misplaced conservation_status from country_code dict: %s", conservation_status)
+                self.logger.info("Extracted misplaced conservation_status from country_code dict:"
+                                 "%s",conservation_status)
             elif isinstance(country_code, dict):
                 country_code = country_code.get('country_code')
                 self.logger.info("Extracted country_code from dict: %s", country_code)
@@ -389,14 +461,18 @@ class CorrelationHandler(BaseHandler):
                 self.logger.error("Both parameters are empty or None")
                 raise ValueError("Either country_code or conservation_status must be provided")
 
-            # Get correlation data based on provided parameter
+            message_bus.publish("status_update", {
+                "message": "Fetching correlation data...",
+                "state": "running",
+                "progress": 30
+            })
             correlation_data = {}
             if conservation_status:
                 self.logger.info("Using conservation status: %s", conservation_status)
-                correlation_data = self.get_species_hci_correlation_by_status(conservation_status)
+                correlation_data = self.get_species_hci_correlation_by_status(conservation_status, False)
             elif country_code:
                 self.logger.info("Using country code: %s", country_code)
-                correlation_data = self.get_species_hci_correlation(country_code)
+                correlation_data = self.get_species_hci_correlation(country_code, False)
 
             # Send to LLM for analysis
             prompt = """You are a conservation biology expert. Analyze this species
@@ -425,9 +501,18 @@ class CorrelationHandler(BaseHandler):
             """
             prompt += f"\n{correlation_data['correlations']}"
 
+            message_bus.publish("status_update", {
+                "message": "Generating AI analysis...",
+                "state": "running",
+                "progress": 70
+            })
             analysis = self.send_to_llm(prompt)
 
-            # Return both the analysis and the correlation data for visualization
+            message_bus.publish("status_update", {
+                "message": "Analysis complete",
+                "state": "complete",
+                "progress": 100
+            })
             return {
                 'correlation_data': correlation_data,
                 'analysis': analysis,
@@ -436,7 +521,15 @@ class CorrelationHandler(BaseHandler):
             }
 
         except Exception as e:
-            self.logger.error("Error analyzing species correlations: %s", str(e), exc_info=True)
+            message_bus.publish("status_update", {
+                "message": f"Error in analysis: {str(e)}",
+                "state": "error"
+            })
+            self.logger.error(
+                "Error analyzing species correlations: %s",
+                str(e),
+                exc_info=True
+            )
             raise
 
     def get_species_shared_habitat(self, species_name: str) -> Dict[str, Any]:
@@ -533,7 +626,7 @@ class CorrelationHandler(BaseHandler):
             content (dict): Dictionary containing:
                 - country_names (list, optional): List of country names
                 - country_codes (list, optional): List of 2 or 3-letter country codes
-                - property_name: Name of the property to query (e.g., 'terrestrial_hci', 'popden')
+                - property_name: Name of the property to query (e.g., 'terrestrial_hci')
 
         Returns:
             dict: Dictionary containing data for each country or error message
