@@ -25,7 +25,9 @@ class CorrelationHandler(BaseHandler):
             ),
         }
 
-    def get_species_hci_correlation(self, country_code: str, handle_finishing: bool = True) -> Dict[str, Any]:
+    def get_species_hci_correlation(
+            self, country_code: str, handle_finishing: bool = True
+            ) -> Dict[str, Any]:
         """
         Retrieves correlation data between species occurrence and HCI for a country.
 
@@ -469,7 +471,8 @@ class CorrelationHandler(BaseHandler):
             correlation_data = {}
             if conservation_status:
                 self.logger.info("Using conservation status: %s", conservation_status)
-                correlation_data = self.get_species_hci_correlation_by_status(conservation_status, False)
+                correlation_data = self.get_species_hci_correlation_by_status(conservation_status,
+                                                                              False)
             elif country_code:
                 self.logger.info("Using country code: %s", country_code)
                 correlation_data = self.get_species_hci_correlation(country_code, False)
@@ -534,7 +537,8 @@ class CorrelationHandler(BaseHandler):
 
     def get_species_shared_habitat(self, species_name: str) -> Dict[str, Any]:
         """
-        Retrieves correlation data between the specified species and other species that share its habitat.
+        Retrieves correlation data between the specified species
+        and other species that share its habitat.
 
         Args:
             species_name (str): Scientific name of the species (e.g., 'Panthera leo')

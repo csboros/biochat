@@ -174,8 +174,14 @@ class SpeciesTool(Tool):
                     "properties": {
                         "country_code": {
                             "type": "string",
-                            "description": "TWO LETTER country code "
-                            "(e.g., 'KE' for Kenya, 'TZ' for Tanzania)",
+                            "description": (
+                                "TWO LETTER country code ONLY (e.g., 'KE' for Kenya, 'TZ' for Tanzania). "
+                                "DO NOT use three letter codes. Examples: "
+                                "Kenya → 'KE' (not 'KEN'), "
+                                "Tanzania → 'TZ' (not 'TZA'), "
+                                "Uganda → 'UG' (not 'UGA'). "
+                                "If unsure, use google_search to find the correct 2-letter code."
+                            ),
                             "pattern": "^[A-Z]{2}$",  # Enforce exactly 2 uppercase letters
                         }
                     },
@@ -425,7 +431,8 @@ class SpeciesTool(Tool):
                                 "type of chart to display. For species distribution visualization, "
                                 "use 'HEXAGON_MAP' (default) or 'HEATMAP'. "
                                 "Use 'GEOJSON_MAP' only for geographic boundary visualization. "
-                                "IMPORTANT: Do not use 'OCCURRENCE_MAP' - that is for get_endangered_species_by_country only."
+                                "IMPORTANT: Do not use 'OCCURRENCE_MAP' - that is for "
+                                "get_endangered_species_by_country only."
                             ),
                             "enum": ["HEATMAP", "HEXAGON_MAP", "GEOJSON_MAP"]
                         },
@@ -506,20 +513,29 @@ class SpeciesTool(Tool):
     def get_function_mappings(self) -> Dict[str, Any]:
         """Returns the mapping of function names to their implementations."""
         return {
-            "translate_to_scientific_name": self.species_handler.translate_to_scientific_name_from_api,
+            "translate_to_scientific_name":
+                self.species_handler.translate_to_scientific_name_from_api,
             "translate_to_common_name": self.species_handler.translate_to_common_name_from_api,
             "get_species_info": self.species_handler.get_species_info_from_api,
             "get_species_images": self.species_handler.get_species_images,
-            "get_endangered_species_in_protected_area": self.species_handler.get_endangered_species_in_protected_area,
-            "get_species_occurrences_in_protected_area": self.species_handler.get_species_occurrences_in_protected_area,
-            "get_endangered_species_by_country": self.species_handler.get_endangered_species_by_country,
+            "get_endangered_species_in_protected_area":
+                self.species_handler.get_endangered_species_in_protected_area,
+            "get_species_occurrences_in_protected_area":
+                self.species_handler.get_species_occurrences_in_protected_area,
+            "get_endangered_species_by_country":
+                self.species_handler.get_endangered_species_by_country,
             "endangered_species_for_family": self.endangered_handler.endangered_species_for_family,
             "endangered_classes_for_kingdom": self.endangered_handler.endangered_classes_for_kingdom,
-            "endangered_families_for_order": self.endangered_handler.endangered_families_for_order,
-            "endangered_orders_for_class": self.endangered_handler.endangered_orders_for_class,
-            "endangered_species_for_country": self.endangered_handler.endangered_species_for_country,
-            "endangered_species_for_countries": self.endangered_handler.endangered_species_for_countries,
-            "number_of_endangered_species_by_conservation_status": self.endangered_handler.number_of_endangered_species_by_conservation_status,
+            "endangered_families_for_order":
+                self.endangered_handler.endangered_families_for_order,
+            "endangered_orders_for_class":
+                self.endangered_handler.endangered_orders_for_class,
+            "endangered_species_for_country":
+                self.endangered_handler.endangered_species_for_country,
+            "endangered_species_for_countries":
+                self.endangered_handler.endangered_species_for_countries,
+            "number_of_endangered_species_by_conservation_status":
+                self.endangered_handler.number_of_endangered_species_by_conservation_status,
             "endangered_species_hci_correlation": self.endangered_handler.endangered_species_hci_correlation,
             "get_occurrences": self.endangered_handler.get_occurrences,
             "get_yearly_occurrences": self.endangered_handler.get_yearly_occurrences,
