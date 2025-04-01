@@ -166,4 +166,3 @@ class BaseHandler:
                     bigquery.ScalarQueryParameter(key, "STRING", value)
                 )
         return parameters
-

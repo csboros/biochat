@@ -49,11 +49,37 @@
 - List the endangered species for Germany with status Critically Endangered
 - Show me endangered families in the order Primates
 - What's the breakdown of threatened species in Brazil by conservation status?
+- Show habitat preferences for Bornean orangutans
+
+ ![Screenshot](screenshots/screenshot_8_1.png)
+ ![Screenshot](screenshots/screenshot_8_2.png)
+
+- Show the correlation between forest cover and loss and Orangutan population
+
+  ![Screenshot](screenshots/screenshot_8_3.png)
+
+- Analyze topography for Mountain Gorillas
+
+  ![Screenshot](screenshots/screenshot_8_4.png)
+
+- Analyze climate for Gorilla beringei
+
+ ![Screenshot](screenshots/screenshot_8_5.png)
+
+- Analyze correlation patterns for endangered species
+
+ ![Screenshot](screenshots/screenshot_8_6.png)
+
+- Analyze correlation patterns for species in Kenya
+
+ ![Screenshot](screenshots/screenshot_8_7.png)
+
 
 ## Human Impact Analysis
 - Show me the human coexistence index for Tanzania
 
   ![Screenshot](screenshots/screenshot_5.png)
+
 
 - What's the human coexistence index around Masai Mara?
 - Compare human impact on wildlife between Kenya and Zambia

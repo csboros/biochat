@@ -261,7 +261,8 @@ class HabitatAnalyzer(EarthEngineHandler):
             'is_forest_primary': is_primary_habitat
         }
 
-    def _calculate_habitat_usage(self, points_with_habitat: ee.FeatureCollection) -> Dict[str, float]:
+    def _calculate_habitat_usage(
+            self, points_with_habitat: ee.FeatureCollection) -> Dict[str, float]:
         """Calculate the distribution of habitat types at species observation points."""
         # Get the histogram of land cover values at species points
         histogram = points_with_habitat.aggregate_histogram('discrete_classification').getInfo()
@@ -276,7 +277,8 @@ class HabitatAnalyzer(EarthEngineHandler):
 
         return habitat_usage
 
-    def _analyze_forest_dependency(self, points_with_habitat: ee.FeatureCollection) -> Dict[str, Any]:
+    def _analyze_forest_dependency(
+            self, points_with_habitat: ee.FeatureCollection) -> Dict[str, Any]:
         """Analyze forest dependency of species observations."""
         # Define forest codes (both closed and open forests)
         forest_codes = [111, 112, 113, 114, 115, 116, 121, 122, 123, 124, 125, 126]
@@ -449,7 +451,8 @@ class HabitatAnalyzer(EarthEngineHandler):
                 }
             }
 
-    def _analyze_habitat_connectivity(self, points_with_landcover, habitat_usage: Dict[str, float] = None):
+    def _analyze_habitat_connectivity(
+            self, points_with_landcover, habitat_usage: Dict[str, float] = None):
         """
         Analyzes habitat connectivity between patches.
 
@@ -512,7 +515,8 @@ class HabitatAnalyzer(EarthEngineHandler):
                         # Adjust other similar habitats to have lower resistance
                         for code, name in LandCoverConfig.LAND_COVER_CLASSES.items():
                             if code != primary_code:
-                                if any(keyword in name.lower() for keyword in primary_habitat.lower().split()):
+                                if any(keyword in name.lower()
+                                       for keyword in primary_habitat.lower().split()):
                                     resistance_values[code] = 2
                                 elif 'urban' in name.lower() or 'built up' in name.lower():
                                     resistance_values[code] = 10
@@ -525,7 +529,9 @@ class HabitatAnalyzer(EarthEngineHandler):
             total_points = points_with_landcover.size()
 
             # Calculate resistance distribution
-            resistance_histogram = points_with_landcover.aggregate_histogram('discrete_classification').getInfo()
+            resistance_histogram = (points_with_landcover
+                .aggregate_histogram('discrete_classification')
+                .getInfo())
 
             # Calculate weighted average resistance
             total_resistance = 0

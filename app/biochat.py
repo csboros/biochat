@@ -332,56 +332,7 @@ class BioChat:
         """
         # Create a fixed position container for status updates at the bottom of the viewport
         if "status_container" not in st.session_state:
-            st.markdown("""
-                <style>
-                .fixed-status {
-                    position: fixed;
-                    bottom: 0;
-                    left: 30px;
-                    right: 30px;
-                    z-index: 1000;
-                    padding: 10px;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                }
-                .status-text {
-                    white-space: nowrap;
-                }
-                .progress-bar {
-                    flex-grow: 1;
-                    height: 4px;
-                    background-color: #f0f2f6;
-                    border-radius: 2px;
-                    overflow: hidden;
-                }
-                .progress-bar-fill {
-                    height: 100%;
-                    width: 0%;
-                    transition: width 0.3s ease-in-out;
-                }
-                .progress-bar.running .progress-bar-fill {
-                    background-color: #1f77b4;
-                }
-                .progress-bar.complete .progress-bar-fill {
-                    background-color: #2ecc71;
-                }
-                .progress-bar.error .progress-bar-fill {
-                    background-color: #e74c3c;
-                }
-                </style>
-                <script>
-                function cancelOperation() {
-                    // Send message to Streamlit
-                    window.parent.postMessage({
-                        type: 'streamlit:setComponentValue',
-                        value: true,
-                        dataType: 'bool',
-                        key: 'is_cancelled'
-                    }, '*');
-                }
-                </script>
-            """, unsafe_allow_html=True)
+            st.markdown(self.get_status_bar_css(), unsafe_allow_html=True)
             st.session_state.status_container = st.empty()
             st.session_state.is_cancelled = False
 
@@ -1425,3 +1376,58 @@ Would you like to know more about any specific aspect of the system?
                 time.sleep(1)
                 st.session_state.status_container.empty()
                 del st.session_state.status_container
+
+    def get_status_bar_css(self):
+        """
+        Get the CSS for the status bar.
+        """
+        return """
+                <style>
+                .fixed-status {
+                    position: fixed;
+                    bottom: 0;
+                    left: 30px;
+                    right: 30px;
+                    z-index: 1000;
+                    padding: 10px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+                .status-text {
+                    white-space: nowrap;
+                }
+                .progress-bar {
+                    flex-grow: 1;
+                    height: 4px;
+                    background-color: #f0f2f6;
+                    border-radius: 2px;
+                    overflow: hidden;
+                }
+                .progress-bar-fill {
+                    height: 100%;
+                    width: 0%;
+                    transition: width 0.3s ease-in-out;
+                }
+                .progress-bar.running .progress-bar-fill {
+                    background-color: #1f77b4;
+                }
+                .progress-bar.complete .progress-bar-fill {
+                    background-color: #2ecc71;
+                }
+                .progress-bar.error .progress-bar-fill {
+                    background-color: #e74c3c;
+                }
+                </style>
+                <script>
+                function cancelOperation() {
+                    // Send message to Streamlit
+                    window.parent.postMessage({
+                        type: 'streamlit:setComponentValue',
+                        value: true,
+                        dataType: 'bool',
+                        key: 'is_cancelled'
+                    }, '*');
+                }
+                </script>
+            """

@@ -2,7 +2,7 @@
 Function handler that consolidates all tool definitions and makes them available for external use.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 from vertexai.generative_models import FunctionDeclaration
 from app.tools.message_bus import message_bus
 from app.tools.help_command_handler import HelpCommandHandler
@@ -12,6 +12,7 @@ from .search_tool import SearchTool
 from .correlation_tool import CorrelationTool
 from .earth_engine_tool import EarthEngineTool
 
+# pylint: disable=broad-except
 class FunctionHandler:
     """Handler that consolidates all tool definitions and makes them available for external use."""
 
@@ -22,6 +23,7 @@ class FunctionHandler:
         self.correlation_tool = CorrelationTool()
         self.earth_engine_tool = EarthEngineTool()
         self.help_handler = HelpCommandHandler()
+        self.help_handler.function_handler = self  # Set the function handler reference
 
     def get_all_function_declarations(self) -> List[FunctionDeclaration]:
         """
@@ -41,7 +43,8 @@ class FunctionHandler:
                 "properties": {
                     "type": {
                         "type": "string",
-                        "description": "Type of help requested (general, category, tool, or function)",
+                        "description": "Type of help requested "
+                                "(general, category, tool, or function)",
                         "enum": ["general", "category", "tool", "function"]
                     },
                     "category": {
@@ -59,7 +62,24 @@ class FunctionHandler:
                 }
             }
         )
-        all_declarations.append(help_declaration)
+
+        # Add category classification declaration
+        classify_category_declaration = FunctionDeclaration(
+            name="classify_help_category",
+            description="Classify a help request into the appropriate category",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The help request to classify"
+                    }
+                },
+                "required": ["query"]
+            }
+        )
+
+        all_declarations.extend([help_declaration, classify_category_declaration])
 
         # Collect declarations from each tool
         all_declarations.extend(self.species_tool.get_function_declarations())
@@ -76,10 +96,10 @@ class FunctionHandler:
         Returns:
             Dict[str, Any]: Dictionary mapping function names to their implementations
         """
-        all_mappings = {}
-
-        # Add help function mapping
-        all_mappings["help"] = self.handle_help_command
+        all_mappings = {
+            "help": self.handle_help_command,
+            "classify_help_category": self.classify_help_category,
+        }
 
         # Collect mappings from each tool
         all_mappings.update(self.species_tool.get_function_mappings())
@@ -151,6 +171,24 @@ class FunctionHandler:
         """
         return self.help_handler.handle_help_command(arguments)
 
+    def classify_help_category(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Classify a help request into the appropriate category.
+
+        Args:
+            arguments: Dictionary containing the query to classify
+
+        Returns:
+            Dictionary containing the classified category
+        """
+        query = arguments.get('query', '').lower()
+
+        # Return the classification result
+        return {
+            'success': True,
+            'category': self.help_handler.parse_natural_language_query(query)
+        }
+
     def get_system_overview(self) -> str:
         """
         Get a comprehensive overview of the system's capabilities.
@@ -188,27 +226,34 @@ class FunctionHandler:
 
         return overview
 
-    def handle_function_call(self, function_call: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_function_call(self, input_text: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Handle a function call.
-
-        Args:
-            function_call: Dictionary containing the function call details
-
-        Returns:
-            Dictionary containing the function call result
+        Handle function calls from both structured commands and natural language.
         """
+        # If input is a string and contains help-related keywords
+        help_keywords = ['help', 'how', 'what']
+        if (isinstance(input_text, str) and
+                any(word in input_text.lower() for word in help_keywords)):
+            return self.help_handler.handle_help_command(input_text)
+
         try:
-            # Check if this is a help command
-            if function_call.get('name', '').lower() == 'help':
-                return self.handle_help_command(function_call.get('arguments', {}))
+            # Get all function mappings
+            function_mappings = self.get_all_function_mappings()
 
-            # Process other function calls...
-            # [Existing function call handling code]
+            # Get the function name and arguments
+            function_name = input_text.get('name')
+            arguments = input_text.get('arguments', {})
+
+            # Check if the function exists
+            if function_name not in function_mappings:
+                raise ValueError(f"Function '{function_name}' not found")
+
+            # Execute the function with the provided arguments
+            result = function_mappings[function_name](arguments)
 
             return {
                 'success': True,
-                'result': "Function call processed successfully"
+                'result': result
             }
 
         except Exception as e:
