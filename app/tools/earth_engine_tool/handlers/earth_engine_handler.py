@@ -105,14 +105,13 @@ class EarthEngineHandler:
 
             if len(observations) < min_observations:
                 raise ValueError(
-                    f"Insufficient observations ({len(observations)}) "
-                    f"for species {species_name}"
+                    f"Insufficient observations ({len(observations)}) for species {species_name}"
                 )
 
             return observations
 
         except Exception as e:
-            self.logger.error(f"Error getting species observations: {str(e)}")
+            self.logger.error("Error getting species observations: %s", str(e))
             raise
 
     def create_ee_point_features(self, observations: list, buffer_radius: int = None) -> list:
@@ -544,7 +543,7 @@ class EarthEngineHandler:
             'filtered_at_earth_engine': True
         }
 
-        self.logger.info("Processed %s observations (%s points filtered)",
+        self.logger.info("Processed %d observations (%d points filtered)",
                         len(all_results),
                         filtered_points)
 
@@ -614,60 +613,37 @@ class EarthEngineHandler:
         observations: list,
         std_dev_threshold: float = 2.0
     ) -> list:
-        """Filter out points that are far from the main species range.
-
-        Args:
-            observations: List of observation dictionaries with coordinates
-            std_dev_threshold: Number of standard deviations to use as threshold
-
-        Returns:
-            Filtered list of observations without outliers
-        """
+        """Filter out points that are far from the main species range."""
         try:
-            # Calculate centroid of all points
-            lons = [obs["decimallongitude"] for obs in observations]
-            lats = [obs["decimallatitude"] for obs in observations]
-            centroid_lon = sum(lons) / len(lons)
-            centroid_lat = sum(lats) / len(lats)
+            # Calculate centroid
+            coords = [(obs["decimallongitude"], obs["decimallatitude"]) for obs in observations]
+            centroid = (sum(x[0] for x in coords) / len(coords),
+                       sum(x[1] for x in coords) / len(coords))
 
-            # Calculate distances from centroid to each point
+            # Calculate distances using Haversine formula
             distances = []
-            for obs in observations:
-                # Calculate distance using the Haversine formula
-                lon1, lat1 = centroid_lon, centroid_lat
-                lon2, lat2 = obs["decimallongitude"], obs["decimallatitude"]
-
+            for lon2, lat2 in coords:
                 # Convert to radians
-                lon1, lat1, lon2, lat2 = map(lambda x: x * 3.14159 / 180, [lon1, lat1, lon2, lat2])
+                points = [x * 3.14159 / 180 for x in [centroid[0], centroid[1], lon2, lat2]]
 
-                # Haversine formula
-                dlon = lon2 - lon1
-                dlat = lat2 - lat1
-                a = (dlat/2)**2 + (1 - (dlat/2)**2 - (dlon/2)**2) * (dlon/2)**2
-                c = 2 * (abs(a) ** 0.5)  # Use abs() to handle potential negative values
-                distance = 6371 * c  # Earth's radius in km
-
-                distances.append(distance)
-
-            # Calculate mean and standard deviation
-            mean_distance = sum(distances) / len(distances)
-            std_distance = (sum((d - mean_distance) ** 2 for d in distances)
-                            / len(distances)) ** 0.5
+                # Haversine calculation
+                diffs = (points[3] - points[1], points[2] - points[0])
+                a = (diffs[0]/2)**2 + (1 - (diffs[0]/2)**2 - (diffs[1]/2)**2) * (diffs[1]/2)**2
+                distances.append(6371 * 2 * (abs(a) ** 0.5))  # Earth's radius * arc
 
             # Filter points within threshold
-            threshold = mean_distance + (std_dev_threshold * std_distance)
-            filtered_observations = [
-                obs for obs, dist in zip(observations, distances)
-                if dist <= threshold
-            ]
+            mean_dist = sum(distances) / len(distances)
+            std_dist = (sum((d - mean_dist) ** 2 for d in distances) / len(distances)) ** 0.5
+            threshold = mean_dist + (std_dev_threshold * std_dist)
+
+            filtered = [obs for obs, dist in zip(observations, distances) if dist <= threshold]
 
             self.logger.info(
                 "Filtered %d outlier observations out of %d total observations",
-                len(observations) - len(filtered_observations),
+                len(observations) - len(filtered),
                 len(observations)
             )
-
-            return filtered_observations
+            return filtered
 
         except Exception as e:
             self.logger.error("Error filtering outlier points: %s", str(e))

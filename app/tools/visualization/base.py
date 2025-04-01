@@ -166,3 +166,4 @@ class BaseChartRenderer(ABC):
         )
 
         return hull_geojson
+

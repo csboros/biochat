@@ -216,7 +216,8 @@ class HumanModificationHandlerEE(EarthEngineHandler):
                 point_collection = ee.FeatureCollection(batch_features)
 
                 self.logger.info("Sampling human modification for batch %d-%d of %d points",
-                                i + 1, min(i + batch_size, len(ee_point_features)), len(ee_point_features))
+                                i + 1, min(i + batch_size, len(ee_point_features)),
+                                len(ee_point_features))
 
                 # Sample human modification at each point
                 point_ghm_stats = ghm.reduceRegions(
@@ -272,7 +273,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
 
         # Restructure the data to match the expected format
         return {
-            'human_modification': correlation_data['first'],  # Rename 'first' to 'human_modification'
+            'human_modification': correlation_data['first'],
             'total_observations': correlation_data['total_observations'],
             'spatial_resolution': correlation_data['spatial_resolution'],
             'notes': correlation_data['notes'],
@@ -335,7 +336,9 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             self.logger.error(lambda: f"Error creating GHM layers: {str(e)}")
             raise
 
-    def create_ghm_analysis_prompt(self, species_name: str, correlation_data: Dict[str, Any]) -> str:
+    def create_ghm_analysis_prompt(
+            self, species_name: str, correlation_data: Dict[str, Any]
+            ) -> str:
         """Generate a prompt for LLM analysis of species-human modification correlations.
 
         Args:
@@ -410,8 +413,12 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         all_alpha_shapes: list,
         scale: int,
         avoid_overlaps: bool,
-        error_message: str = "No valid results were obtained from Earth Engine analysis.",
-        analysis_message: str = "Analysis failed. Please try with different parameters or a smaller area."
+        error_message: str = (
+            "No valid results were obtained from Earth Engine analysis."
+        ),
+        analysis_message: str = (
+            "Analysis failed. Please try with different parameters or a smaller area."
+        )
     ) -> Dict[str, Any]:
         """Create a standardized error response for analysis failures.
 
