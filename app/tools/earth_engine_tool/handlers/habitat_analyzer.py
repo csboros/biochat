@@ -585,8 +585,6 @@ class HabitatAnalyzer(EarthEngineHandler):
                 .visualize()
 #                .visualize(**LandCoverConfig.get_vis_params())
 
-            print(LandCoverConfig.get_vis_params())
-
             # Get map ID for the landcover layer
             landcover_layer = landcover_vis.getMapId()
 

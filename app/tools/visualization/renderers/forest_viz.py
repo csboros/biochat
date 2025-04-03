@@ -13,6 +13,7 @@ import streamlit as st
 from ..base import BaseChartRenderer
 from ..chart_types import ChartType
 
+# pylint: disable=broad-except
 # pylint: disable=no-member
 class ForestRenderer(BaseChartRenderer):
     """
@@ -37,10 +38,9 @@ class ForestRenderer(BaseChartRenderer):
             parameters (dict): Visualization parameters
         """
         try:
-            # pylint: disable=no-member
-            message_index = _cache_buster if _cache_buster is not None else int(time.time())
+            message_index = (_cache_buster if _cache_buster is not None
+                           else int(time.time()))
 
-            print(data)
             # Create DataFrame from observations
             df = pd.DataFrame(data['observations'])
 
@@ -52,191 +52,42 @@ class ForestRenderer(BaseChartRenderer):
             col1, col2 = st.columns([3, 1])
 
             with col1:
-                # First display the map using the full width
-                st.markdown(
-                    f"### {parameters.get('species_name', 'Species')} - "
-                    f"Forest Correlation Map"
-                )
+                species_name = parameters.get('species_name', 'Species')
+                st.markdown(f"### {species_name} - Forest Correlation Map")
                 st.markdown(f"**Total Observations**: {len(df):,}")
 
-                # Create a Folium map with multiple base layers
-                m = folium.Map(
-                    location=[df['decimallatitude'].mean(), df['decimallongitude'].mean()],
-                    zoom_start=5,
-                    tiles=None  # Start with no default tiles
-                )
-
-                # Add base layers
-                folium.TileLayer('CartoDB dark_matter', name='Dark Map').add_to(m)
-                folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                                attr='Esri',
-                                name='Satellite').add_to(m)
-                folium.TileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                                attr='Google',
-                                name='Google Maps').add_to(m)
-                folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                                attr='Google',
-                                name='Google Satellite').add_to(m)
-
-                # Set satellite as the default layer
-                m.options['preferCanvas'] = True
-
-                # Add fullscreen control
-                Fullscreen().add_to(m)
-
-                # Add Earth Engine forest layers if available
-                forest_layers = data.get('forest_layers', {})
-
-                # Forest Cover Layer
-                if 'forest_cover' in forest_layers:
-                    forest_cover_url = forest_layers['forest_cover']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=forest_cover_url,
-                        attr=forest_layers['forest_cover']['attribution'],
-                        name='Forest Cover',
-                        overlay=True
-                    ).add_to(m)
-
-                # Forest Loss Layer
-                if 'forest_loss' in forest_layers:
-                    forest_loss_url = forest_layers['forest_loss']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=forest_loss_url,
-                        attr=forest_layers['forest_loss']['attribution'],
-                        name='Forest Loss',
-                        overlay=True
-                    ).add_to(m)
-
-                # Forest Gain Layer
-                if 'forest_gain' in forest_layers:
-                    forest_gain_url = forest_layers['forest_gain']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=forest_gain_url,
-                        attr=forest_layers['forest_gain']['attribution'],
-                        name='Forest Gain',
-                        overlay=True
-                    ).add_to(m)
-
-                # Add alpha shapes if available
-                if 'alpha_shapes' in forest_layers:
-                    alpha_url = forest_layers['alpha_shapes']['tiles'][0]
-                    folium.TileLayer(
-                        tiles=alpha_url,
-                        attr=forest_layers['alpha_shapes']['attribution'],
-                        name='Species Range',
-                        overlay=True
-                    ).add_to(m)
+                # Create a Folium map with all layers
+                m = self._initialize_map(df, data.get('forest_layers', {}))
 
                 # Check if we have processed results with forest cover data
                 if 'all_results' in data and len(data['all_results']) > 0:
-                    # Create separate feature groups for different forest cover categories
-                    low_cover_group = folium.FeatureGroup(name="Low Forest Cover (0-10%)")
-                    mid_cover_group = folium.FeatureGroup(name="Medium Forest Cover (10-90%)")
-                    high_cover_group = folium.FeatureGroup(name="High Forest Cover (90-100%)")
-
-                    # Keep track of counts
-                    low_count = 0
-                    mid_count = 0
-                    high_count = 0
-
-                    # Process each point
-                    for point in data['all_results']:
-                        if 'geometry' not in point or 'coordinates' not in point['geometry']:
-                            continue
-
-                        coords = point['geometry']['coordinates']
-                        if not coords or len(coords) < 2:
-                            continue
-
-                        lon, lat = coords[0], coords[1]
-                        forest_cover = point.get('remaining_cover', 0)
-
-                        # Create popup content
-                        popup_content = f"""
-                            <b>Location:</b> {lat:.4f}, {lon:.4f}<br>
-                            <b>Forest Cover:</b> {forest_cover:.1f}%<br>
-                            <b>Forest Loss:</b> {'Yes' if point.get('forest_loss', 0) > 0 else 'No'}<br>
-                            <b>Year:</b> {point.get('year', 'Unknown')}
-                        """
-
-                        # Add to appropriate group based on forest cover
-                        if forest_cover <= 10:
-                            folium.CircleMarker(
-                                location=[lat, lon],
-                                radius=5,
-                                color='black',
-                                fill=True,
-                                fill_color='yellow',
-                                fill_opacity=0.7,
-                                weight=1,
-                                popup=folium.Popup(popup_content, max_width=300)
-                            ).add_to(low_cover_group)
-                            low_count += 1
-                        elif forest_cover >= 90:
-                            folium.CircleMarker(
-                                location=[lat, lon],
-                                radius=5,
-                                color='black',
-                                fill=True,
-                                fill_color='purple',
-                                fill_opacity=0.7,
-                                weight=1,
-                                popup=folium.Popup(popup_content, max_width=300)
-                            ).add_to(high_cover_group)
-                            high_count += 1
-                        else:
-                            folium.CircleMarker(
-                                location=[lat, lon],
-                                radius=5,
-                                color='black',
-                                fill=True,
-                                fill_color='orange',
-                                fill_opacity=0.7,
-                                weight=1,
-                                popup=folium.Popup(popup_content, max_width=300)
-                            ).add_to(mid_cover_group)
-                            mid_count += 1
-
-                    # Update names with counts
-                    low_cover_group.layer_name = f"Low Forest Cover (0-10%): {low_count}"
-                    mid_cover_group.layer_name = f"Medium Forest Cover (10-90%): {mid_count}"
-                    high_cover_group.layer_name = f"High Forest Cover (90-100%): {high_count}"
-
-                    # Add all groups to map
-                    low_cover_group.add_to(m)
-                    mid_cover_group.add_to(m)
-                    high_cover_group.add_to(m)
+                    self._add_forest_cover_groups(m, data['all_results'])
                 else:
                     # Use the original cluster approach if no forest metrics
-                    cluster = MarkerCluster(
-                        name="Observations",
-                        options={
-                            'disableClusteringAtZoom': 6,
-                            'maxClusterRadius': 80,
-                            'spiderfyOnMaxZoom': True
-                        }
-                    ).add_to(m)
-
-                    for _, row in df.iterrows():
-                        popup_text = f"""
-                        <b>Location:</b> {row['decimallatitude']:.5f}, {row['decimallongitude']:.5f}<br>
-                        <b>Year:</b> {row['observation_year']}<br>
-                        <b>Count:</b> {row['individual_count']}
-                        """
-
-                        folium.Marker(
-                            location=[row['decimallatitude'], row['decimallongitude']],
-                            popup=folium.Popup(popup_text, max_width=300),
-                            icon=folium.Icon(color='red', icon='info-sign')
-                        ).add_to(cluster)
+                    self._add_observation_cluster(m, df)
 
                 # Add layer control
                 folium.LayerControl().add_to(m)
 
                 # Check if we have the necessary data for histograms
-                if ('all_results' in data and len(data.get('all_results', [])) > 0 and
-                    'correlation_data' in data and 'forest_cover' in data['correlation_data']):
-                    self.plot_distribution_histograms(data, key=f"forest_dist_{message_index}")
+                has_results = ('all_results' in data and
+                             len(data.get('all_results', [])) > 0)
+                has_corr = ('correlation_data' in data and
+                          'forest_cover' in data['correlation_data'])
+
+                if has_results and has_corr:
+                    col11, col12 = st.columns(2)
+                    with col11:
+                        bins = (data['correlation_data']['forest_metrics_distribution']
+                               ['forest_cover_bins'])
+                        mean = data['correlation_data']['forest_cover']['mean']
+                        self._create_forest_cover_histogram(
+                            bins, mean, key=f"forest_dist_{message_index}"
+                        )
+                    with col12:
+                        self._create_forest_distribution_piechart(
+                            data, f"forest_dist_{message_index}"
+                        )
 
                 # Display the map with CSS
                 st.markdown(
@@ -290,236 +141,270 @@ class ForestRenderer(BaseChartRenderer):
             self.logger.error("Error drawing forest correlation: %s", str(e), exc_info=True)
             st.error(f"Error generating visualization: {str(e)}")
 
-    def plot_distribution_histograms(self, data, key=None):
-        """Plot the distribution of species observations across forest metrics."""
-        # First check if we have required data
-        if ('correlation_data' not in data or
-            'forest_cover' not in data.get('correlation_data', {}) or
-            'all_results' not in data or
-            len(data.get('all_results', [])) == 0):
-            return
+    def _initialize_map(self, df, forest_layers):
+        """Initialize Folium map with base layers and forest overlays."""
+        # Create base map
+        m = folium.Map(
+            location=[df['decimallatitude'].mean(),
+                     df['decimallongitude'].mean()],
+            zoom_start=5,
+            tiles=None
+        )
 
-        # pylint: disable=no-member
-        st.markdown("### Forest Metrics Distribution")
+        # Add base layers
+        folium.TileLayer('CartoDB dark_matter', name='Dark Map').add_to(m)
 
-        # Create two columns for the histograms
-        col1, col2 = st.columns(2)
+        satellite_url = ('https://server.arcgisonline.com/ArcGIS/rest/services/'
+                        'World_Imagery/MapServer/tile/{z}/{y}/{x}')
+        folium.TileLayer(
+            satellite_url,
+            attr='Esri',
+            name='Satellite'
+        ).add_to(m)
 
-        with col1:
-            # Check if we have binned distribution data
-            if ('forest_metrics_distribution' in data['correlation_data'] and
-                'forest_cover_bins' in data['correlation_data']['forest_metrics_distribution']):
+        gmaps_url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+        folium.TileLayer(
+            gmaps_url,
+            attr='Google',
+            name='Google Maps'
+        ).add_to(m)
 
-                # Use precomputed bins
-                cover_bins = data['correlation_data']['forest_metrics_distribution']['forest_cover_bins']
+        gsat_url = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+        folium.TileLayer(
+            gsat_url,
+            attr='Google',
+            name='Google Satellite'
+        ).add_to(m)
 
-                # Convert bin labels to numeric values for proper ordering
-                # Extract the middle value of each bin for positioning
-                bin_numeric_values = []
-                for bin_label in cover_bins.keys():
-                    # Extract the values from bin labels like "0-10%"
-                    values = bin_label.replace("%", "").split("-")
-                    bin_start = float(values[0])
-                    bin_end = float(values[1])
-                    bin_center = (bin_start + bin_end) / 2
-                    bin_numeric_values.append(bin_center)
+        # Set satellite as the default layer
+        m.options['preferCanvas'] = True
 
-                # Create plotly figure
-                fig = go.Figure()
+        # Add fullscreen control
+        Fullscreen().add_to(m)
 
-                # Add bar chart with numeric x-values for proper positioning
-                fig.add_trace(go.Bar(
-                    x=bin_numeric_values,
-                    y=list(cover_bins.values()),
-                    marker_color='rgb(0, 128, 0)',
-                    marker_line_color='rgb(255, 255, 255)',
-                    marker_line_width=1,
-                    opacity=0.7,
-                    name='Forest Cover Distribution',
-                    # Use the bin labels for hover text
-                    text=list(cover_bins.keys()),
-                    hovertemplate="Bin: %{text}<br>Count: %{y}<extra></extra>"
-                ))
+        # Add Earth Engine forest layers if available
+        for layer_name in ['forest_cover', 'forest_loss', 'forest_gain', 'alpha_shapes']:
+            if layer_name in forest_layers:
+                folium.TileLayer(
+                    tiles=forest_layers[layer_name]['tiles'][0],
+                    attr=forest_layers[layer_name]['attribution'],
+                    name=layer_name.replace('_', ' ').title(),
+                    overlay=True
+                ).add_to(m)
 
-                # Update layout with fixed x-axis range from 0-100%
-                fig.update_layout(
-                    title='Forest Cover Distribution',
-                    xaxis_title='Remaining Forest Cover (%)',
-                    yaxis_title='Number of Individuals',
-                    bargap=0.1,
-                    height=300,
-                    margin=dict(l=40, r=40, t=40, b=40),
-                    xaxis=dict(
-                        range=[0, 100],  # Ensure the full range is displayed
-                        dtick=10,        # Tick every 10%
-                        title_standoff=25
-                    )
-                )
+        return m
 
-                # Add vertical line for mean with proper positioning
-                mean_cover = data['correlation_data']['forest_cover']['mean']
-                fig.add_vline(
-                    x=mean_cover,
-                    line_dash="dash",
-                    line_color="red",
-                    line_width=2
-                )
+    def _add_forest_cover_groups(self, m, results):
+        """Add forest cover feature groups to the map."""
+        # Create feature groups
+        low_cover_group = folium.FeatureGroup(name="Low Forest Cover (0-10%)")
+        mid_cover_group = folium.FeatureGroup(name="Medium Forest Cover (10-90%)")
+        high_cover_group = folium.FeatureGroup(name="High Forest Cover (90-100%)")
 
-                # Add annotation for the mean
-                fig.add_annotation(
-                    x=mean_cover,
-                    y=max(cover_bins.values()) * 0.95,  # Position near the top
-                    text=f"Mean: {mean_cover:.1f}%",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowcolor="red",
-                    arrowsize=1,
-                    arrowwidth=2,
-                    bgcolor="rgba(255, 255, 255, 0.8)",
-                    bordercolor="red",
-                    borderwidth=1,
-                    font=dict(color="red", size=12)
-                )
+        # Keep track of counts
+        low_count = mid_count = high_count = 0
 
-                # Display the plot
-                st.plotly_chart(fig, use_container_width=True, key=f"{key}_cover")
+        # Process each point
+        for point in results:
+            if 'geometry' not in point or 'coordinates' not in point['geometry']:
+                continue
 
-            # Fallback to old method if binned data not available
-            elif 'all_results' in data and len(data['all_results']) > 0:
-                cover_values = [r['remaining_cover'] for r in data['all_results']]
+            coords = point['geometry']['coordinates']
+            if not coords or len(coords) < 2:
+                continue
 
-                # Create plotly figure
-                fig = go.Figure()
+            lon, lat = coords[0], coords[1]
+            forest_cover = point.get('remaining_cover', 0)
 
-                # Add histogram
-                fig.add_trace(go.Histogram(
-                    x=cover_values,
-                    nbinsx=10,  # Use 10 bins to match the binned version
-                    marker_color='rgb(0, 128, 0)',
-                    marker_line_color='rgb(255, 255, 255)',
-                    marker_line_width=1,
-                    opacity=0.7,
-                    name='Forest Cover Distribution'
-                ))
+            popup_content = f"""
+                <b>Location:</b> {lat:.4f}, {lon:.4f}<br>
+                <b>Forest Cover:</b> {forest_cover:.1f}%<br>
+                <b>Forest Loss:</b> {'Yes' if point.get('forest_loss', 0) > 0 else 'No'}<br>
+                <b>Year:</b> {point.get('year', 'Unknown')}
+            """
 
-                # Update layout
-                fig.update_layout(
-                    title='Forest Cover Distribution',
-                    xaxis_title='Remaining Forest Cover (%)',
-                    yaxis_title='Frequency',
-                    bargap=0.1,
-                    height=300,
-                    margin=dict(l=40, r=40, t=40, b=40),
-                    xaxis=dict(
-                        range=[0, 100],  # Ensure the full range is displayed
-                        dtick=10         # Tick every 10%
-                    )
-                )
+            marker = folium.CircleMarker(
+                location=[lat, lon],
+                radius=5,
+                color='black',
+                fill=True,
+                fill_opacity=0.7,
+                weight=1,
+                popup=folium.Popup(popup_content, max_width=300)
+            )
 
-                # Add vertical line for mean
-                mean_cover = data['correlation_data']['forest_cover']['mean']
-                fig.add_vline(
-                    x=mean_cover,
-                    line_dash="dash",
-                    line_color="red",
-                    line_width=2
-                )
+            # Add to appropriate group based on forest cover
+            if forest_cover <= 10:
+                marker.fill_color = 'yellow'
+                marker.add_to(low_cover_group)
+                low_count += 1
+            elif forest_cover >= 90:
+                marker.fill_color = 'purple'
+                marker.add_to(high_cover_group)
+                high_count += 1
+            else:
+                marker.fill_color = 'orange'
+                marker.add_to(mid_cover_group)
+                mid_count += 1
 
-                # Add annotation for the mean
-                fig.add_annotation(
-                    x=mean_cover,
-                    y=max([fig.data[0].y[i] for i in range(len(fig.data[0].y))]) * 0.95,
-                    text=f"Mean: {mean_cover:.1f}%",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowcolor="red",
-                    arrowsize=1,
-                    arrowwidth=2,
-                    bgcolor="rgba(255, 255, 255, 0.8)",
-                    bordercolor="red",
-                    borderwidth=1,
-                    font=dict(color="red", size=12)
-                )
+        # Update names with counts
+        low_cover_group.layer_name = f"Low Forest Cover (0-10%): {low_count}"
+        mid_cover_group.layer_name = f"Medium Forest Cover (10-90%): {mid_count}"
+        high_cover_group.layer_name = f"High Forest Cover (90-100%): {high_count}"
 
-                # Display the plot
-                st.plotly_chart(fig, use_container_width=True, key=f"{key}_cover")
+        # Add all groups to map
+        low_cover_group.add_to(m)
+        mid_cover_group.add_to(m)
+        high_cover_group.add_to(m)
 
-        with col2:
-            # Check if we have binned distribution data
-            if ('forest_metrics_distribution' in data['correlation_data'] and
-                'forest_loss_bins' in data['correlation_data']['forest_metrics_distribution']):
+    def _add_observation_cluster(self, m, df):
+        """Add clustered observation markers to the map."""
+        cluster = MarkerCluster(
+            name="Observations",
+            options={
+                'disableClusteringAtZoom': 6,
+                'maxClusterRadius': 80,
+                'spiderfyOnMaxZoom': True
+            }
+        ).add_to(m)
 
-                # Use precomputed bins
-                loss_bins = data['correlation_data']['forest_metrics_distribution']['forest_loss_bins']
+        for _, row in df.iterrows():
+            popup_text = f"""
+            <b>Location:</b> {row['decimallatitude']:.5f}, {row['decimallongitude']:.5f}<br>
+            <b>Year:</b> {row['observation_year']}<br>
+            <b>Count:</b> {row['individual_count']}
+            """
 
-                # Create a pie chart for binary data
-                fig = go.Figure()
+            folium.Marker(
+                location=[row['decimallatitude'], row['decimallongitude']],
+                popup=folium.Popup(popup_text, max_width=300),
+                icon=folium.Icon(color='red', icon='info-sign')
+            ).add_to(cluster)
 
-                # Add pie chart
-                fig.add_trace(go.Pie(
-                    labels=list(loss_bins.keys()),
-                    values=list(loss_bins.values()),
-                    marker_colors=['rgb(0, 128, 0)', 'rgb(220, 20, 60)'],
-                    hole=0.4,
-                    textinfo='label+percent+value',
-                    insidetextorientation='radial'
-                ))
+    def _create_forest_cover_histogram(self, cover_bins, mean_cover, key):
+        """Create and display a histogram for forest cover distribution."""
+        # Convert bin labels to numeric values for proper ordering
+        bin_numeric_values = []
+        for bin_label in cover_bins.keys():
+            values = bin_label.replace("%", "").split("-")
+            bin_start = float(values[0])
+            bin_end = float(values[1])
+            bin_center = (bin_start + bin_end) / 2
+            bin_numeric_values.append(bin_center)
 
-                # Update layout
-                fig.update_layout(
-                    title='Forest Loss Distribution',
-                    height=300,
-                    margin=dict(l=40, r=40, t=40, b=40),
-                    annotations=[
-                        dict(
-                            text=f"Mean: {data['correlation_data']['forest_loss']['mean'] * 100:.1f}%",
-                            x=0.5, y=0.5,
-                            font_size=12,
-                            showarrow=False
-                        )
-                    ]
-                )
+        # Create plotly figure
+        fig = go.Figure()
 
-                # Display the plot
-                st.plotly_chart(fig, use_container_width=True, key=f"{key}_loss")
+        # Add bar chart with numeric x-values for proper positioning
+        fig.add_trace(go.Bar(
+            x=bin_numeric_values,
+            y=list(cover_bins.values()),
+            marker_color='rgb(0, 128, 0)',
+            marker_line_color='rgb(255, 255, 255)',
+            marker_line_width=1,
+            opacity=0.7,
+            name='Forest Cover Distribution',
+            text=list(cover_bins.keys()),
+            hovertemplate="Bin: %{text}<br>Count: %{y}<extra></extra>"
+        ))
 
-            # Fallback to old method if binned data not available
-            elif 'all_results' in data and len(data['all_results']) > 0:
-                # Count observations with and without forest loss
-                loss_values = [r['forest_loss'] for r in data['all_results']]
-                loss_count = sum(1 for x in loss_values if x > 0)
-                no_loss_count = len(loss_values) - loss_count
+        # Update layout with fixed x-axis range from 0-100%
+        fig.update_layout(
+            title='Forest Cover Distribution',
+            xaxis_title='Remaining Forest Cover (%)',
+            yaxis_title='Number of Individuals',
+            bargap=0.1,
+            height=300,
+            margin={"l": 40, "r": 40, "t": 40, "b": 40},
+            xaxis={
+                "range": [0, 100],
+                "dtick": 10,
+                "title_standoff": 25
+            }
+        )
 
-                # Create a pie chart for binary data
-                fig = go.Figure()
+        # Add vertical line for mean
+        fig.add_vline(
+            x=mean_cover,
+            line_dash="dash",
+            line_color="red",
+            line_width=2
+        )
 
-                # Add pie chart
-                fig.add_trace(go.Pie(
-                    labels=['No Loss', 'Loss'],
-                    values=[no_loss_count, loss_count],
-                    marker_colors=['rgb(0, 128, 0)', 'rgb(220, 20, 60)'],
-                    hole=0.4,
-                    textinfo='label+percent',
-                    insidetextorientation='radial'
-                ))
+        # Add annotation for the mean
+        fig.add_annotation(
+            x=mean_cover,
+            y=max(cover_bins.values()) * 0.95,
+            text=f"Mean: {mean_cover:.1f}%",
+            showarrow=True,
+            arrowhead=2,
+            arrowcolor="red",
+            arrowsize=1,
+            arrowwidth=2,
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="red",
+            borderwidth=1,
+            font=dict(color="red", size=12)
+        )
 
-                # Update layout
-                fig.update_layout(
-                    title='Forest Loss Distribution',
-                    height=300,
-                    margin=dict(l=40, r=40, t=40, b=40),
-                    annotations=[
-                        dict(
-                            text=f"Mean: {data['correlation_data']['forest_loss']['mean'] * 100:.1f}%",
-                            x=0.5, y=0.5,
-                            font_size=12,
-                            showarrow=False
-                        )
-                    ]
-                )
+        # Display the plot
+        st.plotly_chart(fig, use_container_width=True, key=f"{key}_cover")
 
-                # Display the plot
-                st.plotly_chart(fig, use_container_width=True, key=f"{key}_loss")
+    def _create_forest_cover_histogram_raw(self, cover_values, mean_cover, key):
+        """Create and display a histogram from raw forest cover values."""
+        fig = go.Figure()
+
+        # Add histogram
+        fig.add_trace(go.Histogram(
+            x=cover_values,
+            nbinsx=10,  # Use 10 bins to match the binned version
+            marker_color='rgb(0, 128, 0)',
+            marker_line_color='rgb(255, 255, 255)',
+            marker_line_width=1,
+            opacity=0.7,
+            name='Forest Cover Distribution'
+        ))
+
+        # Update layout
+        fig.update_layout(
+            title='Forest Cover Distribution',
+            xaxis_title='Remaining Forest Cover (%)',
+            yaxis_title='Frequency',
+            bargap=0.1,
+            height=300,
+            margin=dict(l=40, r=40, t=40, b=40),
+            xaxis=dict(
+                range=[0, 100],
+                dtick=10
+            )
+        )
+
+        # Add vertical line for mean
+        fig.add_vline(
+            x=mean_cover,
+            line_dash="dash",
+            line_color="red",
+            line_width=2
+        )
+
+        # Add annotation for the mean
+        fig.add_annotation(
+            x=mean_cover,
+            y=max([fig.data[0].y[i] for i in range(len(fig.data[0].y))]) * 0.95,
+            text=f"Mean: {mean_cover:.1f}%",
+            showarrow=True,
+            arrowhead=2,
+            arrowcolor="red",
+            arrowsize=1,
+            arrowwidth=2,
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="red",
+            borderwidth=1,
+            font=dict(color="red", size=12)
+        )
+
+        # Display the plot
+        st.plotly_chart(fig, use_container_width=True, key=key)
 
     def display_forest_correlation_stats(self, correlation_data):
         """Display correlation statistics for forest metrics.
@@ -567,6 +452,129 @@ class ForestRenderer(BaseChartRenderer):
         Toggle layers using the controls in the upper right corner.
         """)
 
+    def _create_forest_cover_comparison(self, names, means, stds, correlations, message_index):
+        """Create and display a comparison chart for forest cover across species."""
+        # Sort by mean forest cover
+        sorted_indices = np.argsort(means)[::-1]  # Descending order
+        sorted_names = [names[i] for i in sorted_indices]
+        sorted_means = [means[i] for i in sorted_indices]
+        sorted_stds = [stds[i] for i in sorted_indices]
+        sorted_corrs = [correlations[i] for i in sorted_indices]
+
+        fig = go.Figure()
+
+        # Add mean value bars
+        fig.add_trace(go.Bar(
+            x=sorted_names,
+            y=sorted_means,
+            error_y=dict(type='data', array=sorted_stds, visible=True),
+            marker_color='rgb(0, 128, 0)',
+            name='Mean Forest Cover (%)'
+        ))
+
+        # Add correlation line on secondary y-axis
+        fig.add_trace(go.Scatter(
+            x=sorted_names,
+            y=sorted_corrs,
+            mode='lines+markers',
+            marker=dict(color='blue', size=8, symbol='circle'),
+            line=dict(color='blue', width=2, dash='dot'),
+            name='Correlation',
+            yaxis='y2'
+        ))
+
+        # Update layout with dual y-axes
+        fig.update_layout(
+            title='Forest Cover by Species',
+            xaxis_title='Species',
+            yaxis_title='Forest Cover (%)',
+            yaxis2={
+                "title": 'Correlation',
+                "titlefont": {"color": 'blue'},
+                "tickfont": {"color": 'blue'},
+                "overlaying": 'y',
+                "side": 'right',
+                "range": [-1, 1]
+            },
+            height=500,
+            margin={"l": 50, "r": 50, "t": 50, "b": 100},
+            showlegend=True,
+            xaxis={"tickangle": 45}
+        )
+
+        # Add zero line for correlation
+        fig.add_hline(
+            y=0,
+            line_dash="solid",
+            line_color="gray",
+            line_width=1,
+            layer="below",
+            yref="y2"
+        )
+
+        st.plotly_chart(fig, use_container_width=True, key=f"cover_comparison_{message_index}")
+
+    def _create_forest_loss_comparison(self, names, means, stds, correlations, message_index):
+        """Create and display a comparison chart for forest loss across species."""
+        # Sort by mean forest loss
+        sorted_indices = np.argsort(means)[::-1]  # Descending order
+        sorted_names = [names[i] for i in sorted_indices]
+        sorted_means = [means[i] for i in sorted_indices]
+        sorted_stds = [stds[i] for i in sorted_indices]
+        sorted_corrs = [correlations[i] for i in sorted_indices]
+
+        fig = go.Figure()
+
+        # Add mean value bars
+        fig.add_trace(go.Bar(
+            x=sorted_names,
+            y=sorted_means,
+            error_y=dict(type='data', array=sorted_stds, visible=True),
+            marker_color='rgb(220, 20, 60)',
+            name='Mean Forest Loss (%)'
+        ))
+
+        # Add correlation line on secondary y-axis
+        fig.add_trace(go.Scatter(
+            x=sorted_names,
+            y=sorted_corrs,
+            mode='lines+markers',
+            marker=dict(color='blue', size=8, symbol='circle'),
+            line=dict(color='blue', width=2, dash='dot'),
+            name='Correlation',
+            yaxis='y2'
+        ))
+
+        # Update layout with dual y-axes
+        fig.update_layout(
+            title='Forest Loss by Species',
+            xaxis_title='Species',
+            yaxis_title='Forest Loss (%)',
+            yaxis2=dict(
+                title='Correlation',
+                titlefont=dict(color='blue'),
+                tickfont=dict(color='blue'),
+                overlaying='y',
+                side='right',
+                range=[-1, 1]
+            ),
+            height=500,
+            margin=dict(l=50, r=50, t=50, b=100),
+            showlegend=True,
+            xaxis=dict(tickangle=45)
+        )
+
+        # Add zero line for correlation
+        fig.add_hline(
+            y=0,
+            line_dash="solid",
+            line_color="gray",
+            line_width=1,
+            layer="below",
+            yref="y2"
+        )
+
+        st.plotly_chart(fig, use_container_width=True, key=f"loss_comparison_{message_index}")
 
     def draw_forest_comparison_by_species(self, data, parameters, _cache_buster=None):
         """Draw a comparison chart for multiple species and their forest metrics.
@@ -613,155 +621,18 @@ class ForestRenderer(BaseChartRenderer):
             tab1, tab2 = st.tabs(["Forest Cover", "Forest Loss"])
 
             with tab1:
-                # Sort by mean forest cover
-                sorted_indices = np.argsort(species_cover_means)[::-1]  # Descending order
-                sorted_names = [species_names[i] for i in sorted_indices]
-                sorted_cover_means = [species_cover_means[i] for i in sorted_indices]
-                sorted_cover_stds = [species_cover_stds[i] for i in sorted_indices]
-                sorted_cover_corrs = [species_cover_corrs[i] for i in sorted_indices]
-
-                fig = go.Figure()
-
-                # Add mean value bars
-                fig.add_trace(go.Bar(
-                    x=sorted_names,
-                    y=sorted_cover_means,
-                    error_y=dict(
-                        type='data',
-                        array=sorted_cover_stds,
-                        visible=True
-                    ),
-                    marker_color='rgb(0, 128, 0)',
-                    name='Mean Forest Cover (%)'
-                ))
-
-                # Add correlation line on secondary y-axis
-                fig.add_trace(go.Scatter(
-                    x=sorted_names,
-                    y=sorted_cover_corrs,
-                    mode='lines+markers',
-                    marker=dict(
-                        color='blue',
-                        size=8,
-                        symbol='circle'
-                    ),
-                    line=dict(
-                        color='blue',
-                        width=2,
-                        dash='dot'
-                    ),
-                    name='Correlation',
-                    yaxis='y2'
-                ))
-
-                # Update layout with dual y-axes
-                fig.update_layout(
-                    title='Forest Cover by Species',
-                    xaxis_title='Species',
-                    yaxis_title='Forest Cover (%)',
-                    yaxis2=dict(
-                        title='Correlation',
-                        titlefont=dict(color='blue'),
-                        tickfont=dict(color='blue'),
-                        overlaying='y',
-                        side='right',
-                        range=[-1, 1]
-                    ),
-                    height=500,
-                    margin=dict(l=50, r=50, t=50, b=100),
-                    showlegend=True,
-                    xaxis=dict(
-                        tickangle=45
-                    )
+                # Sort and create comparison chart
+                self._create_forest_cover_comparison(
+                    species_names, species_cover_means, species_cover_stds,
+                    species_cover_corrs, message_index
                 )
-
-                # Add zero line for correlation
-                fig.add_hline(
-                    y=0,
-                    line_dash="solid",
-                    line_color="gray",
-                    line_width=1,
-                    layer="below",
-                    yref="y2"
-                )
-
-                st.plotly_chart(fig, use_container_width=True,
-                                key=f"cover_comparison_{message_index}")
 
             with tab2:
-                # Sort by mean forest loss
-                sorted_indices = np.argsort(species_loss_means)[::-1]  # Descending order
-                sorted_names = [species_names[i] for i in sorted_indices]
-                sorted_loss_means = [species_loss_means[i] for i in sorted_indices]
-                sorted_loss_stds = [species_loss_stds[i] for i in sorted_indices]
-                sorted_loss_corrs = [species_loss_corrs[i] for i in sorted_indices]
-
-                fig = go.Figure()
-
-                # Add mean value bars
-                fig.add_trace(go.Bar(
-                    x=sorted_names,
-                    y=sorted_loss_means,
-                    error_y=dict(
-                        type='data',
-                        array=sorted_loss_stds,
-                        visible=True
-                    ),
-                    marker_color='rgb(220, 20, 60)',
-                    name='Mean Forest Loss (%)'
-                ))
-
-                # Add correlation line on secondary y-axis
-                fig.add_trace(go.Scatter(
-                    x=sorted_names,
-                    y=sorted_loss_corrs,
-                    mode='lines+markers',
-                    marker=dict(
-                        color='blue',
-                        size=8,
-                        symbol='circle'
-                    ),
-                    line=dict(
-                        color='blue',
-                        width=2,
-                        dash='dot'
-                    ),
-                    name='Correlation',
-                    yaxis='y2'
-                ))
-
-                # Update layout with dual y-axes
-                fig.update_layout(
-                    title='Forest Loss by Species',
-                    xaxis_title='Species',
-                    yaxis_title='Forest Loss (%)',
-                    yaxis2=dict(
-                        title='Correlation',
-                        titlefont=dict(color='blue'),
-                        tickfont=dict(color='blue'),
-                        overlaying='y',
-                        side='right',
-                        range=[-1, 1]
-                    ),
-                    height=500,
-                    margin=dict(l=50, r=50, t=50, b=100),
-                    showlegend=True,
-                    xaxis=dict(
-                        tickangle=45
-                    )
+                # Sort and create loss comparison chart
+                self._create_forest_loss_comparison(
+                    species_names, species_loss_means, species_loss_stds,
+                    species_loss_corrs, message_index
                 )
-
-                # Add zero line for correlation
-                fig.add_hline(
-                    y=0,
-                    line_dash="solid",
-                    line_color="gray",
-                    line_width=1,
-                    layer="below",
-                    yref="y2"
-                )
-
-                st.plotly_chart(fig, use_container_width=True, key=f"loss_comparison_{message_index}")
 
             # Add interpretation guide
             st.markdown("### Interpretation Guide")
@@ -784,3 +655,46 @@ class ForestRenderer(BaseChartRenderer):
         except Exception as e:
             self.logger.error("Error drawing forest comparison: %s", str(e), exc_info=True)
             st.error("Error generating comparison visualization: %s", str(e))
+
+    def _create_forest_distribution_piechart(self, data, key):
+        """Create pie charts showing distribution of forest cover and loss."""
+        # Create loss data counts
+        results = data['all_results']
+        loss_data = {
+            'Recent (2020-2023)': len([
+                r for r in results if r.get('lossyear', 0) >= 2020
+            ]),
+            '2015-2019': len([
+                r for r in results if 2015 <= r.get('lossyear', 0) < 2020
+            ]),
+            '2010-2014': len([
+                r for r in results if 2010 <= r.get('lossyear', 0) < 2015
+            ]),
+            '2005-2009': len([
+                r for r in results if 2005 <= r.get('lossyear', 0) < 2010
+            ]),
+            '2001-2004': len([
+                r for r in results if 2001 <= r.get('lossyear', 0) < 2005
+            ]),
+            'No Loss': len([
+                r for r in results if r.get('lossyear', 0) == 0
+            ])
+        }
+
+        # Create pie chart if there's any loss data
+        if any(v > 0 for k, v in loss_data.items() if k != 'No Loss'):
+            colors = ['#ff0000', '#ff3333', '#ff6666', '#ff9999', '#ffcccc', '#006400']
+            fig2 = go.Figure(data=[go.Pie(
+                labels=list(loss_data.keys()),
+                values=list(loss_data.values()),
+                hole=.3,
+                marker_colors=colors  # Dark green for last color
+            )])
+            fig2.update_layout(
+                title='Forest Loss Distribution',
+                height=300,
+                margin={"l": 20, "r": 20, "t": 40, "b": 20}
+            )
+            st.plotly_chart(fig2, use_container_width=True, key=f"{key}_loss_pie")
+        else:
+            st.write("No forest loss detected in the data")

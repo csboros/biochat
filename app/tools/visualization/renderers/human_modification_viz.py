@@ -13,6 +13,7 @@ import streamlit as st
 from ..base import BaseChartRenderer
 from ..chart_types import ChartType
 
+# pylint: disable=broad-except
 # pylint: disable=no-member
 class HumanModificationVizRenderer(BaseChartRenderer):
     """
@@ -172,11 +173,12 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                     cluster = MarkerCluster(name="Observations").add_to(m)
 
                     for _, row in df.iterrows():
-                        popup_text = f"""
-                        <b>Location:</b> {row['decimallatitude']:.5f}, {row['decimallongitude']:.5f}<br>
-                        <b>Year:</b> {row['observation_year']}<br>
-                        <b>Count:</b> {row['individual_count']}
-                        """
+                        popup_text = (
+                            f"<b>Location:</b> {row['decimallatitude']:.5f}, "
+                            f"{row['decimallongitude']:.5f}<br>"
+                            f"<b>Year:</b> {row['observation_year']}<br>"
+                            f"<b>Count:</b> {row['individual_count']}"
+                        )
 
                         folium.Marker(
                             location=[row['decimallatitude'], row['decimallongitude']],
@@ -211,7 +213,8 @@ class HumanModificationVizRenderer(BaseChartRenderer):
 
                 # Display distribution histogram if we have correlation data
                 if 'correlation_data' in data:
-                    self.plot_distribution_histogram(data['correlation_data'], key=f"hm_dist_{message_index}")
+                    self.plot_distribution_histogram(
+                        data['correlation_data'], key=f"hm_dist_{message_index}")
 
                 # Display the map
                 folium_static(m, width=700, height=500)
@@ -233,20 +236,24 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                     interpretation = ""
                     if p_value <= 0.05:  # Statistically significant
                         if corr_value > 0.3:
-                            corr_color = "red"  # Strong positive (prefers human-modified areas)
-                            interpretation = "Species appears to tolerate or prefer human-modified areas"
+                            corr_color = "red"  # Strong positive (prefers modified areas)
+                            interpretation = (
+                                "Species appears to tolerate or prefer human-modified areas"
+                            )
                         elif corr_value < -0.3:
-                            corr_color = "green"  # Strong negative (avoids human-modified areas)
+                            corr_color = "green"  # Strong negative (avoids modified areas)
                             interpretation = "Species appears to avoid human-modified areas"
                         elif corr_value >= -0.3 and corr_value <= 0.3:
                             corr_color = "orange"  # Weak correlation
-                            interpretation = "Species shows weak relationship with human modification"
+                            interpretation = (
+                                "Species shows weak relationship with human modification"
+                            )
                     else:
                         interpretation = "No significant relationship with human modification"
 
                     st.markdown(
-                        f"**Correlation:** <span style='color:{corr_color}'>{corr_value:.3f}</span> "
-                        f"(p={p_value:.3f})",
+                        f"**Correlation:** <span style='color:{corr_color}'>"
+                        f"{corr_value:.3f}</span> (p={p_value:.3f})",
                         unsafe_allow_html=True
                     )
 
@@ -266,7 +273,9 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                         """, unsafe_allow_html=True)
 
         except Exception as e:
-            self.logger.error("Error drawing human modification correlation: %s", str(e), exc_info=True)
+            self.logger.error(
+                "Error drawing human modification correlation: %s", str(e), exc_info=True
+            )
             st.error(f"Error generating visualization: {str(e)}")
 
     def display_ghm_reference_scale(self):
@@ -296,7 +305,8 @@ class HumanModificationVizRenderer(BaseChartRenderer):
         )):
             html_blocks += f"""
             <div style="display: flex; margin-bottom: 8px; align-items: center;">
-                <div style="background-color: {colors[i]}; width: 20px; height: 20px; margin-right: 10px;"></div>
+                <div style="background-color: {colors[i]}; width: 20px; height: 20px; \
+margin-right: 10px;"></div>
                 <div>
                     <strong>{level}</strong> ({range_val}): {desc}
                 </div>
@@ -363,11 +373,11 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                 fig.add_trace(go.Bar(
                     x=sorted_names,
                     y=sorted_means,
-                    error_y=dict(
-                        type='data',
-                        array=sorted_stds,
-                        visible=True
-                    ),
+                    error_y={
+                        'type':'data',
+                        'array':sorted_stds,
+                        'visible':True
+                    },
                     marker_color='rgb(100, 149, 237)',
                     name='Mean Human Modification'
                 ))
@@ -377,11 +387,11 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                     x=sorted_names,
                     y=sorted_correlations,
                     mode='lines+markers',
-                    marker=dict(
-                        color='red',
-                        size=8,
-                        symbol='circle'
-                    ),
+                    marker={
+                        'color': 'red',
+                        'size': 8,
+                        'symbol': 'circle'
+                    },
                     line=dict(
                         color='red',
                         width=2,
@@ -396,27 +406,27 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                     title='Human Modification Index by Species',
                     xaxis_title='Species',
                     yaxis_title='gHM Value (0-1)',
-                    yaxis2=dict(
-                        title='Correlation',
-                        titlefont=dict(color='red'),
-                        tickfont=dict(color='red'),
-                        overlaying='y',
-                        side='right',
-                        range=[-1, 1]
-                    ),
+                    yaxis2={
+                        'title': 'Correlation',
+                        'titlefont': {'color': 'red'},
+                        'tickfont': {'color': 'red'},
+                        'overlaying': 'y',
+                        'side': 'right',
+                        'range': [-1, 1]
+                    },
                     height=500,
-                    margin=dict(l=50, r=50, t=50, b=100),
+                    margin={'l': 50, 'r': 50, 't': 50, 'b': 100},
                     hovermode='x unified',
                     showlegend=True,
-                    legend=dict(
-                        yanchor="top",
-                        y=0.99,
-                        xanchor="left",
-                        x=0.01
-                    ),
-                    xaxis=dict(
-                        tickangle=45
-                    )
+                    legend={
+                        'yanchor': "top",
+                        'y': 0.99,
+                        'xanchor': "left",
+                        'x': 0.01
+                    },
+                    xaxis={
+                        'tickangle': 45
+                    }
                 )
 
                 # Add horizontal reference lines
@@ -462,7 +472,11 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                 """)
 
         except Exception as e:
-            self.logger.error("Error drawing human modification comparison: %s", str(e), exc_info=True)
+            self.logger.error(
+                "Error drawing human modification comparison: %s",
+                str(e),
+                exc_info=True
+            )
             st.error(f"Error generating comparison visualization: {str(e)}")
 
     def plot_distribution_histogram(self, data, key=None):
@@ -506,12 +520,12 @@ class HumanModificationVizRenderer(BaseChartRenderer):
                 xaxis_title='Human Modification Index',
                 yaxis_title='Number of Observations',
                 height=300,
-                margin=dict(l=50, r=50, t=50, b=50),
+                margin={'l': 50, 'r': 50, 't': 50, 'b': 50},
                 showlegend=False,
-                xaxis=dict(
-                    tickangle=45,
-                    tickfont=dict(size=10)
-                )
+                xaxis={
+                    'tickangle': 45,
+                    'tickfont': {'size': 10}
+                }
             )
 
             # Add reference lines

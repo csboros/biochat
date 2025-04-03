@@ -112,10 +112,14 @@ class CorrelationTool(Tool):
                     "- Correlation patterns for critically endangered/endangered/"
                     "vulnerable species\n"
                     "- Understanding how different threat levels relate to human presence\n"
+                    "- General queries about critically endangered species\n"
                     "Examples:\n"
                     "- 'Show correlation for critically endangered species'\n"
                     "- 'How do vulnerable species relate to human activity?'\n"
-                    "- 'What's the relationship between endangered species and HCI?'"
+                    "- 'What's the relationship between endangered species and HCI?'\n"
+                    "- 'Tell me about critically endangered species'\n"
+                    "- 'Show data for critically endangered species'\n"
+                    "- 'Analyze critically endangered species patterns'"
                 ),
                 parameters={
                     "type": "object",

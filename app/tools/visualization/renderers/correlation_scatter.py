@@ -62,10 +62,10 @@ class CorrelationScatterRenderer(BaseChartRenderer):
             x=df['HCI'],
             y=df['Species'],
             mode='markers',
-            marker=dict(
-                size=15,
-                color='#FF4B4B'
-            ),
+            marker={
+                "size": 15,
+                "color": '#FF4B4B'
+            },
             text=df['Country'],
             hovertemplate=(
                 "Country: %{text}<br>"
@@ -83,23 +83,23 @@ class CorrelationScatterRenderer(BaseChartRenderer):
             yaxis_type="log",
             paper_bgcolor='rgb(50, 50, 50)',
             plot_bgcolor='rgb(50, 50, 50)',
-            font=dict(
-                color='white',
-                size=16  # Increased base font size
-            ),
-            xaxis=dict(
-                gridcolor='rgba(255, 255, 255, 0.2)',
-                zerolinecolor='rgba(255, 255, 255, 0.2)',
-                title_font=dict(size=20),  # Larger axis title
-                tickfont=dict(size=14)     # Larger tick labels
-            ),
-            yaxis=dict(
-                gridcolor='rgba(255, 255, 255, 0.2)',
-                zerolinecolor='rgba(255, 255, 255, 0.2)',
-                title_font=dict(size=22),  # Larger axis title
-                tickfont=dict(size=16)     # Larger tick labels
-            ),
-            hoverlabel=dict(font_size=16)  # Larger hover text
+            font={
+                "color": 'white',
+                "size": 16
+            },
+            xaxis={
+                "gridcolor": 'rgba(255, 255, 255, 0.2)',
+                "zerolinecolor": 'rgba(255, 255, 255, 0.2)',
+                "title_font": {"size": 20},
+                "tickfont": {"size": 14}
+            },
+            yaxis={
+                "gridcolor": 'rgba(255, 255, 255, 0.2)',
+                "zerolinecolor": 'rgba(255, 255, 255, 0.2)',
+                "title_font": {"size": 22},
+                "tickfont": {"size": 16}
+            },
+            hoverlabel={"font_size": 16}
         )
 
         st.plotly_chart(fig, use_container_width=True, key=f"correlation_scatter_{message_index}")

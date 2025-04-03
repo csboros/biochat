@@ -31,7 +31,6 @@ class HCIRenderer(BaseChartRenderer):
             Plotly figure object
         """
         try:
-            message_index = cache_buster if cache_buster is not None else int(time.time())
             correlations = data["correlations"]
             if not correlations:
                 st.warning("No correlation data found.")
@@ -56,18 +55,18 @@ class HCIRenderer(BaseChartRenderer):
                         x=[item["avg_hci"] for item in correlations],
                         y=[item["correlation_coefficient"] for item in correlations],
                         mode='markers',
-                        marker=dict(
-                            size=10,
-                            color=[item["correlation_coefficient"] for item in correlations],
-                            colorscale='RdYlBu',  # Red for negative, Blue for positive correlations
-                            colorbar=dict(
-                                title=dict(
-                                    text="Correlation<br>Coefficient",
-                                    side='right'
-                                )
-                            ),
-                            line=dict(width=1, color='black')
-                        ),
+                        marker={
+                            'size': 10,
+                            'color': [item["correlation_coefficient"] for item in correlations],
+                            'colorscale': 'RdYlBu',  # Red for negative, Blue for positive correlations
+                            'colorbar': {
+                                'title': {
+                                    'text': "Correlation<br>Coefficient",
+                                    'side': 'right'
+                                }
+                            },
+                            'line': {'width': 1, 'color': 'black'}
+                        },
                         text=[f"{item['species_name']}<br>"
                               f"English Name: {item['species_name_en'] or 'N/A'}<br>"
                               f"Correlation: {item['correlation_coefficient']:.3f}<br>"
@@ -107,11 +106,11 @@ class HCIRenderer(BaseChartRenderer):
                                       f"Total Individuals: {item['total_individuals']}"
                                       for item in status_data],
                                 hoverinfo='text',
-                                marker=dict(
-                                    size=10,
-                                    color=color,
-                                    line=dict(width=1, color='black')
-                                )
+                                marker={
+                                    'size': 10,
+                                    'color': color,
+                                    'line': {'width': 1, 'color': 'black'}
+                                }
                             ))
 
                     title = f"Species-HCI Correlation in {parameters.get('country_code', 'KEN')}"

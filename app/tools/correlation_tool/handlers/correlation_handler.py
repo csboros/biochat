@@ -180,7 +180,7 @@ class CorrelationHandler(BaseHandler):
                 })
 
             if handle_finishing:
-               message_bus.publish("status_update", {
+                message_bus.publish("status_update", {
                     "message": "Correlation analysis complete",
                     "state": "complete",
                     "progress": 100
@@ -196,7 +196,6 @@ class CorrelationHandler(BaseHandler):
                 "state": "error"
             })
             self.logger.error("Error fetching correlation data: %s", str(e), exc_info=True)
-            print("Error details:", str(e))
             raise
 
 
@@ -226,15 +225,14 @@ class CorrelationHandler(BaseHandler):
             raise
 
     def get_species_hci_correlation_by_status(
-        self, conservation_status: str = 'Critically Endangered', handle_finishing: bool = True
+        self, status: str, handle_finishing: bool = True
     ) -> Dict[str, Any]:
         """
         Retrieves correlation data between species occurrence and HCI for a specific
         conservation status.
 
         Args:
-            conservation_status (str): Conservation status to filter by
-                (default: 'Critically Endangered')
+            status (str): Conservation status to filter by
                 Valid values: 'Critically Endangered', 'Endangered', 'Vulnerable',
                             'Near Threatened', 'Least Concern', 'Data Deficient',
                             'Extinct'
@@ -249,19 +247,19 @@ class CorrelationHandler(BaseHandler):
         """
         try:
             message_bus.publish("status_update", {
-                "message": f"Analyzing correlations for {conservation_status} species...",
+                "message": f"Analyzing correlations for {status} species...",
                 "state": "running",
                 "progress": 0
             })
 
             # Normalize input string by stripping whitespace
-            if isinstance(conservation_status, dict):
-                conservation_status = conservation_status.get('conservation_status', '').strip()
+            if isinstance(status, dict):
+                status = status.get('conservation_status', '').strip()
             else:
-                conservation_status = str(conservation_status).strip()
+                status = str(status).strip()
 
             # Debug logging
-            self.logger.info("Received conservation status: '%s'", conservation_status)
+            self.logger.info("Received conservation status: '%s'", status)
 
             # Validate conservation status
             valid_statuses = [
@@ -269,18 +267,15 @@ class CorrelationHandler(BaseHandler):
                 'Near Threatened', 'Least Concern', 'Data Deficient', 'Extinct'
             ]
 
-            # Debug logging for comparison
-            self.logger.info("Valid statuses: %s", valid_statuses)
-            self.logger.info("Status in valid_statuses: %s", conservation_status in valid_statuses)
-            if conservation_status not in valid_statuses:
+            if status not in valid_statuses:
                 raise ValueError(
-                    f"Invalid conservation status '{conservation_status}'. "
+                    f"Invalid conservation status '{status}'. "
                     f"Must be one of: {', '.join(valid_statuses)}"
                 )
 
             self.logger.info(
                 "Fetching species-HCI correlation data for status: %s",
-                conservation_status
+                status
             )
 
             query = """
@@ -350,7 +345,7 @@ class CorrelationHandler(BaseHandler):
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
                     bigquery.ScalarQueryParameter("conservation_status", "STRING",
-                                                  conservation_status)
+                                                  status)
                 ]
             )
 
@@ -381,13 +376,13 @@ class CorrelationHandler(BaseHandler):
                     'avg_individuals_per_cell': row.avg_individuals_per_cell
                 })
             if handle_finishing:
-                    message_bus.publish("status_update", {
+                message_bus.publish("status_update", {
                     "message": "Analysis complete",
                     "state": "complete",
                     "progress": 100
                 })
             return {
-                'conservation_status': conservation_status,
+                'conservation_status': status,
                 'correlations': correlation_data
             }
 
@@ -560,7 +555,6 @@ class CorrelationHandler(BaseHandler):
             if not species_name:
                 raise ValueError("Species name must be provided")
 
-            print(f"Fetching shared habitat correlations for species: {species_name}")  # Debug log
 
             query = """
             SELECT
@@ -579,7 +573,6 @@ class CorrelationHandler(BaseHandler):
 
             # Build query with project ID
             query = self.build_query(query)
-            print(f"Executing query: {query}")  # Debug log
 
             client = bigquery.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
 
@@ -608,17 +601,13 @@ class CorrelationHandler(BaseHandler):
                     'overlapping_cells': row.overlapping_cells
                 })
 
-            print(f"Found {len(correlation_data)} correlations")  # Debug log
-
             response = {
                 'species_name': species_name,
                 'correlations': correlation_data
             }
-            print("Returning response:", response)  # Debug log
             return response
 
         except Exception as e:
-            print(f"Error in get_species_shared_habitat: {str(e)}")  # Debug log
             self.logger.error("Error fetching shared habitat data: %s", str(e), exc_info=True)
             raise
 

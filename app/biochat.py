@@ -10,7 +10,7 @@
 import logging
 import time
 import os
-from typing import Dict, Any
+from typing import Dict, Any, List
 import google.cloud.aiplatform as vertexai
 from vertexai.preview.generative_models import (
     GenerationConfig,
@@ -165,7 +165,7 @@ class BioChat:
             # Initialize chat
             chat_start = time.time()
             with st.spinner("Setting up chat..."):
-                chat = model.start_chat()
+                chat = model.start_chat(response_validation=False)
                 chat.send_message(_self.SYSTEM_MESSAGE)
                 logger.info("Chat session initialized in %.2f seconds",
                           time.time() - chat_start)
@@ -399,23 +399,45 @@ class BioChat:
             self.logger.error("Error during processing: %s", str(e), exc_info=True)
             raise
 
-    def collect_function_calls(self, parts):
-        """
-        Collects function calls from response parts.
-        """
+    def collect_function_calls(self, parts) -> List[Dict]:
+        """Collects and processes function calls from response parts."""
         function_calls = []
         for part in parts:
-            if part.function_call is not None:
+            if not hasattr(part, 'function_call') or part.function_call is None:
+                continue
+
+            try:
                 function_name = part.function_call.name
                 params = dict(part.function_call.args.items())
+
                 self.logger.info("Processing function call: %s with params: %s",
-                                 function_name, params)
+                               function_name, params)
+
+                if function_name not in self.function_handler:
+                    error_msg = (
+                        f"I apologize, but the function '{function_name}' is not available. "
+                        "Please try rephrasing your question."
+                    )
+                    self.logger.warning("Attempted to call undefined function: %s", function_name)
+                    st.error(error_msg)
+                    self.add_message_to_history("assistant", {"text": error_msg})
+                    continue
+
                 response = self.function_handler[function_name](params)
                 function_calls.append({
                     'name': function_name,
                     'params': params,
                     'response': response
                 })
+
+            except Exception as e:
+                error_msg = ("I encountered an error while processing your request. "
+                            "Please try again or rephrase your question.")
+                self.logger.error("Error processing function call %s: %s",
+                                function_name, str(e), exc_info=True)
+                st.error(error_msg)
+                self.add_message_to_history("assistant", {"text": error_msg})
+
         return function_calls
 
     def process_function_calls(self, function_calls):

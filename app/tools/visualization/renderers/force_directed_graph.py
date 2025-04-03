@@ -34,7 +34,6 @@ class ForceDirectedGraphRenderer(BaseChartRenderer):
             None (displays visualization directly in Streamlit)
         """
         try:
-            message_index = cache_buster if cache_buster is not None else int(time.time())
 
             # Add responsive CSS
             st.markdown("""
@@ -51,7 +50,7 @@ class ForceDirectedGraphRenderer(BaseChartRenderer):
             col1, col2 = st.columns([3, 1])
 
             with col1:
-                html_content = self._create_force_html(data)
+                html_content = self._create_force_html()
                 html_content = html_content.replace('{data_placeholder}', str(data))
                 # Set width to None to make it responsive
                 components.html(html_content, height=900, width=None)
@@ -138,7 +137,7 @@ class ForceDirectedGraphRenderer(BaseChartRenderer):
             self.logger.error("Error displaying force-directed graph: %s", str(e), exc_info=True)
             raise
 
-    def _create_force_html(self, data: Any, width: int = 950, height: int = 800) -> str:
+    def _create_force_html(self, height: int = 800) -> str:
         """Create the HTML/JavaScript code for D3.js force-directed visualization."""
         return """
         <div id="force-visualization" style="width: 100%; height: """ + str(height) + """px;">

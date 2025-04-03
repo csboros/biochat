@@ -95,14 +95,16 @@ class EarthEngineTool(Tool):
                     "Analyze species habitat distribution and preferences using "
                     "Copernicus land cover data. Use this for questions about:\n"
                     "- What types of habitats does a species use\n"
+                    "- What are the habitat preferences for a species\n"
                     "- How dependent is a species on forests\n"
                     "- Is the species' habitat fragmented\n"
                     "- What is the primary habitat type for a species\n"
                     "Examples:\n"
                     "- 'What habitats does the lion use?'\n"
                     "- 'Analyze elephant habitat distribution'\n"
-                    "- 'Show habitat preferences for gorillas'"
-                    "- 'Show habitat preferences for Bornean orangutans'"
+                    "- 'Show habitat preferences for gorillas'\n"
+                    "- 'Show habitat preferences for Bornean orangutans'\n"
+                    "- 'What are the habitat preferences for tigers?'"
                 ),
                 parameters={
                     "type": "object",

@@ -9,6 +9,7 @@ import streamlit as st
 from ..base import BaseChartRenderer
 from ..chart_types import ChartType
 
+# pylint: disable=broad-except
 # pylint: disable=no-member
 class TopographyViz(BaseChartRenderer):
     """Renders topography analysis results on a map and as charts."""
@@ -115,8 +116,11 @@ class TopographyViz(BaseChartRenderer):
                 std_elev = elevation_data.get('std')
                 st.markdown(f"""
                     - **Mean:** {f"{mean_elev:.0f}m" if mean_elev is not None else "N/A"}
-                    - **Range:** {f"{min_elev:.0f}m - {max_elev:.0f}m" if min_elev is not None and max_elev is not None else "N/A"}
-                    - **Standard Deviation:** {f"{std_elev:.1f}m" if std_elev is not None else "N/A"}
+                    - **Range:** {f"{min_elev:.0f}m - {max_elev:.0f}m"
+                                if min_elev is not None and max_elev is not None
+                                else "N/A"}
+                    - **Standard Deviation:** {f"{std_elev:.1f}m"
+                                            if std_elev is not None else "N/A"}
                 """)
 
                 # Slope Statistics
@@ -128,7 +132,9 @@ class TopographyViz(BaseChartRenderer):
                 std_slope = slope_data.get('std')
                 st.markdown(f"""
                     - **Mean:** {f"{mean_slope:.1f}°" if mean_slope is not None else "N/A"}
-                    - **Range:** {f"{min_slope:.1f}° - {max_slope:.1f}°" if min_slope is not None and max_slope is not None else "N/A"}
+                    - **Range:** {f"{min_slope:.1f}° - {max_slope:.1f}°"
+                                if min_slope is not None and max_slope is not None
+                                else "N/A"}
                     - **Standard Deviation:** {f"{std_slope:.1f}°" if std_slope is not None else "N/A"}
                 """)
 
@@ -147,8 +153,11 @@ class TopographyViz(BaseChartRenderer):
                 std_aspect = aspect_data.get('std')
                 st.markdown(f"""
                     - **Mean:** {f"{mean_aspect:.1f}°" if mean_aspect is not None else "N/A"}
-                    - **Range:** {f"{min_aspect:.1f}° - {max_aspect:.1f}°" if min_aspect is not None and max_aspect is not None else "N/A"}
-                    - **Standard Deviation:** {f"{std_aspect:.1f}°" if std_aspect is not None else "N/A"}
+                    - **Range:** {f"{min_aspect:.1f}° - {max_aspect:.1f}°"
+                                if min_aspect is not None and max_aspect is not None
+                                else "N/A"}
+                    - **Standard Deviation:** {f"{std_aspect:.1f}°"
+                                            if std_aspect is not None else "N/A"}
                 """)
 
                 # Aspect Categories
@@ -202,13 +211,13 @@ class TopographyViz(BaseChartRenderer):
             )
 
         fig.update_layout(
-            title=dict(
-                text='Elevation Distribution',
-                y=0.95,
-                x=0.5,
-                xanchor='center',
-                yanchor='top'
-            ),
+            title={
+                'text': 'Elevation Distribution',
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
             xaxis_title="Elevation (m)",
             yaxis_title="Number of Observations",
             height=500,
@@ -241,23 +250,23 @@ class TopographyViz(BaseChartRenderer):
             )
 
         fig.update_layout(
-            title=dict(
-                text='Slope Distribution',
-                y=0.95,
-                x=0.5,
-                xanchor='center',
-                yanchor='top'
-            ),
+            title={
+                'text': 'Slope Distribution',
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
             barmode='group',
             height=500,
             showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.5,
-                xanchor="center",
-                x=0.5
-            ),
+            legend={
+                'orientation': "h",
+                'yanchor': "bottom",
+                'y': -0.5,
+                'xanchor': "center",
+                'x': 0.5
+            },
             yaxis_title="Number of Observations"
         )
         return fig
@@ -276,7 +285,7 @@ class TopographyViz(BaseChartRenderer):
             labels=[cat.title() for cat in categories.keys()],
             values=list(categories.values()),
             hole=0.4,
-            marker=dict(colors=colors),
+            marker={'colors': colors},
             hovertemplate=(
                 "<b>%{label}</b><br>" +
                 "Count: %{value}<br>" +
@@ -286,22 +295,22 @@ class TopographyViz(BaseChartRenderer):
         ))
 
         fig.update_layout(
-            title=dict(
-                text='Aspect Distribution',
-                y=0.95,
-                x=0.5,
-                xanchor='center',
-                yanchor='top'
-            ),
+            title={
+                'text': 'Aspect Distribution',
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
             height=500,
             showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.5,
-                xanchor="center",
-                x=0.5
-            )
+            legend={
+                'orientation': "h",
+                'yanchor': "bottom",
+                'y': -0.5,
+                'xanchor': "center",
+                'x': 0.5
+            }
         )
         return fig
 
