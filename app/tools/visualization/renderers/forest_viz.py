@@ -344,7 +344,7 @@ class ForestRenderer(BaseChartRenderer):
             bgcolor="rgba(255, 255, 255, 0.8)",
             bordercolor="red",
             borderwidth=1,
-            font=dict(color="red", size=12)
+            font={"color":"red", "size":12}
         )
 
         # Display the plot
@@ -372,11 +372,11 @@ class ForestRenderer(BaseChartRenderer):
             yaxis_title='Frequency',
             bargap=0.1,
             height=300,
-            margin=dict(l=40, r=40, t=40, b=40),
-            xaxis=dict(
-                range=[0, 100],
-                dtick=10
-            )
+            margin={"l":40, "r":40, "t":40, "b":40},
+            xaxis={
+                "range": [0, 100],
+                "dtick": 10
+            }
         )
 
         # Add vertical line for mean
@@ -400,7 +400,7 @@ class ForestRenderer(BaseChartRenderer):
             bgcolor="rgba(255, 255, 255, 0.8)",
             bordercolor="red",
             borderwidth=1,
-            font=dict(color="red", size=12)
+            font={"color": "red", "size" :12}
         )
 
         # Display the plot
@@ -467,7 +467,7 @@ class ForestRenderer(BaseChartRenderer):
         fig.add_trace(go.Bar(
             x=sorted_names,
             y=sorted_means,
-            error_y=dict(type='data', array=sorted_stds, visible=True),
+            error_y={"type":'data', "array":sorted_stds, "visible": True},
             marker_color='rgb(0, 128, 0)',
             name='Mean Forest Cover (%)'
         ))
@@ -477,8 +477,8 @@ class ForestRenderer(BaseChartRenderer):
             x=sorted_names,
             y=sorted_corrs,
             mode='lines+markers',
-            marker=dict(color='blue', size=8, symbol='circle'),
-            line=dict(color='blue', width=2, dash='dot'),
+            marker={"color":'blue', "size":8, "symbol":'circle'},
+            line={"color":'blue', "width":2, "dash":'dot'},
             name='Correlation',
             yaxis='y2'
         ))
@@ -529,7 +529,7 @@ class ForestRenderer(BaseChartRenderer):
         fig.add_trace(go.Bar(
             x=sorted_names,
             y=sorted_means,
-            error_y=dict(type='data', array=sorted_stds, visible=True),
+            error_y={"type": 'data', "array": sorted_stds, "visible": True},
             marker_color='rgb(220, 20, 60)',
             name='Mean Forest Loss (%)'
         ))
@@ -539,10 +539,18 @@ class ForestRenderer(BaseChartRenderer):
             x=sorted_names,
             y=sorted_corrs,
             mode='lines+markers',
-            marker=dict(color='blue', size=8, symbol='circle'),
-            line=dict(color='blue', width=2, dash='dot'),
+            marker={"color": 'blue', "size": 8, "symbol": 'circle'},
+            line={"color": 'blue', "width": 2, "dash": 'dot'},
             name='Correlation',
-            yaxis='y2'
+            yaxis2={
+                "title": 'Correlation',
+                "titlefont": {"color": 'blue'},
+                "tickfont": {"color": 'blue'},
+                "overlaying": 'y',
+                "side": 'right',
+                "range": [-1, 1]
+            },
+            margin={"l": 50, "r": 50, "t": 50, "b": 100},
         ))
 
         # Update layout with dual y-axes
@@ -550,18 +558,18 @@ class ForestRenderer(BaseChartRenderer):
             title='Forest Loss by Species',
             xaxis_title='Species',
             yaxis_title='Forest Loss (%)',
-            yaxis2=dict(
-                title='Correlation',
-                titlefont=dict(color='blue'),
-                tickfont=dict(color='blue'),
-                overlaying='y',
-                side='right',
-                range=[-1, 1]
-            ),
+            yaxis2={
+                "title": 'Correlation',
+                "titlefont": {"color": 'blue'},
+                "tickfont": {"color": 'blue'},
+                "overlaying": 'y',
+                "side": 'right',
+                "range": [-1, 1]
+            },
             height=500,
-            margin=dict(l=50, r=50, t=50, b=100),
+            margin={"l": 50, "r": 50, "t": 50, "b": 100},
             showlegend=True,
-            xaxis=dict(tickangle=45)
+            xaxis={"tickangle": 45}
         )
 
         # Add zero line for correlation

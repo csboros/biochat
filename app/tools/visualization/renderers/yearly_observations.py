@@ -75,15 +75,27 @@ class YearlyObservationsRenderer(BaseChartRenderer):
 
             fig = go.Figure()
 
-            for (country, data), color in zip(yearly_data.items(), colors):
+            # Add traces for each country
+            for country, data in yearly_data.items():
                 df = pd.DataFrame(data)
+                color = next(colors)
                 fig.add_trace(go.Scatter(
                     x=df['year'],
                     y=df['count'],
                     name=country,
-                    line=dict(color=color),
+                    line={"color": color},
                     mode='lines+markers'
                 ))
+
+            # Add global observations trace
+            df = pd.DataFrame(yearly_data)
+            fig.add_trace(go.Scatter(
+                x=df['year'],
+                y=df['count'],
+                mode='lines+markers',
+                name='Global Observations',
+                line={"color": '#1f77b4'}
+            ))
 
             fig.update_layout(
                 title=f"Yearly Observations: {title}",
@@ -92,12 +104,12 @@ class YearlyObservationsRenderer(BaseChartRenderer):
                 height=700,
                 hovermode='x unified',
                 showlegend=True,
-                legend=dict(
-                    yanchor="top",
-                    y=0.99,
-                    xanchor="left",
-                    x=0.01
-                )
+                legend={
+                    "yanchor": "top",
+                    "y": 0.99,
+                    "xanchor": "left",
+                    "x": 0.01
+                }
             )
             st.plotly_chart(fig, use_container_width=True, key=key)
             return fig
@@ -118,7 +130,7 @@ class YearlyObservationsRenderer(BaseChartRenderer):
                 y=df['count'],
                 mode='lines+markers',
                 name='Global Observations',
-                line=dict(color='#1f77b4')
+                line={"color": '#1f77b4'}
             ))
 
             fig.update_layout(

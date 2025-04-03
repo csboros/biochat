@@ -18,7 +18,6 @@ class Tool(ABC):
         Returns:
             Dict[str, Any]: Dictionary mapping handler names to their instances
         """
-        pass
 
     @abstractmethod
     def get_function_declarations(self) -> List[FunctionDeclaration]:
@@ -28,7 +27,6 @@ class Tool(ABC):
         Returns:
             List[FunctionDeclaration]: List of function declarations
         """
-        pass
 
     @abstractmethod
     def get_function_mappings(self) -> Dict[str, Any]:
@@ -38,4 +36,3 @@ class Tool(ABC):
         Returns:
             Dict[str, Any]: Dictionary mapping function names to their implementations
         """
-        pass

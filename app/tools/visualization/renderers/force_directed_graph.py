@@ -2,7 +2,6 @@
 Renderer for force-directed graph visualization using D3.js.
 """
 from typing import Any, Dict, Optional
-import time
 import streamlit as st
 try:
     import streamlit.components.v1 as components
