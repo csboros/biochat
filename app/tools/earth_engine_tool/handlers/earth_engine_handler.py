@@ -33,7 +33,7 @@ class EarthEngineHandler:
         """Check if the operation has been cancelled by the user.
 
         Raises:
-            Exception: If the operation has been cancelled
+            RuntimeError: If the operation has been cancelled
         """
         if st.session_state.get("is_cancelled", False):
             message_bus.publish("status_update", {
@@ -41,7 +41,7 @@ class EarthEngineHandler:
                 "state": "error",
                 "progress": 0
             })
-            raise Exception("Analysis cancelled by user")
+            raise RuntimeError("Analysis cancelled by user")
 
     def get_species_observations(self, species_name: str, min_observations: int = 10) -> list:
         """Retrieve species observations from BigQuery.

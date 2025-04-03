@@ -41,8 +41,10 @@ class SpeciesTool(Tool):
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "common/English name of the species that needs "
-                            "translation to scientific name",
+                            "description": (
+                                "common/English name of the species that needs "
+                                "translation to scientific name"
+                            ),
                         },
                     },
                     "required": ["name"],
@@ -51,14 +53,15 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="translate_to_common_name",
                 description=(
-                    "IMPORTANT: Use this function to translate scientific names to common/English names. "
-                    "This is useful when you have a scientific name and need to find its common name. "
-                    "Examples: \n"
-                    "- 'What is the common name for Panthera tigris?' → 'Tiger' \n"
+                    "IMPORTANT: Use this function to translate scientific names to "
+                    "common/English names. This is useful when you have a scientific name "
+                    "and need to find its common name. Examples:\n"
+                    "- 'What is the common name for Panthera tigris?' → 'Tiger'\n"
                     "- 'Translate Leporidae to common name' → 'Hares and Rabbits' \n"
-                    "- 'What do we call Ursus arctos in English?' → 'Brown Bear' \n"
-                    "For ANY question asking to translate or explain what a scientific name means in common terms, "
-                    "use this function first."
+                    "- 'What do we call Ursus arctos in English?' → "
+                    "'Brown Bear' \n"
+                    "For ANY question asking to translate or explain what a scientific name "
+                    "means in common terms, use this function first."
                 ),
                 parameters={
                     "type": "object",
@@ -75,14 +78,16 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="get_species_info",
                 description=(
-                    "Use this function to get detailed information about a species when users ask questions like "
-                    "'Tell me about Bengal Tiger', 'What can you tell me about Lions?', or similar queries. "
+                    "Use this function to get detailed information about a species when "
+                    "users ask questions like 'Tell me about Bengal Tiger', "
+                    "'What can you tell me about Lions?', or similar queries. "
                     "IMPORTANT: This is a two-step process: "
                     "1. First translate_to_scientific_name(common_name) → scientific_name "
                     "2. Then call this function with the scientific_name "
                     "Example: "
                     "For 'Tell me about Bengal Tiger': "
-                    "1. translate_to_scientific_name('Bengal Tiger') → 'Panthera tigris tigris' "
+                    "1. translate_to_scientific_name('Bengal Tiger') → "
+                    "'Panthera tigris tigris' "
                     "2. Then call this function with 'Panthera tigris tigris'"
                 ),
                 parameters={
@@ -91,8 +96,9 @@ class SpeciesTool(Tool):
                         "name": {
                             "type": "string",
                             "description": (
-                                "SCIENTIFIC NAME of the species (obtained from translate_to_scientific_name). "
-                                "For queries like 'Tell me about Bengal Tiger', you must: "
+                                "SCIENTIFIC NAME of the species (obtained from "
+                                "translate_to_scientific_name). For queries like "
+                                "'Tell me about Bengal Tiger', you must: "
                                 "1. First get scientific name from translate_to_scientific_name "
                                 "2. Then use that result here"
                             ),
@@ -119,7 +125,8 @@ class SpeciesTool(Tool):
                     "- 'What animals are in Yellowstone?'\n"
                     "- 'Show me species in Kruger National Park'\n"
                     "- 'Tell me about wildlife in Masai Mara'\n"
-                    "The function will return a list of endangered species found in the specified area."
+                    "The function will return a list of endangered species found in the "
+                    "specified area."
                 ),
                 parameters={
                     "type": "object",
@@ -136,8 +143,9 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="get_species_occurrences_in_protected_area",
                 description=(
-                    "Get occurrence data (coordinates) for a specific species within a protected area. "
-                    "Shows where a particular species is found within the protected area. "
+                    "Get occurrence data (coordinates) for a specific species within a "
+                    "protected area. Shows where a particular species is found within "
+                    "the protected area. "
                     "Use this for questions like: 'Where are elephants in Kruger?', "
                     "'Show me lions in Serengeti', 'Find tigers in Ranthambore'"
                 ),
@@ -179,8 +187,8 @@ class SpeciesTool(Tool):
                         "country_code": {
                             "type": "string",
                             "description": (
-                                "TWO LETTER country code ONLY (e.g., 'KE' for Kenya, 'TZ' for Tanzania). "
-                                "DO NOT use three letter codes."
+                                "TWO LETTER country code ONLY (e.g., 'KE' for Kenya, "
+                                "'TZ' for Tanzania). DO NOT use three letter codes."
                             ),
                             "pattern": "^[A-Z]{2}$",
                         }
@@ -206,13 +214,15 @@ class SpeciesTool(Tool):
                             "description": (
                                 "optional conservation status to filter by, possible values are: "
                                 "Least Concern, Endangered, Near Threatened, Vulnerable, "
-                                "Data Deficient, Critically Endangered, Extinct,"
+                                "Data Deficient, Critically Endangered, Extinct"
                             ),
                         },
                         "chart_type": {
                             "type": "string",
-                            "description": "type of chart to display, supported values: "
-                            "'force_directed_graph', 'tree_chart'",
+                            "description": (
+                                "type of chart to display, supported values: "
+                                "'force_directed_graph', 'tree_chart'"
+                            ),
                         },
                     },
                 }
@@ -260,7 +270,8 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="endangered_orders_for_class",
                 description=(
-                    "Retrieves endangered orders within a specified class and their species counts. "
+                    "Retrieves endangered orders within a specified class and "
+                    "their species counts. "
                     "Use this for questions about:\n"
                     "- List of orders with endangered species in a class\n"
                     "- Orders containing endangered species for a class\n"
@@ -270,7 +281,7 @@ class SpeciesTool(Tool):
                     "- 'List all orders with endangered species for class Mammalia'\n"
                     "- 'Show me endangered orders in Aves'\n"
                     "- 'What orders have endangered species in Reptilia?'\n"
-                    "- 'List orders with endangered species in class Mammalia'\n"
+                    "- 'List orders with endangered species in class Mammalia'"
                 ),
                 parameters={
                     "type": "object",
@@ -286,7 +297,8 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="endangered_species_for_country",
                 description=(
-                    "⚠️ Use this function ONLY for getting a simple LIST of species (NO locations/maps).\n"
+                    "⚠️ Use this function ONLY for getting a simple LIST of species "
+                    "(NO locations/maps).\n"
                     "DO NOT use this function if the question asks about:\n"
                     "- Locations of species\n"
                     "- Where species are found\n"
@@ -295,9 +307,12 @@ class SpeciesTool(Tool):
                     "- 'List endangered species in Kenya'\n"
                     "- 'What endangered animals live in Tanzania?'\n"
                     "- 'Tell me the endangered species in Uganda'\n\n"
-                    "- 'Show endangered species locations...' (use get_endangered_species_by_country)\n"
-                    "- 'Where are endangered species...' (use get_endangered_species_by_country)\n"
-                    "- 'Display locations of...' (use get_endangered_species_by_country)"
+                    "- 'Show endangered species locations...' "
+                    "(use get_endangered_species_by_country)\n"
+                    "- 'Where are endangered species...' "
+                    "(use get_endangered_species_by_country)\n"
+                    "- 'Display locations of...' "
+                    "(use get_endangered_species_by_country)"
                 ),
                 parameters={
                     "type": "object",
@@ -305,27 +320,28 @@ class SpeciesTool(Tool):
                         "country_code": {
                             "type": "string",
                             "description": (
-                                "TWO LETTER country code ONLY (e.g., 'KE' for Kenya, 'TZ' for Tanzania). "
-                                "DO NOT use three letter codes. Examples: "
-                                "Kenya → 'KE' (not 'KEN'), "
+                                "TWO LETTER country code ONLY (e.g., 'KE' for Kenya, "
+                                "'TZ' for Tanzania). DO NOT use three letter codes. "
+                                "Examples: Kenya → 'KE' (not 'KEN'), "
                                 "Tanzania → 'TZ' (not 'TZA'), "
                                 "Uganda → 'UG' (not 'UGA'). "
                                 "If unsure, use google_search to find the correct 2-letter code."
                             ),
-                            "pattern": "^[A-Z]{2}$",  # Enforce exactly 2 uppercase letters
+                            "pattern": "^[A-Z]{2}$",
                         },
                         "conservation_status": {
                             "type": "string",
                             "description": (
-                                "optional conservation status to filter by, possible values are: "
-                                "Least Concern, Endangered, Near Threatened, Vulnerable, Data Deficient, "
-                                "Critically Endangered, Extinct"
+                                "Filter by conservation status "
+                                "(e.g., 'Critically Endangered')"
                             ),
                         },
                         "chart_type": {
                             "type": "string",
-                            "description": "type of chart to display, supported values: "
-                            "'force_directed_graph', 'tree_chart'",
+                            "description": (
+                                "type of chart to display, supported values: "
+                                "'force_directed_graph', 'tree_chart'"
+                            ),
                             "enum": ["force_directed_graph", "tree_chart"]
                         },
                     },
@@ -357,12 +373,17 @@ class SpeciesTool(Tool):
                         },
                         "conservation_status": {
                             "type": "string",
-                            "description": "Filter by conservation status (e.g., 'Critically Endangered')"
+                            "description": (
+                                "Filter by conservation status "
+                                "(e.g., 'Critically Endangered')"
+                            ),
                         },
                         "chart_type": {
                             "type": "string",
-                            "description": "type of chart to display, supported values: "
-                            "'force_directed_graph', 'tree_chart'",
+                            "description": (
+                                "type of chart to display, supported values: "
+                                "'force_directed_graph', 'tree_chart'"
+                            ),
                         },
                     },
                     "required": ["country_codes"]
@@ -412,30 +433,33 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="get_occurrences",
                 description=(
-                    "⚠️ IMPORTANT: This function is for MAP VISUALIZATION of species distribution. "
-                    "It returns coordinates and data needed to display species locations on a map. "
-                    "DO NOT use this for text-based answers about where species live. "
-                    "Use this function when you need to SHOW the distribution on a map. "
-                    "\n\n"
+                    "⚠️ IMPORTANT: This function is for MAP VISUALIZATION of species "
+                    "distribution. It returns coordinates and data needed to display "
+                    "species locations on a map. DO NOT use this for text-based answers "
+                    "about where species live. Use this function when you need to SHOW "
+                    "the distribution on a map.\n\n"
                     "Examples that should use this function:\n"
                     "- 'Where can I find Orangutans in the wild?'\n"
                     "- 'Show me a map of where lions live'\n"
                     "- 'Display the distribution of pandas on a map'\n"
                     "- 'Map where tigers are found'\n"
-                    "- 'Show the geographic range of elephants'\n"
-                    "\n\n"
+                    "- 'Show the geographic range of elephants'\n\n"
                     "IMPORTANT: For common names, first use translate_to_scientific_name, "
                     "then use the result here. "
                     "Example workflow for 'Show habitat of Mountain Gorillas': "
-                    "1. First translate_to_scientific_name('Mountain Gorilla') → scientific name "
-                    "2. Then call this function with the result to show the map. "
+                    "1. First translate_to_scientific_name('Mountain Gorilla') → "
+                    "scientific name "
+                    "2. Then call this function with the result to show the map."
                 ),
                 parameters={
                     "type": "object",
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "⚠️ Name of the species to find (MUST use species_name as parameter)",
+                            "description": (
+                                "⚠️ Name of the species to find "
+                                "(MUST use species_name as parameter)"
+                            ),
                         },
                         "country_code": {
                             "type": "string",
@@ -444,8 +468,8 @@ class SpeciesTool(Tool):
                         "chart_type": {
                             "type": "string",
                             "description": (
-                                "type of chart to display. For species distribution visualization, "
-                                "use 'HEXAGON_MAP' (default) or 'HEATMAP'. "
+                                "type of chart to display. For species distribution "
+                                "visualization, use 'HEXAGON_MAP' (default) or 'HEATMAP'. "
                                 "Use 'GEOJSON_MAP' only for geographic boundary visualization."
                             ),
                             "enum": ["HEATMAP", "HEXAGON_MAP", "GEOJSON_MAP"]
@@ -535,7 +559,8 @@ class SpeciesTool(Tool):
         return {
             "translate_to_scientific_name":
                 self.species_handler.translate_to_scientific_name_from_api,
-            "translate_to_common_name": self.species_handler.translate_to_common_name_from_api,
+            "translate_to_common_name":
+                self.species_handler.translate_to_common_name_from_api,
             "get_species_info": self.species_handler.get_species_info_from_api,
             "get_species_images": self.species_handler.get_species_images,
             "get_endangered_species_in_protected_area":
@@ -544,8 +569,10 @@ class SpeciesTool(Tool):
                 self.species_handler.get_species_occurrences_in_protected_area,
             "get_endangered_species_by_country":
                 self.species_handler.get_endangered_species_by_country,
-            "endangered_species_for_family": self.endangered_handler.endangered_species_for_family,
-            "endangered_classes_for_kingdom": self.endangered_handler.endangered_classes_for_kingdom,
+            "endangered_species_for_family":
+                self.endangered_handler.endangered_species_for_family,
+            "endangered_classes_for_kingdom":
+                self.endangered_handler.endangered_classes_for_kingdom,
             "endangered_families_for_order":
                 self.endangered_handler.endangered_families_for_order,
             "endangered_orders_for_class":
@@ -556,7 +583,8 @@ class SpeciesTool(Tool):
                 self.endangered_handler.endangered_species_for_countries,
             "number_of_endangered_species_by_conservation_status":
                 self.endangered_handler.number_of_endangered_species_by_conservation_status,
-            "endangered_species_hci_correlation": self.endangered_handler.endangered_species_hci_correlation,
+            "endangered_species_hci_correlation":
+                self.endangered_handler.endangered_species_hci_correlation,
             "get_occurrences": self.endangered_handler.get_occurrences,
             "get_yearly_occurrences": self.endangered_handler.get_yearly_occurrences,
             "get_protected_areas_geojson": self.species_handler.get_protected_areas_geojson,

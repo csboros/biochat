@@ -100,22 +100,21 @@ class HelpCommandHandler:
 
             if command_type == 'general':
                 return self._handle_general_help()
-            elif command_type == 'category':
+            if command_type == 'category':
                 category = command.get('category')
                 return self._handle_category_help(category)
-            elif command_type == 'tool':
+            if command_type == 'tool':
                 tool_name = command.get('tool')
                 return self._handle_tool_help(tool_name)
-            elif command_type == 'function':
+            if command_type == 'function':
                 tool_name = command.get('tool')
                 function_name = command.get('function')
                 return self._handle_function_help(tool_name, function_name)
-            else:
-                return {
-                    'success': False,
-                    'error': f"Unknown help command type: {command_type}",
-                    'available_commands': ['general', 'category', 'tool', 'function']
-                }
+            return {
+                'success': False,
+                'error': f"Unknown help command type: {command_type}",
+                'available_commands': ['general', 'category', 'tool', 'function']
+            }
 
         except Exception as e:
             message_bus.publish("status_update", {

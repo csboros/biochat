@@ -27,7 +27,8 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         avoid_overlaps: bool = True,  # New parameter to control overlap avoidance
         scale: int = 1000       # Resolution in meters for Earth Engine analysis (gHM is 1km)
     ) -> Dict[str, Any]:
-        """Calculate correlation between species observations and human modification using Earth Engine.
+        """Calculate correlation between species observations and
+            human modification using Earth Engine.
 
         This method samples human modification metrics directly at each species observation point,
         providing an analysis of species distribution across human-modified landscapes.
@@ -35,7 +36,8 @@ class HumanModificationHandlerEE(EarthEngineHandler):
         habitat types, accounting for individual counts at each location.
 
         Human modification is defined using the global Human Modification dataset (gHM),
-        which provides a cumulative measure of human impact on terrestrial lands at a 1km resolution.
+        which provides a cumulative measure of human impact on terrestrial lands
+        at a 1km resolution.
         Values range from 0.0 (no modification) to 1.0 (complete modification) and incorporate:
           - human settlement (population density, built-up areas)
           - agriculture (cropland, livestock)
@@ -169,7 +171,9 @@ class HumanModificationHandlerEE(EarthEngineHandler):
                 )
             }
         except (ValueError, ee.EEException) as e:
-            self.logger.error(lambda: f"Error calculating human modification correlations: {str(e)}")
+            self.logger.error(
+                lambda: f"Error calculating human modification correlations: {str(e)}"
+            )
             message_bus.publish("status_update", {
                 "message": "❌ Analysis failed",
                 "state": "error",

@@ -170,4 +170,3 @@ class OccurrenceMapRenderer(BaseChartRenderer):
         except Exception as e:
             self.logger.error("Error creating occurrence map: %s", str(e), exc_info=True)
             raise
-

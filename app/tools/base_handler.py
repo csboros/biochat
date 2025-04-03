@@ -138,7 +138,6 @@ class BaseHandler:
             filters['conservation_status_filter'] = (
                 "AND LOWER(conservation_status) = LOWER(@conservation_status)"
             )
-
         return filters
 
     def build_query(self, base_query: str, **kwargs) -> str:
