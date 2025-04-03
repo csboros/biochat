@@ -720,8 +720,13 @@ class EndangeredSpeciesHandler(BaseHandler):
             KeyError: If required fields are missing from the response
         """
         try:
-            species_name = content["species_name"]
-              # Query setup timing
+            species_name = content.get("species_name") or content.get("species")
+            if not species_name:
+                return {
+                    'status': 'error',
+                    'message': 'Missing species name parameter. Please provide either species_name or species.'
+                }
+            # Query setup timing
             if "country_code" in content:
                 # Handle both string and list inputs
                 if isinstance(content["country_code"], str):

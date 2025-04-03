@@ -8,7 +8,7 @@
 - List all families for primates with the number of endangered species
 
   ![Screenshot](screenshots/screenshot_1_1.png)
-- Show all endangered species in the family of HOMINIDAE with link to IUCN
+- Show all endangered species in the family of HOMINIDAE
 - List all endangered species in Kenya
 
   ![Screenshot](screenshots/screenshot_1_3.png)
@@ -54,11 +54,11 @@
  ![Screenshot](screenshots/screenshot_8_1.png)
  ![Screenshot](screenshots/screenshot_8_2.png)
 
-- Show the correlation between forest cover and loss and Orangutan population
+- Show the correlation between forest cover and loss and Bornean Orangutan population
 
   ![Screenshot](screenshots/screenshot_8_3.png)
 
-- Analyze topography for Mountain Gorillas
+- Analyze topography for Gorilla beringei
 
   ![Screenshot](screenshots/screenshot_8_4.png)
 
@@ -66,12 +66,11 @@
 
  ![Screenshot](screenshots/screenshot_8_5.png)
 
-- Analyze correlation patterns for endangered species
+- Analyze the correlation between human coexistence index and critically endangered species
 
  ![Screenshot](screenshots/screenshot_8_6.png)
 
-- Analyze correlation patterns for species in Kenya
-
+- Analyze the correlation between human coexistence index  and species in Kenya
  ![Screenshot](screenshots/screenshot_8_7.png)
 
 

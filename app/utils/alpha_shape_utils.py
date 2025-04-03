@@ -16,7 +16,7 @@ try:
 except ImportError:
     DBSCAN = None
 
-
+# pylint: disable=broad-except
 class AlphaShapeUtils:
     """Provides utilities for calculating alpha shapes from point distributions.
 
@@ -64,54 +64,8 @@ class AlphaShapeUtils:
         if -1 in unique_labels:  # Remove noise label
             unique_labels.remove(-1)
 
-        # If we have too few clusters, try with even smaller eps
-        # if len(unique_labels) < 2 and len(points) > 20:
-        #     self.logger.info(f"Only {len(unique_labels)} clusters found. Trying with smaller eps.")
-        #     clustering = DBSCAN(eps=eps/2, min_samples=min_samples).fit(points)
-        #     labels = clustering.labels_
-        #     unique_labels = set(labels)
-        #     if -1 in unique_labels:
-        #         unique_labels.remove(-1)
 
-        # If there are large clusters, subdivide them further
-        # if len(unique_labels) > 0:
-        #     new_labels = labels.copy()
-        #     next_label = max(unique_labels) + 1
-
-        #     for label in unique_labels:
-        #         # Get points for this cluster
-        #         cluster_points = points[labels == label]
-
-        #         # If the cluster is large, try to subdivide it
-        #         if len(cluster_points) > 30:  # Only subdivide large clusters
-        #             self.logger.info(f"Subdividing large cluster with {len(cluster_points)} points")
-
-        #             # Apply DBSCAN with much smaller eps to this cluster only
-        #             sub_clustering = DBSCAN(eps=eps/3, min_samples=2).fit(cluster_points)
-        #             sub_labels = sub_clustering.labels_
-
-        #             # Get unique sub-cluster labels
-        #             sub_unique_labels = set(sub_labels)
-        #             if -1 in sub_unique_labels:
-        #                 sub_unique_labels.remove(-1)
-
-        #             # If we found subclusters, update labels
-        #             if len(sub_unique_labels) > 1:  # More than one subcluster found
-        #                 idx = 0
-        #                 for i, l in enumerate(labels):
-        #                     if l == label:
-        #                         sub_label = sub_labels[idx]
-        #                         if sub_label != -1:  # Not noise
-        #                             new_labels[i] = next_label + sub_label
-        #                         idx += 1
-
-        #     # Use the new labels if we did any subdivision
-        #     labels = new_labels
-        #     unique_labels = set(labels)
-        #     if -1 in unique_labels:
-        #         unique_labels.remove(-1)
-
-        self.logger.info(f"Found {len(unique_labels)} clusters after subdivision")
+        self.logger.info("Found %d clusters after subdivision", len(unique_labels))
 
         # Process each cluster
         hulls = []
@@ -132,7 +86,7 @@ class AlphaShapeUtils:
         # Check for overlapping hulls and merge them if requested
         if avoid_overlaps and hulls:
             merged_hulls = self._merge_overlapping_hulls(hulls, clusters, labels, points)
-            self.logger.info(f"After merging overlaps: {len(merged_hulls)} hulls")
+            self.logger.info("After merging overlaps: %d hulls", len(merged_hulls))
             result_hulls = merged_hulls
         else:
             result_hulls = hulls
@@ -140,7 +94,9 @@ class AlphaShapeUtils:
         # Convert hulls to GeoJSON format
         return self._convert_hulls_to_geojson(result_hulls)
 
-    def _process_clusters(self, points: np.ndarray, labels: np.ndarray, alpha: float) -> List[Polygon]:
+    def _process_clusters(
+        self, points: np.ndarray, labels: np.ndarray, alpha: float
+    ) -> List[Polygon]:
         """Process each cluster to create hulls."""
         hulls = []
         for label in set(labels):
@@ -152,7 +108,9 @@ class AlphaShapeUtils:
                 hulls.append(hull)
         return hulls
 
-    def _process_single_cluster(self, cluster_points: np.ndarray, alpha: float) -> Optional[Polygon]:
+    def _process_single_cluster(
+        self, cluster_points: np.ndarray, alpha: float
+    ) -> Optional[Polygon]:
         """Process a single cluster to create a hull."""
         if len(cluster_points) < 4:
             # For very small clusters, create a convex hull with a buffer
@@ -165,7 +123,6 @@ class AlphaShapeUtils:
             # Add a small buffer to ensure points are fully contained
             return hull.buffer(0.02, resolution=16)
         except Exception as e:  # pylint: disable=broad-except
-            self.logger.warning(f"Error creating alpha shape: {str(e)}. Falling back to convex hull.")
             m = MultiPoint(cluster_points)
             return m.convex_hull.buffer(0.05, resolution=16)
 
@@ -253,7 +210,9 @@ class AlphaShapeUtils:
             # For few points, handle specially
             if len(observations) > 0:
                 # Create a simple convex hull
-                mp = MultiPoint([(obs["decimallongitude"], obs["decimallatitude"]) for obs in observations])
+                points = [(obs["decimallongitude"], obs["decimallatitude"])
+                         for obs in observations]
+                mp = MultiPoint(points)
                 hull = mp.convex_hull
 
                 # Check the geometry type - it could be a Point if all points are identical
@@ -289,17 +248,30 @@ class AlphaShapeUtils:
                 return [alpha_shape], [ee_feature]
             return [], []
 
-        # Call calculate_alpha_shape to get the same shapes - including the overlap handling if enabled
-        geojson_result = self.calculate_alpha_shape(np.array([[obs["decimallongitude"], obs["decimallatitude"]] for obs in observations]), alpha, eps, min_samples, avoid_overlaps)
+        # Call calculate_alpha_shape to get the same shapes -
+        points = np.array([
+            [obs["decimallongitude"], obs["decimallatitude"]]
+            for obs in observations
+        ])
+        geojson_result = self.calculate_alpha_shape(
+            points, alpha, eps, min_samples, avoid_overlaps
+        )
 
         # Extract the polygons from the GeoJSON
         all_alpha_shapes = []
         ee_features = []
 
-        if geojson_result and 'geometry' in geojson_result and 'coordinates' in geojson_result['geometry']:
-            # Perform clustering as in calculate_alpha_shape to assign observations to the proper hulls
+        if (geojson_result and
+            'geometry' in geojson_result and
+            'coordinates' in geojson_result['geometry']):
+            # Perform clustering as in calculate_alpha_shape to assign observations
+            # to the proper hulls
             # First we need to re-do the clustering
-            clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(np.array([[obs["decimallongitude"], obs["decimallatitude"]] for obs in observations]))
+            points = np.array([
+                [obs["decimallongitude"], obs["decimallatitude"]]
+                for obs in observations
+            ])
+            clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(points)
             labels = clustering.labels_
 
             # Perform subdivision as in calculate_alpha_shape
@@ -307,7 +279,9 @@ class AlphaShapeUtils:
 
             # If we have too few clusters, try with even smaller eps
             if len(unique_labels) < 2 and len(observations) > 20:
-                clustering = DBSCAN(eps=eps/2, min_samples=min_samples).fit(np.array([[obs["decimallongitude"], obs["decimallatitude"]] for obs in observations]))
+                points = np.array([[obs["decimallongitude"], obs["decimallatitude"]]
+                                 for obs in observations])
+                clustering = DBSCAN(eps=eps/2, min_samples=min_samples).fit(points)
                 labels = clustering.labels_
                 unique_labels = set(labels) - {-1}
 
@@ -317,7 +291,10 @@ class AlphaShapeUtils:
                 next_label = max(unique_labels) + 1 if unique_labels else 0
 
                 for label in unique_labels:
-                    cluster_points = np.array([[obs["decimallongitude"], obs["decimallatitude"]] for obs in observations if obs["observation_year"] == label])
+                    cluster_points = np.array([
+                        [obs["decimallongitude"], obs["decimallatitude"]]
+                        for obs in observations if obs["observation_year"] == label
+                    ])
                     if len(cluster_points) > 30:
                         sub_clustering = DBSCAN(eps=eps/3, min_samples=2).fit(cluster_points)
                         sub_labels = sub_clustering.labels_
@@ -382,7 +359,9 @@ class AlphaShapeUtils:
 
             # Limit to max_shapes - prefer shapes with more observations
             if len(shapely_polygons) > max_shapes:
-                shapes_with_obs = [(i, len(obs_list)) for i, obs_list in enumerate(shape_observations)]
+                shapes_with_obs = [
+                    (i, len(obs_list)) for i, obs_list in enumerate(shape_observations)
+                ]
                 shapes_with_obs.sort(key=lambda x: x[1], reverse=True)
                 selected_indices = [i for i, _ in shapes_with_obs[:max_shapes]]
                 selected_indices.sort()  # Sort to maintain original order
@@ -426,12 +405,14 @@ class AlphaShapeUtils:
 
                     all_alpha_shapes.append(alpha_shape)
                 except Exception as e:
-                    self.logger.warning(f"Error creating Earth Engine feature: {str(e)}")
+                    self.logger.warning("Error creating Earth Engine feature: %s", str(e))
 
         # If we couldn't extract any shapes, fall back to a convex hull of all points
         if not all_alpha_shapes and len(observations) > 0:
             self.logger.warning("Failed to extract alpha shapes, falling back to convex hull.")
-            mp = MultiPoint([(obs["decimallongitude"], obs["decimallatitude"]) for obs in observations])
+            points = [(obs["decimallongitude"], obs["decimallatitude"])
+                     for obs in observations]
+            mp = MultiPoint(points)
             hull = mp.convex_hull
 
             if hull.geom_type == 'Point':
@@ -464,7 +445,7 @@ class AlphaShapeUtils:
             all_alpha_shapes = [alpha_shape]
             ee_features = [ee_feature]
 
-        self.logger.info(f"Created {len(all_alpha_shapes)} EE alpha shapes")
+        self.logger.info("Created %d EE alpha shapes", len(all_alpha_shapes))
 
         # Process the final shapes
         final_shapes = all_alpha_shapes
@@ -486,7 +467,7 @@ class AlphaShapeUtils:
 
                     ee_features.append(ee_feature)
             except Exception as e:
-                self.logger.warning(f"Error creating Earth Engine feature: {str(e)}")
+                self.logger.warning("Error creating Earth Engine feature: %s", str(e))
 
         return final_shapes, ee_features
 
@@ -531,7 +512,7 @@ class AlphaShapeUtils:
         uncovered_points = all_points[~covered_points_mask & np.array([i in point_labels for i in range(len(all_points))])]
 
         if len(uncovered_points) > 0:
-            self.logger.info(f"Found {len(uncovered_points)} uncovered points, expanding hulls to include them")
+            self.logger.info("Found %d uncovered points, expanding hulls to include them", len(uncovered_points))
 
             # For each uncovered point, find the nearest hull and expand it
             for point in uncovered_points:
@@ -548,7 +529,7 @@ class AlphaShapeUtils:
 
                 if nearest_hull_idx >= 0:
                     # Create a small buffer around the point and union with the nearest hull
-                    point_buffer = point_geom.buffer(0.05)  # Small buffer to ensure the point is contained
+                    point_buffer = point_geom.buffer(0.05)
                     hulls[nearest_hull_idx] = hulls[nearest_hull_idx].union(point_buffer)
 
         # Create a copy of hulls to work with for merging
@@ -577,13 +558,14 @@ class AlphaShapeUtils:
 
                 # Check if hulls intersect
                 if hull_i.intersects(hull_j):
-                    self.logger.info(f"Found overlapping hulls at indices {i} and {j}")
+                    self.logger.info("Found overlapping hulls at indices %d and %d", i, j)
 
                     # Merge the hulls using union
                     try:
                         merged_hull = hull_i.union(hull_j)
 
-                        # Sometimes union results in a MultiPolygon, in this case take the largest polygon
+                        # Sometimes union results in a MultiPolygon,
+                        # in this case take the largest polygon
                         if merged_hull.geom_type == 'MultiPolygon':
                             areas = [p.area for p in merged_hull.geoms]
                             merged_hull = merged_hull.geoms[areas.index(max(areas))]
@@ -592,10 +574,8 @@ class AlphaShapeUtils:
                         merged_hulls[i] = merged_hull
                         merged_indices.add(j)
                         merged_with_current = True
-
-                        self.logger.info(f"Successfully merged hulls, removing hull {j}")
                     except Exception as e:
-                        self.logger.warning(f"Failed to merge hulls: {str(e)}")
+                        self.logger.warning("Failed to merge hulls: %s", str(e))
 
                 j += 1
 
@@ -620,10 +600,11 @@ class AlphaShapeUtils:
                     break
 
         # For any remaining uncovered points, create a new hull for each cluster of points
-        uncovered_indices = np.where(~covered_points_mask & np.array([i in point_labels for i in range(len(all_points))]))[0]
+        uncovered_mask = np.array([i in point_labels for i in range(len(all_points))])
+        uncovered_indices = np.where(~covered_points_mask & uncovered_mask)[0]
 
         if len(uncovered_indices) > 0:
-            self.logger.info(f"After merging, found {len(uncovered_indices)} uncovered points, creating new hulls")
+            self.logger.info("After merging, found %d uncovered points, creating new hulls", len(uncovered_indices))
 
             # Group uncovered points by their original cluster
             uncovered_clusters = {}
@@ -649,5 +630,5 @@ class AlphaShapeUtils:
                 result.append(hull)
 
         # Log the results
-        self.logger.info(f"Final result: {len(result)} hulls")
+        self.logger.info("Final result: %d hulls", len(result))
         return result

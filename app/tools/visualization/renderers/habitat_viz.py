@@ -2,7 +2,6 @@
 
 from typing import Dict, Any, Optional
 import folium
-import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_folium import folium_static
 from folium.plugins import Fullscreen
@@ -12,6 +11,7 @@ from ..chart_types import ChartType
 from ..config.land_cover_config import LandCoverConfig
 
  # pylint: disable=no-member
+ # pylint: disable=broad-except
 class HabitatViz(BaseChartRenderer):
     """Renders habitat analysis results on a map."""
 
@@ -58,7 +58,11 @@ class HabitatViz(BaseChartRenderer):
                     habitat_usage_chart = self._create_habitat_usage_chart(
                         analysis_results.get('habitat_usage', {})
                     )
-                    st.plotly_chart(habitat_usage_chart, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(
+                        habitat_usage_chart,
+                        use_container_width=True,
+                        config={'displayModeBar': False}
+                    )
 
                 with chart_col2:
                     # Only show forest dependency chart if forest analysis was performed
@@ -66,10 +70,17 @@ class HabitatViz(BaseChartRenderer):
                         forest_dependency_chart = self._create_forest_dependency_chart(
                             analysis_results.get('forest_analysis', {})
                         )
-                        st.plotly_chart(forest_dependency_chart, use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(
+                            forest_dependency_chart,
+                            use_container_width=True,
+                            config={'displayModeBar': False}
+                        )
                     else:
                         st.markdown("#### Forest Dependency Analysis")
-                        st.info("Forest dependency analysis was not performed as forest is not the primary habitat type.")
+                        st.info(
+                            "Forest dependency analysis was not performed as forest "
+                            "is not the primary habitat type."
+                        )
 
                 # Create second row of charts
                 chart_col3, chart_col4 = st.columns(2)
@@ -78,14 +89,22 @@ class HabitatViz(BaseChartRenderer):
                     fragmentation_chart = self._create_fragmentation_chart(
                         analysis_results.get('habitat_fragmentation', {})
                     )
-                    st.plotly_chart(fragmentation_chart, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(
+                        fragmentation_chart,
+                        use_container_width=True,
+                        config={'displayModeBar': False}
+                    )
 
                 with chart_col4:
                     connectivity_chart = self._create_connectivity_chart(
                         analysis_results.get('connectivity', {})
                     )
                     if connectivity_chart:
-                        st.plotly_chart(connectivity_chart, use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(
+                            connectivity_chart,
+                            use_container_width=True,
+                            config={'displayModeBar': False}
+                        )
                     else:
                         st.info("Connectivity analysis data is not available.")
 
@@ -134,7 +153,10 @@ class HabitatViz(BaseChartRenderer):
                 forest_analysis = analysis_results.get('forest_analysis', {})
                 if forest_analysis:
                     st.markdown("#### Forest Analysis")
-                    st.markdown(f"- Forest Dependency: {forest_analysis.get('forest_dependency_ratio', 0):.1f}%")
+                    st.markdown(
+                        f"- Forest Dependency: "
+                        f"{forest_analysis.get('forest_dependency_ratio', 0):.1f}%"
+                    )
 
                 # Fragmentation Summary
                 fragmentation = analysis_results.get('habitat_fragmentation', {})
@@ -149,7 +171,10 @@ class HabitatViz(BaseChartRenderer):
                 connectivity = analysis_results.get('connectivity', {})
                 if connectivity:
                     st.markdown("#### Connectivity Analysis")
-                    st.markdown(f"- Connectivity Score: {connectivity.get('connectivity_score', 0):.2f}")
+                    st.markdown(
+                        f"- Connectivity Score: "
+                        f"{connectivity.get('connectivity_score', 0):.2f}"
+                    )
 
                 # Add a divider
                 st.markdown("---")
@@ -161,7 +186,9 @@ class HabitatViz(BaseChartRenderer):
                 for code in sorted_codes:
                     name = LandCoverConfig.LAND_COVER_CLASSES[code]
                     st.markdown(
-                        f'<p style="margin: 5px 0;"><span style="color: {LandCoverConfig.get_color_for_code(code)}">■</span> {name}</p>',
+                        f'<p style="margin: 5px 0;">'
+                        f'<span style="color: {LandCoverConfig.get_color_for_code(code)}">■</span> '
+                        f'{name}</p>',
                         unsafe_allow_html=True
                     )
 
@@ -319,19 +346,19 @@ class HabitatViz(BaseChartRenderer):
             labels=names,
             values=values,
             hole=0.4,
-            marker=dict(colors=colors)
+            marker={'colors': colors}
         )])
 
         fig.update_layout(
             height=500,
             showlegend=False,
-            title=dict(
-                text='Habitat Usage Distribution',
-                y=0.95,
-                x=0.5,
-                xanchor='center',
-                yanchor='top'
-            )
+            title={
+                'text': 'Habitat Usage Distribution',
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            }
         )
         return fig
 
@@ -349,7 +376,8 @@ class HabitatViz(BaseChartRenderer):
                     code = code_val
                     break
 
-            color = LandCoverConfig.get_color_for_code(code) if code else LandCoverConfig.COLOR_PALETTE[0]
+            color = (LandCoverConfig.get_color_for_code(code)
+                    if code else LandCoverConfig.COLOR_PALETTE[0])
 
             fig.add_trace(
                 go.Bar(
@@ -368,25 +396,25 @@ class HabitatViz(BaseChartRenderer):
             )
 
         fig.update_layout(
-            title=dict(
-                text='Forest Dependency Analysis',
-                y=0.95,
-                x=0.5,
-                xanchor='center',
-                yanchor='top'
-            ),
+            title={
+                'text': 'Forest Dependency Analysis',
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
             barmode='group',
             height=500,
             showlegend=False,
-            margin=dict(l=20, r=20, t=40, b=20),
-            hoverlabel=dict(
-                bgcolor="white",
-                font_size=14,
-                font_family="Arial"
-            ),
+            margin={'l': 20, 'r': 20, 't': 40, 'b': 20},
+            hoverlabel={
+                'bgcolor': "white",
+                'font_size': 14,
+                'font_family': "Arial"
+            },
             yaxis_title="Percentage (%)",
             yaxis=dict(
-                range=[0, max([p for p in forest_analysis['forest_type_distribution'].values()]) * 1.1]
+                range=[0, max(forest_analysis['forest_type_distribution'].values()) * 1.1]
             )
         )
         return fig
@@ -401,7 +429,7 @@ class HabitatViz(BaseChartRenderer):
         # Add patch statistics with dynamic habitat type labels
         metrics = [
             ('Total Patches', stats['total_patches'], '#d9ef8b'),
-            (f'Mean Patch Size (ha)', stats['mean_patch_size'], '#91cf60'),
+            ('Mean Patch Size (ha)', stats['mean_patch_size'], '#91cf60'),
             (f'{habitat_type.title()} Coverage (%)', stats['habitat_coverage'], '#1a9850')
         ]
 
@@ -431,13 +459,13 @@ class HabitatViz(BaseChartRenderer):
             barmode='group',
             height=500,
             showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.5,
-                xanchor="center",
-                x=0.5
-            ),
+            legend={
+                'orientation': "h",
+                'yanchor': "bottom",
+                'y': -0.5,
+                'xanchor': "center",
+                'x': 0.5
+            },
             yaxis_title="Value"
         )
         return fig
@@ -474,21 +502,21 @@ class HabitatViz(BaseChartRenderer):
 
         # Update layout
         fig.update_layout(
-            title=dict(
-                text='Habitat Connectivity Analysis',
-                y=0.95,
-                x=0.5,
-                xanchor='center',
-                yanchor='top'
-            ),
+            title={
+                'text': 'Habitat Connectivity Analysis',
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
             height=500,
             showlegend=False,
-            margin=dict(l=20, r=20, t=40, b=20),
-            hoverlabel=dict(
-                bgcolor="white",
-                font_size=14,
-                font_family="Arial"
-            ),
+            margin={'l': 20, 'r': 20, 't': 40, 'b': 20},
+            hoverlabel={
+                'bgcolor': "white",
+                'font_size': 14,
+                'font_family': "Arial"
+            },
             yaxis_title="Value",
         )
 
@@ -505,7 +533,11 @@ class HabitatViz(BaseChartRenderer):
         sorted_codes = sorted(LandCoverConfig.LAND_COVER_CLASSES.keys())
         for code in sorted_codes:
             name = LandCoverConfig.LAND_COVER_CLASSES[code]
-            legend_html += f'<p style="margin: 5px 0;"><span style="color: {LandCoverConfig.get_color_for_code(code)}">■</span> {name}</p>'
+            legend_html += (
+                f'<p style="margin: 5px 0;">'
+                f'<span style="color: {LandCoverConfig.get_color_for_code(code)}">■</span> '
+                f'{name}</p>'
+            )
 
         legend_html += '</div>'
         return legend_html

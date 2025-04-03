@@ -274,7 +274,7 @@ class ClimateViz(BaseChartRenderer):
             xaxis_title='Metric',
             yaxis_title='Temperature (°C)',
             height=300,
-            margin=dict(l=40, r=40, t=40, b=40),
+            margin={"l": 40, "r": 40, "t": 40, "b": 40},
             showlegend=False,
             modebar_remove=[
                 'zoom', 'pan', 'select', 'zoomIn', 'zoomOut',
@@ -319,7 +319,7 @@ class ClimateViz(BaseChartRenderer):
             xaxis_title='Metric',
             yaxis_title='Precipitation (mm)',
             height=300,
-            margin=dict(l=40, r=40, t=40, b=40),
+            margin={"l": 40, "r": 40, "t": 40, "b": 40},
             showlegend=False,
             modebar_remove=[
                 'zoom', 'pan', 'select', 'zoomIn', 'zoomOut',
@@ -344,14 +344,10 @@ class ClimateViz(BaseChartRenderer):
             x=df['temperature'],
             y=df['precipitation'],
             mode='markers',
-            marker=dict(
-                size=5,
-                color='rgba(255, 0, 0, 0.6)',
-                line=dict(
-                    color='white',
-                    width=1
-                )
-            ),
+            marker={"size": 5,
+                   "color": 'rgba(255, 0, 0, 0.6)',
+                   "line": {"color": 'white', "width": 1}
+            },
             text=df['count'],
             hovertemplate=(
                 "<b>Annual Mean Temperature:</b> %{x:.2f}°C<br>"
@@ -366,7 +362,7 @@ class ClimateViz(BaseChartRenderer):
             xaxis_title='Annual Mean Temperature (°C)',
             yaxis_title='Annual Mean Precipitation (mm)',
             height=400,
-            margin=dict(l=40, r=40, t=40, b=40),
+            margin={"l": 40, "r": 40, "t": 40, "b": 40},
             modebar_remove=[
                 'zoom', 'pan', 'select', 'zoomIn', 'zoomOut',
                 'autoScale', 'resetScale', 'toImage'

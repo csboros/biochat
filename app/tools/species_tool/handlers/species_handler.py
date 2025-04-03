@@ -1,7 +1,7 @@
 """
 Handler for species-related operations.
 """
-from typing import Dict
+from typing import Dict, Any
 import json
 import logging
 import os
@@ -25,7 +25,7 @@ class SpeciesHandler(BaseHandler):
         super().__init__()
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
 
-    def get_species_info_from_api(self, content):
+    def get_species_info_from_api(self, content: Dict[str, Any]) -> str:
         """
         Retrieves species information from GBIF API.
 
@@ -35,8 +35,12 @@ class SpeciesHandler(BaseHandler):
         """
         start_time = time.time()
         try:
-            species_name = content["name"]
-            self.logger.info("Fetching species info for: %s", species_name)
+            # Accept either 'species_name' or 'name' as parameter
+            species_name = content.get("species_name") or content.get("name")
+            if not species_name:
+                raise ValueError("Species name is required")
+
+            self.logger.info("Getting species info for: %s", species_name)
             # GBIF API call timing
             api_call_start = time.time()
             species_info = species.name_suggest(species_name)
@@ -52,7 +56,6 @@ class SpeciesHandler(BaseHandler):
             self.logger.info(
                 "Total get_species_info took %.2f seconds", time.time() - start_time
             )
-            print(result)
             return result
         except KeyError as e:
             self.logger.error(
@@ -102,7 +105,7 @@ class SpeciesHandler(BaseHandler):
                 f"https://api.gbif.org/v1/occurrence/search?"
                 f"taxonKey={taxon_key}&mediaType=StillImage&limit=5"
             )
-            print(media_url)
+
 
             response = requests.get(media_url, timeout=10)
             response.raise_for_status()
@@ -381,7 +384,18 @@ class SpeciesHandler(BaseHandler):
             list: List of endangered species data
         """
         try:
-            country_code = content["country_code"]
+            # Handle both 'country' and 'country_code' parameters
+            country_code = content.get("country_code")
+            if not country_code and "country" in content:
+                # Convert country name to code if needed
+                country_code = self.convert_to_country_code(content["country"])
+
+            if not country_code:
+                return {
+                    'status': 'error',
+                    'message': 'Missing or invalid country parameter. Please provide a valid country.'
+                }
+
             client = bigquery.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
 
             query = """
@@ -441,6 +455,15 @@ class SpeciesHandler(BaseHandler):
                 exc_info=True
             )
             raise
+
+    def convert_to_country_code(self, country_name):
+        """Helper method to convert country names to codes."""
+        country_mapping = {
+            'kenya': 'KE',
+            'tanzania': 'TZ',
+            # Add more mappings as needed
+        }
+        return country_mapping.get(country_name.lower())
 
     def get_protected_areas_geojson(self, content: dict) -> str:
         """Get GeoJSON data for protected areas in a country.

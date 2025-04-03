@@ -29,7 +29,6 @@ class HexagonmapRenderer(BaseChartRenderer):
                 raise TypeError("Parameters must be a dictionary")
             logging.debug("Drawing hexagon map with parameters: %s", parameters)
             occurrences = data["occurrences"]
-            print(occurrences)
             message_index = _cache_buster if _cache_buster is not None else int(time.time())
 
             # Convert the JSON array to a DataFrame

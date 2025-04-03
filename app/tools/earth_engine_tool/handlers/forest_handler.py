@@ -377,9 +377,10 @@ class ForestHandlerEE(EarthEngineHandler):
             if gain_mask is None:
                 gain_mask = 0
 
-            # Critical temporal comparison
-            # Convert lossyear to actual calendar year (0 = no loss, 1-23 = 2001-2023)
+            # Add debug logging
+            self.logger.info("Sample loss year: %s", lossyear)
             actual_loss_year = 2000 + lossyear if lossyear > 0 else 0
+            self.logger.info("Actual loss year being stored: %s", actual_loss_year)
 
             # Was the forest lost before or after the observation?
             if actual_loss_year == 0 or year < actual_loss_year:

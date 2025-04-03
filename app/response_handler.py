@@ -127,7 +127,7 @@ class ResponseHandler:
                 chart_type_str = parameters.get("chart_type", "HEXAGON_MAP")
                 try:
                     chart_type = ChartType.from_string(chart_type_str)
-                except ValueError as e:
+                except ValueError:
                     self.logger.warning("Invalid chart type %s, defaulting to HEXAGON_MAP", chart_type_str)
                     chart_type = ChartType.HEXAGON_MAP
 
