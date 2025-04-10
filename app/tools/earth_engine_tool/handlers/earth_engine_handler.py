@@ -37,10 +37,8 @@ class EarthEngineHandler(BaseHandler):
                 # Cloud initialization with Secret Manager
                 if secretmanager:
                     client = secretmanager.SecretManagerServiceClient()
-                    name = (
-                        f"projects/{st.secrets['GOOGLE_CLOUD_PROJECT']}/secrets/"
-                        "EARTH_ENGINE_CREDENTIALS/versions/latest"
-                    )
+                    name = (f"projects/{os.getenv('GOOGLE_CLOUD_PROJECT')}/secrets/"
+                            "EARTH_ENGINE_CREDENTIALS/versions/latest")
                     response = client.access_secret_version(request={"name": name})
                     credentials_str = response.payload.data.decode("UTF-8")
                     credentials_dict = json.loads(credentials_str)
@@ -48,7 +46,7 @@ class EarthEngineHandler(BaseHandler):
                         email=credentials_dict.get('client_email'),
                         key_data=credentials_str
                     )
-                    ee.Initialize(credentials, project=st.secrets['GOOGLE_CLOUD_PROJECT'])
+                    ee.Initialize(credentials, project=os.getenv("GOOGLE_CLOUD_PROJECT"))
                 else:
                     raise RuntimeError("Secret Manager not available")
             else:
