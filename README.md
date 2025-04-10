@@ -15,6 +15,7 @@ This is a Streamlit-based web application that provides an interactive chat inte
    - IUCN Red List conservation status data (https://www.iucnredlist.org)
    - Protected Areas (https://www.protectedplanet.net)
    - Human Coexistence Index (https://datacatalog.worldbank.org/search/dataset/0066034/global_biodiversity_data)
+   - Google Earth Engine
 
 3. **Visualization Capabilities**
    - Interactive maps showing species distributions
