@@ -9,14 +9,17 @@ import time
 import urllib.parse
 import requests
 import google.api_core.exceptions
+import pycountry
 from google.cloud import bigquery
 from pygbif import species
+from app.exceptions import BusinessException
+from app.tools.message_bus import message_bus
 from ...base_handler import BaseHandler
 try:
     from fuzzywuzzy import fuzz
 except ImportError:
     fuzz = None
-
+# pylint: disable=broad-except
 class SpeciesHandler(BaseHandler):
     """Handler for species-related operations."""
 
@@ -35,8 +38,13 @@ class SpeciesHandler(BaseHandler):
         """
         start_time = time.time()
         try:
-            # Accept either 'species_name' or 'name' as parameter
-            species_name = content.get("species_name") or content.get("name")
+            # Accept either 'name' or 'common_name' parameter
+            species_name = (content.get('common_name')  # Add common_name as first priority
+                          or content.get('name')
+                          or content.get('scientific_name')
+                          or content.get('species_name')
+                          or content.get('species'))
+
             if not species_name:
                 raise ValueError("Species name is required")
 
@@ -48,15 +56,11 @@ class SpeciesHandler(BaseHandler):
                 "GBIF API call took %.2f seconds", time.time() - api_call_start
             )
             # JSON serialization timing
-            json_start = time.time()
-            result = json.dumps(species_info)
-            self.logger.info(
-                "JSON serialization took %.2f seconds", time.time() - json_start
-            )
+#            result = json.dumps(species_info)
             self.logger.info(
                 "Total get_species_info took %.2f seconds", time.time() - start_time
             )
-            return result
+            return species_info
         except KeyError as e:
             self.logger.error(
                 "Missing species name (took %.2f seconds): %s",
@@ -178,19 +182,16 @@ class SpeciesHandler(BaseHandler):
             google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
         """
         try:
-            protected_area_name = content.get("protected_area_name")
+            protected_area_name = content.get("protected_area_name") or content.get("protected_area")
             if not protected_area_name:
-                raise ValueError("Protected area name is required")
+                raise BusinessException("Protected area name is required")
 
             # Get best matching protected area name
             best_match = self._find_matching_protected_area(protected_area_name)
             if not best_match:
-                self.logger.warning(
-                    "No matching protected area found for: %s", protected_area_name
-                )
-                return {
-                    "error": f"No matching protected area found for: {protected_area_name}"
-                }
+                error_msg = f"No matching protected area found for: {protected_area_name}"
+                self.logger.warning(error_msg)
+                raise BusinessException(error_msg)
 
             # Query for endangered species
             client = bigquery.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
@@ -290,7 +291,7 @@ class SpeciesHandler(BaseHandler):
     def get_species_occurrences_in_protected_area(self, content: dict) -> Dict:
         """Get occurrence data for a specific species in a protected area."""
         try:
-            protected_area_name = content.get("protected_area_name")
+            protected_area_name = content.get("protected_area_name") or content.get("protected_area")
             species_name = content.get("species_name")
 
             if not protected_area_name or not species_name:
@@ -300,19 +301,23 @@ class SpeciesHandler(BaseHandler):
 
             best_match = self._find_matching_protected_area(protected_area_name)
             if not best_match:
-                self.logger.warning(
-                    "No matching protected area found for: %s", protected_area_name
-                )
-                return []
+                error_msg = f"No matching protected area found for: {protected_area_name}"
+                self.logger.warning(error_msg)
+                raise BusinessException(error_msg)
 
-            translated = json.loads(
-                self.translate_to_scientific_name_from_api({"name": species_name})
-            )
+            translated = self.translate_to_scientific_name_from_api({"name": species_name})
             if "error" in translated or not translated.get("scientific_name"):
                 self.logger.warning(
                     "Could not translate species name: %s", species_name
                 )
-                return []
+                return {
+                    "error": f"Could not translate species name: {species_name}",
+                    "occurrences": [],
+                    "total_occurrences": 0,
+                    "protected_area_name": protected_area_name,
+                    "species_name": species_name
+                }
+            self.logger.info("Translated species name: %s", translated["scientific_name"])
 
             query = f"""
                 WITH protected_area AS (
@@ -365,6 +370,9 @@ class SpeciesHandler(BaseHandler):
                 "occurrences": results,
             }
 
+        except BusinessException as e:
+            self.logger.error("BigQuery error: %s", str(e))
+            raise  # Re-raise the BusinessException
         except (KeyError, ValueError) as e:
             self.logger.error("Invalid input: %s", str(e))
             raise
@@ -384,17 +392,49 @@ class SpeciesHandler(BaseHandler):
             list: List of endangered species data
         """
         try:
+            message_bus.publish("status_update", {
+                "message": "Starting endangered species lookup by country...",
+                "state": "running",
+                "progress": 0
+            })
+
             # Handle both 'country' and 'country_code' parameters
-            country_code = content.get("country_code")
-            if not country_code and "country" in content:
-                # Convert country name to code if needed
-                country_code = self.convert_to_country_code(content["country"])
+            country_code = None
+            if "country_code" in content:
+                country_code = content["country_code"]
+                self.logger.info("Using provided country code: %s", country_code)
+            elif "country_name" in content:
+                message_bus.publish("status_update", {
+                    "message": f"Converting country name to code: {content['country_name']}",
+                    "state": "running",
+                    "progress": 10
+                })
+                try:
+                    # Assuming you have a method to convert country name to code
+                    country_code = self.get_country_code(content["country_name"])
+                    self.logger.info("Converted to country code: %s", country_code)
+                except Exception as e:
+                    self.logger.error("Error converting country name to code: %s", str(e))
+                    message_bus.publish("status_update", {
+                        "message": f"Error converting country name to code: {str(e)}",
+                        "state": "error",
+                        "progress": 0
+                    })
+                    raise
 
             if not country_code:
-                return {
-                    'status': 'error',
-                    'message': 'Missing or invalid country parameter. Please provide a valid country.'
-                }
+                message_bus.publish("status_update", {
+                    "message": "Country code could not be determined",
+                    "state": "error",
+                    "progress": 0
+                })
+                raise BusinessException("Country code could not be determined")
+
+            message_bus.publish("status_update", {
+                "message": f"Querying database for endangered species in {country_code}...",
+                "state": "running",
+                "progress": 30
+            })
 
             client = bigquery.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
 
@@ -427,6 +467,12 @@ class SpeciesHandler(BaseHandler):
                 ]
             )
 
+            message_bus.publish("status_update", {
+                "message": "Processing query results...",
+                "state": "running",
+                "progress": 60
+            })
+
             query_job = client.query(query, job_config=job_config)
             results = []
             total_occurrences = 0
@@ -442,6 +488,12 @@ class SpeciesHandler(BaseHandler):
                 })
                 total_occurrences += 1
 
+            message_bus.publish("status_update", {
+                "message": f"Found {total_occurrences} endangered species occurrences in {country_code}",
+                "state": "complete",
+                "progress": 100
+            })
+
             return {
                 "country_code": country_code,
                 "total_occurrences": total_occurrences,
@@ -449,6 +501,11 @@ class SpeciesHandler(BaseHandler):
             }
 
         except Exception as e:
+            message_bus.publish("status_update", {
+                "message": f"Error getting endangered species by country: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
             self.logger.error(
                 "Error getting endangered species by country: %s",
                 str(e),
@@ -469,17 +526,34 @@ class SpeciesHandler(BaseHandler):
         """Get GeoJSON data for protected areas in a country.
 
         Args:
-            content (dict): Dictionary containing three letter country_code (str)
+            content (dict): Dictionary containing country_code (str), country (str), or country_name (str)
 
         Returns:
             str: JSON string containing protected areas GeoJSON data
 
         Raises:
-            ValueError: If country_code is invalid
+            ValueError: If country is invalid
             google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
         """
         try:
-            country_code = content["country_code"]
+            # Check if 'country_code' is provided, otherwise use 'country' or 'country_name'
+            country_code = content.get("country_code")
+            if not country_code:
+                country = content.get("country")
+                if country:
+                    # Convert country name to country code
+                    country_code = self.get_io3_code(country)  # Implement this method to map names to codes
+                else:
+                    country_name = content.get("country_name")
+                    if country_name:
+                        # Convert country name to country code
+                        country_code = self.get_io3_code(country_name)  # Implement this method to map names to codes
+                    else:
+                        raise ValueError("Either 'country_code', 'country', or 'country_name' must be provided.")
+
+                if not country_code:
+                    raise ValueError(f"Invalid country name: {country} or {country_name}")
+
             client = bigquery.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
             query = self.build_geojson_query()
             job_config = bigquery.QueryJobConfig(
@@ -489,6 +563,8 @@ class SpeciesHandler(BaseHandler):
                     )
                 ]
             )
+
+            # Execute the query and return the results
             query_job = client.query(query, job_config=job_config)
             results = [
                 {
@@ -499,6 +575,7 @@ class SpeciesHandler(BaseHandler):
                 for row in query_job
             ]
             return json.dumps(results)
+
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             self.logger.error("Invalid input or GeoJSON: %s", str(e))
             raise
@@ -516,4 +593,68 @@ class SpeciesHandler(BaseHandler):
             AND IUCN_CAT IN ('Ia', 'Ib', 'II', 'III', 'IV', 'V', 'VI')
         """
         return self.build_query(query, where_clause="")
+
+    def get_country_code(self, content):
+        """
+        Get country code from content, either directly or by converting country name.
+
+        Args:
+            content (dict): Input dictionary containing either country_code or country_name
+
+        Returns:
+            str: Two-letter country code
+
+        Raises:
+            BusinessException: If country code cannot be determined
+        """
+        try:
+            # First try to get direct country_code
+            if "country_code" in content:
+                return content["country_code"].upper()
+
+            # Then try to convert from country_name
+            if "country_name" in content:
+                try:
+                    country = pycountry.countries.search_fuzzy(content["country_name"])[0]
+                    return country.alpha_2
+                except (LookupError, IndexError):
+                    self.logger.error("Could not find country code for name: %s", content["country_name"])
+
+            raise BusinessException("Country code could not be determined")
+
+        except Exception as e:
+            self.logger.error("Error determining country code: %s", str(e))
+            raise BusinessException("Country code could not be determined") from e
+
+    def get_io3_code(self, content):
+        """
+        Get country code from content, either directly or by converting country name.
+
+        Args:
+            content (dict): Input dictionary containing either country_code or country_name
+
+        Returns:
+            str: Two-letter country code
+
+        Raises:
+            BusinessException: If country code cannot be determined
+        """
+        try:
+            # First try to get direct country_code
+            if "country_code" in content:
+                return content["country_code"].upper()
+
+            # Then try to convert from country_name
+            if "country_name" in content:
+                try:
+                    country = pycountry.countries.search_fuzzy(content["country_name"])[0]
+                    return country.alpha_3
+                except (LookupError, IndexError):
+                    self.logger.error("Could not find country code for name: %s", content["country_name"])
+
+            raise BusinessException("Country code could not be determined")
+
+        except Exception as e:
+            self.logger.error("Error determining country code: %s", str(e))
+            raise BusinessException("Country code could not be determined") from e
 

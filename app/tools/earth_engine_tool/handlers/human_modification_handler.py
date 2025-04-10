@@ -67,11 +67,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             })
 
             # Get species observations from BigQuery
-            message_bus.publish("status_update", {
-                "message": "📍 Fetching species observations...",
-                "state": "running",
-                "progress": 10
-            })
+            message_bus.publish_fetching_observations(10)
             observations = self.get_species_observations(species_name, min_observations)
 
             # Create point features from individual observations
@@ -134,11 +130,8 @@ class HumanModificationHandlerEE(EarthEngineHandler):
             correlation_data = self.calculate_ghm_correlations(all_results, scale)
 
             # Create prompt and get analysis from LLM
-            message_bus.publish("status_update", {
-                "message": "🤖 Generating expert analysis...",
-                "state": "running",
-                "progress": 75
-            })
+            message_bus.publish_generating_expert_analysis(75)
+
             analysis = self.send_to_llm(
                 self.create_ghm_analysis_prompt(species_name, correlation_data)
             )
@@ -150,12 +143,7 @@ class HumanModificationHandlerEE(EarthEngineHandler):
                 "progress": 90
             })
 
-            message_bus.publish("status_update", {
-                "message": "✅ Analysis complete!",
-                "state": "complete",
-                "progress": 100,
-                "expanded": False
-            })
+            message_bus.publish_analysis_complete()
 
             # Return with alpha shapes included for visualization
             return {

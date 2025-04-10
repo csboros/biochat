@@ -67,36 +67,59 @@ class YearlyObservationsRenderer(BaseChartRenderer):
             return self._draw_global_chart(yearly_data,
                                          key=f"yearly_observations_global_chart_{key}")
 
-    def _draw_country_chart(self, yearly_data: Dict, title: str, key: str) -> go.Figure:
+    def _draw_country_chart(self, yearly_data, title, key=None):
         """Creates and displays the country-specific observation chart."""
         try:
-            # Create DataFrame for plotting
-            colors = self._get_distinct_colors(len(yearly_data))
-
+            # Create a figure
             fig = go.Figure()
 
-            # Add traces for each country
-            for country, data in yearly_data.items():
-                df = pd.DataFrame(data)
-                color = next(colors)
-                fig.add_trace(go.Scatter(
-                    x=df['year'],
-                    y=df['count'],
-                    name=country,
-                    line={"color": color},
-                    mode='lines+markers'
-                ))
+            # Check if yearly_data is a dictionary
+            if isinstance(yearly_data, dict):
+                # Get distinct colors for each country
+                colors = iter(self._get_distinct_colors(len(yearly_data)))
 
-            # Add global observations trace
-            df = pd.DataFrame(yearly_data)
-            fig.add_trace(go.Scatter(
-                x=df['year'],
-                y=df['count'],
-                mode='lines+markers',
-                name='Global Observations',
-                line={"color": '#1f77b4'}
-            ))
+                # Add traces for each country
+                for country, data in yearly_data.items():
+                    # Ensure data is a list of dictionaries
+                    if isinstance(data, list) and all(isinstance(item, dict) for item in data):
+                        # Extract year and count from each item
+                        years = [item.get("year") for item in data if "year" in item]
+                        counts = [item.get("count") for item in data if "count" in item]
 
+                        # Only add trace if we have valid data
+                        if years and counts and len(years) == len(counts):
+                            color = next(colors)
+                            fig.add_trace(go.Scatter(
+                                x=years,
+                                y=counts,
+                                name=country,
+                                line={"color": color},
+                                mode='lines+markers'
+                            ))
+                        else:
+                            self.logger.warning(f"Invalid data format for country {country}: years={years}, counts={counts}")
+                    else:
+                        self.logger.warning(f"Invalid data format for country {country}: {data}")
+
+                # If no valid traces were added, create an error message
+                if not fig.data:
+                    fig.add_annotation(
+                        text="No valid data available to display",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=14, color="red")
+                    )
+            else:
+                # Handle case where yearly_data is not a dictionary
+                self.logger.warning(f"yearly_data is not a dictionary: {type(yearly_data)}")
+                fig.add_annotation(
+                    text="Invalid data format",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=14, color="red")
+                )
+
+            # Update layout
             fig.update_layout(
                 title=f"Yearly Observations: {title}",
                 xaxis_title="Year",
@@ -111,12 +134,26 @@ class YearlyObservationsRenderer(BaseChartRenderer):
                     "x": 0.01
                 }
             )
-            st.plotly_chart(fig, use_container_width=True, key=key)
+
+            # Display the chart
+            if key:
+                st.plotly_chart(fig, use_container_width=True, key=key)
+            else:
+                st.plotly_chart(fig, use_container_width=True)
+
             return fig
 
         except Exception as e:
             self.logger.error("Error creating country chart: %s", str(e))
-            raise
+            # Create a simple error figure
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Error creating chart: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=14, color="red")
+            )
+            return fig
 
     def _draw_global_chart(self, yearly_data: List[Dict], key: str) -> go.Figure:
         """Creates and displays the global observation chart."""

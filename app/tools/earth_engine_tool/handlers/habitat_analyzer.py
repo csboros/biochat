@@ -31,11 +31,7 @@ class HabitatAnalyzer(EarthEngineHandler):
             })
 
             # Get species occurrence points
-            message_bus.publish("status_update", {
-                "message": "📍 Fetching species observations...",
-                "state": "running",
-                "progress": 10
-            })
+            message_bus.publish_fetching_observations(10)
             observations = self.filter_marine_observations(
                 self.get_species_observations(species_name)
             )
@@ -73,11 +69,7 @@ class HabitatAnalyzer(EarthEngineHandler):
             results = self.analyze(landcover, species_points, species_points.geometry())
 
             # Get analysis from Gemini
-            message_bus.publish("status_update", {
-                "message": "🤖 Generating expert analysis...",
-                "state": "running",
-                "progress": 75
-            })
+            message_bus.publish_generating_expert_analysis(75)
             analysis = self.send_to_llm(
                 self.create_analysis_prompt(species_name, results)
             )
@@ -93,13 +85,7 @@ class HabitatAnalyzer(EarthEngineHandler):
                     species_points,
                     results['connectivity']
             )
-
-            message_bus.publish("status_update", {
-                "message": "✅ Analysis complete!",
-                "state": "complete",
-                "progress": 100,
-                "expanded": False
-            })
+            message_bus.publish_analysis_complete()
 
             return {
                 'success': True,

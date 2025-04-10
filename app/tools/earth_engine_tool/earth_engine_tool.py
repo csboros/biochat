@@ -58,8 +58,7 @@ class EarthEngineTool(Tool):
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "Scientific name of the species (e.g., 'Panthera leo'), "
-                            "for common names, first use translate_to_scientific_name"
+                            "description": "Common or scientific name of the species"
                         }
                     },
                     "required": ["species_name"]
@@ -82,8 +81,7 @@ class EarthEngineTool(Tool):
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "Scientific name of the species (e.g., 'Panthera leo'), "
-                            "for common names, first use translate_to_scientific_name"
+                            "description": "Common or scientific name of the species"
                         }
                     },
                     "required": ["species_name"]
@@ -93,29 +91,32 @@ class EarthEngineTool(Tool):
                 name="analyze_habitat_distribution",
                 description=(
                     "Analyze species habitat distribution and preferences using "
-                    "Copernicus land cover data. Use this for questions about:\n"
-                    "- What types of habitats does a species use\n"
-                    "- What are the habitat preferences for a species\n"
-                    "- How dependent is a species on forests\n"
-                    "- Is the species' habitat fragmented\n"
-                    "- What is the primary habitat type for a species\n"
-                    "Examples:\n"
-                    "- 'What habitats does the lion use?'\n"
-                    "- 'Analyze elephant habitat distribution'\n"
-                    "- 'Show habitat preferences for gorillas'\n"
-                    "- 'Show habitat preferences for Bornean orangutans'\n"
-                    "- 'What are the habitat preferences for tigers?'"
+                    "Copernicus land cover data. This function is essential for any questions regarding:\n"
+                    "- Habitat analysis, preferences, or distribution\n"
+                    "- Types of habitats a species uses or prefers\n"
+                    "- Habitat dependencies or requirements\n"
+                    "- Habitat fragmentation analysis\n"
+                    "- Primary or preferred habitat types\n"
+                    "This function will return insights into the habitat characteristics and may include visualizations.\n"
+                    "Examples of valid queries:\n"
+                    "- 'What habitats does the lion (Panthera leo) use?'\n"
+                    "- 'Analyze habitat distribution for Bornean orangutans (Pongo pygmaeus)'\n"
+                    "- 'Show habitat preferences for gorillas (Gorilla gorilla)'\n"
+                    "- 'What type of habitat do orangutans prefer?'\n"
+                    "- 'Study the habitat of Bornean orangutans'\n"
+                    "- 'Analyze habitat fragmentation for tigers (Panthera tigris)'\n"
+                    "IMPORTANT: This is the primary function for ALL habitat analysis queries."
                 ),
                 parameters={
                     "type": "object",
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "Scientific name of the species"
+                            "description": "Common or scientific name of the species"
                         },
                         "visualize": {
                             "type": "boolean",
-                            "description": "Whether to generate visualizations (map and charts)",
+                            "description": "Whether to generate visualizations (map and charts).",
                             "default": True
                         }
                     },
@@ -136,7 +137,7 @@ class EarthEngineTool(Tool):
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "Scientific name of the species"
+                            "description": "Common or scientific name of the species"
                         },
                         "min_observations": {
                             "type": "integer",
@@ -175,7 +176,7 @@ class EarthEngineTool(Tool):
                     "properties": {
                         "species_name": {
                             "type": "string",
-                            "description": "Scientific name of the species"
+                            "description": "Common or scientific name of the species"
                         }
                     },
                     "required": ["species_name"]

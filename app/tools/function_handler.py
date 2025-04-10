@@ -3,27 +3,105 @@ Function handler that consolidates all tool definitions and makes them available
 """
 
 from typing import Dict, Any, List, Union
+from enum import Enum
 from vertexai.generative_models import FunctionDeclaration
 from app.tools.message_bus import message_bus
 from app.tools.help_command_handler import HelpCommandHandler
+import logging
 
 from .species_tool import SpeciesTool
 from .search_tool import SearchTool
 from .correlation_tool import CorrelationTool
 from .earth_engine_tool import EarthEngineTool
 
+
+class ToolName(Enum):
+    """Enumeration of available tools."""
+    SPECIES = "species"
+    SEARCH = "search"
+    CORRELATION = "correlation"
+    EARTH_ENGINE = "earth_engine"
+    HELP = "help"
+
 # pylint: disable=broad-except
 class FunctionHandler:
     """Handler that consolidates all tool definitions and makes them available for external use."""
 
+    # Class variable to implement the singleton pattern
+    _instance = None
+
+    def __new__(cls):
+        """Implement singleton pattern to ensure only one instance exists."""
+        if cls._instance is None:
+            cls._instance = super(FunctionHandler, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
         """Initialize the function handler with all available tools."""
-        self.species_tool = SpeciesTool()
-        self.search_tool = SearchTool()
-        self.correlation_tool = CorrelationTool()
-        self.earth_engine_tool = EarthEngineTool()
+        # Initialize the attribute at the beginning to satisfy the linter
+        self._initialized = getattr(self, '_initialized', False)
+
+        # Only initialize once
+        if self._initialized:
+            return
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.debug("Initializing FunctionHandler")
+
+        # Initialize tools with strong references
+        try:
+            self.species_tool = SpeciesTool()
+            self.logger.debug("SpeciesTool initialized")
+        except Exception as e:
+            self.logger.error("Failed to initialize SpeciesTool: %s", str(e))
+            self.species_tool = None
+
+        try:
+            self.search_tool = SearchTool()
+            self.logger.debug("SearchTool initialized")
+        except Exception as e:
+            self.logger.error("Failed to initialize SearchTool: %s", str(e))
+            self.search_tool = None
+
+        try:
+            self.correlation_tool = CorrelationTool()
+            self.logger.debug("CorrelationTool initialized")
+        except Exception as e:
+            self.logger.error("Failed to initialize CorrelationTool: %s", str(e))
+            self.correlation_tool = None
+
+        try:
+            self.earth_engine_tool = EarthEngineTool()
+            self.logger.debug("EarthEngineTool initialized")
+        except Exception as e:
+            self.logger.error("Failed to initialize EarthEngineTool: %s", str(e))
+            self.earth_engine_tool = None
+
         self.help_handler = HelpCommandHandler()
         self.help_handler.function_handler = self  # Set the function handler reference
+
+        # Store tools in a dictionary for easy access
+        self._tools_dict = {
+            ToolName.SPECIES.value: self.species_tool,
+            ToolName.SEARCH.value: self.search_tool,
+            ToolName.CORRELATION.value: self.correlation_tool,
+            ToolName.EARTH_ENGINE.value: self.earth_engine_tool,
+            ToolName.HELP.value: self.help_handler
+        }
+
+        # Mark as initialized
+        self._initialized = True
+        self.logger.debug("FunctionHandler fully initialized")
+
+    def get_all_tools(self) -> Dict[str, Any]:
+        """
+        Get a dictionary of all available tools.
+
+        Returns:
+            Dict[str, Any]: Dictionary mapping tool names to their instances
+        """
+        return self._tools_dict
 
     def get_all_function_declarations(self) -> List[FunctionDeclaration]:
         """
@@ -43,8 +121,7 @@ class FunctionHandler:
                 "properties": {
                     "type": {
                         "type": "string",
-                        "description": "Type of help requested "
-                                "(general, category, tool, or function)",
+                        "description": "Type of help requested (general, category, tool, or function)",
                         "enum": ["general", "category", "tool", "function"]
                     },
                     "category": {
@@ -109,30 +186,50 @@ class FunctionHandler:
 
         return all_mappings
 
-    def get_tool_by_name(self, tool_name: str) -> Any:
+    def get_tool_by_name(self, tool_name) -> Any:
         """
-        Get a specific tool by its name.
+        Get a specific tool instance by its name or enum value.
 
         Args:
-            tool_name (str): Name of the tool to retrieve
+            tool_name: Name of the tool (string or ToolName enum)
 
         Returns:
-            Any: The requested tool instance
+            The requested tool instance
 
         Raises:
             ValueError: If the tool name is not found
         """
-        tools = {
-            "species": self.species_tool,
-            "search": self.search_tool,
-            "correlation": self.correlation_tool,
-            "earth_engine": self.earth_engine_tool
-        }
+        self.logger.debug("Requested tool: %s", tool_name)
 
-        if tool_name not in tools:
-            raise ValueError(f"Tool '{tool_name}' not found. Available tools: {list(tools.keys())}")
+        # Convert enum to string value if needed
+        if isinstance(tool_name, ToolName):
+            tool_key = tool_name.value
+        else:
+            tool_key = str(tool_name)
 
-        return tools[tool_name]
+        # Check if tool exists in our dictionary
+        if tool_key not in self._tools_dict:
+            available_tools = list(self._tools_dict.keys())
+            self.logger.error("Tool '%s' not found. Available tools: %s",
+                             tool_key, available_tools)
+
+            # Try case-insensitive matching
+            for key, value in self._tools_dict.items():
+                if key.lower() == tool_key.lower():
+                    self.logger.debug("Found tool with case-insensitive match: %s", key)
+                    return value
+
+            raise ValueError(f"Tool '{tool_key}' not found. Available tools: {available_tools}")
+
+        # Get the tool from our dictionary
+        tool = self._tools_dict[tool_key]
+
+        # Verify the tool is not None
+        if tool is None:
+            self.logger.error("Tool '%s' exists but is not initialized", tool_key)
+            raise ValueError(f"Tool '{tool_key}' is not properly initialized")
+
+        return tool
 
     def get_handler_by_name(self, tool_name: str, handler_name: str) -> Any:
         """
@@ -230,11 +327,6 @@ class FunctionHandler:
         """
         Handle function calls from both structured commands and natural language.
         """
-        # If input is a string and contains help-related keywords
-        help_keywords = ['help', 'how', 'what']
-        if (isinstance(input_text, str) and
-                any(word in input_text.lower() for word in help_keywords)):
-            return self.help_handler.handle_help_command(input_text)
 
         try:
             # Get all function mappings
@@ -274,3 +366,5 @@ class FunctionHandler:
             Dictionary containing available functions information
         """
         return self.help_handler.handle_help_command({'type': 'general'})
+
+

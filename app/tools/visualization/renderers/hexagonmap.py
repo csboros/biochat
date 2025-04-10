@@ -20,7 +20,7 @@ class HexagonmapRenderer(BaseChartRenderer):
     """
     @property
     def supported_chart_types(self) -> list[ChartType]:
-        return [ChartType.HEXAGON_MAP]
+        return [ChartType.HEXAGON_MAP, ChartType.HEXAGONMAP]
 
     def render(self, data: Any, parameters: Optional[Dict] = None,
                _cache_buster: Optional[str] = None) -> Any:

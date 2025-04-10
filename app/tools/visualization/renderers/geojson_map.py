@@ -4,6 +4,7 @@ Renderer for GeoJSON map visualizations.
 from typing import Any, Dict, Optional
 import time
 import json
+import logging
 import pydeck as pdk
 import streamlit as st
 from ..base import BaseChartRenderer
@@ -16,7 +17,7 @@ class GeoJsonMapRenderer(BaseChartRenderer):
     """
     @property
     def supported_chart_types(self) -> list[ChartType]:
-        return [ChartType.GEOJSON_MAP]
+        return [ChartType.GEOJSON_MAP, ChartType.GEOJSONMAP]
 
     def render(self, data: Any, parameters: Optional[Dict] = None,
                cache_buster: Optional[str] = None) -> Any:
@@ -33,7 +34,10 @@ class GeoJsonMapRenderer(BaseChartRenderer):
         """
         try:
             message_index = cache_buster if cache_buster is not None else int(time.time())
-            geojson_data = json.loads(data)
+            if isinstance(data, dict):
+                geojson_data = data
+            else:
+                geojson_data = json.loads(data)
             bounds = self._get_bounds_from_geojson(geojson_data)
 
             if bounds is not None:
@@ -113,7 +117,7 @@ class GeoJsonMapRenderer(BaseChartRenderer):
             return deck
 
         except Exception as e:
-            self.logger.error("Error creating geojson map: %s", str(e), exc_info=True)
+            logging.getLogger("BioChat.GeoJsonMapRenderer").error(f"Error creating geojson map: {str(e)}")
             raise
 
     def _get_bounds_from_geojson(self, geojson_data):

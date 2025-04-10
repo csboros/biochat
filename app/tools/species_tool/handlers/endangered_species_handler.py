@@ -2,13 +2,14 @@
 
 import os
 import logging
-import json
 from typing import List, Optional
+import pycountry
 import google.api_core.exceptions
 from google.cloud import bigquery
 from app.tools.message_bus import message_bus
 from ...base_handler import BaseHandler
 
+# pylint: disable=broad-except
 class EndangeredSpeciesHandler(BaseHandler):
     """Handles queries related to endangered species."""
 
@@ -122,7 +123,12 @@ class EndangeredSpeciesHandler(BaseHandler):
             TypeError: If content is not in expected format
         """
         try:
-            clazz = content['class_name']
+            # Check if 'class_name' or 'animal_class' exists in content
+            if 'class_name' not in content and 'animal_class' not in content:
+                raise BusinessException("Either 'class_name' or 'animal_class' key is required in the content.")
+
+            # Use 'class_name' if it exists, otherwise use 'animal_class'
+            clazz = content.get('class_name') or content.get('animal_class')
 
             message_bus.publish("status_update", {
                 "message": f"Fetching endangered orders for {clazz} class...",
@@ -179,6 +185,9 @@ class EndangeredSpeciesHandler(BaseHandler):
 
             final_text = intro + '\n'.join(results)
             return final_text
+        except BusinessException as e:
+            self.logger.error("Business exception occurred: %s", str(e))
+            raise
         except google.api_core.exceptions.GoogleAPIError as e:
             message_bus.publish("status_update", {
                 "message": f"Database error: {str(e)}",
@@ -213,7 +222,12 @@ class EndangeredSpeciesHandler(BaseHandler):
             TypeError: If content is not in expected format
         """
         try:
-            order_name = content['order_name']
+            # Check if 'order_name' or 'order' exists in content
+            if 'order_name' not in content and 'order' not in content:
+                raise BusinessException("Either 'order_name' or 'order' key is required in the content.")
+
+            # Use 'order_name' if it exists, otherwise use 'order'
+            order_name = content.get('order_name') or content.get('order')
 
             message_bus.publish("status_update", {
                 "message": f"Fetching endangered families for {order_name} order...",
@@ -222,7 +236,6 @@ class EndangeredSpeciesHandler(BaseHandler):
             })
 
             self.logger.info("Fetching families for order from BigQuery")
-            order_name = content['order_name']
             client = bigquery.Client(
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
@@ -250,6 +263,9 @@ class EndangeredSpeciesHandler(BaseHandler):
             })
 
             return self._format_hierarchy_data(res)
+        except BusinessException as e:
+            self.logger.error("Business exception occurred: %s", str(e))
+            raise
         except google.api_core.exceptions.GoogleAPIError as e:
             message_bus.publish("status_update", {
                 "message": f"Database error: {str(e)}",
@@ -363,7 +379,14 @@ class EndangeredSpeciesHandler(BaseHandler):
             TypeError: If content is not in expected format
         """
         try:
-            country_code = content['country_code']
+            # Use country_code if provided, otherwise convert country_name
+            country_code = content.get('country_code')
+            if not country_code and 'country_name' in content:
+                country_code = pycountry.countries.lookup(content['country_name']).alpha_2
+
+            if not country_code:
+                raise BusinessException("No valid country code or name provided")
+
             conservation_status = content.get('conservation_status')
 
             message_bus.publish("status_update", {
@@ -697,37 +720,102 @@ class EndangeredSpeciesHandler(BaseHandler):
             self.logger.error("Error in endangered_species_for_countries: %s", str(e))
             raise
 
-    def get_occurrences(_self, content):  # pylint: disable=no-self-argument
+    # pylint: disable=no-self-argument
+    def get_occurrences(_self, content):
         """
-        Retrieves species occurrence data from BigQuery.
-        If country_code is provided, the function will return the occurrences
-        for the specified country.
-        If country_code is not provided, the function will return the distribution for the species.
+        Retrieve occurrence data for a specified species.
 
         Args:
-            content (dict): Dictionary containing:
-                - species_name (str): Name of the species
-                - country_code (str): Single country code or comma-separated list of country codes
-                - chart_type (str): Type of visualization
+            content: The species data to process
 
         Returns:
-            list: List of dictionaries containing occurrence data with latitude and longitude
+            dict: Processed occurrence data
 
         Raises:
-            ValueError: If species_name is invalid or not found
-            google.api_core.exceptions.GoogleAPIError: If BigQuery query fails
-            TypeError: If content is not in expected format
-            KeyError: If required fields are missing from the response
+            ValueError: If content is empty or malformed
+            TypeError: If content is not of the expected type
         """
+        # Input validation
+        if content is None:
+            raise ValueError("Content cannot be None")
+
+        if not isinstance(content, (dict, str)):
+            raise TypeError(f"Expected dict or str, got {type(content)}")
+
+        if isinstance(content, dict):
+            if not content:
+                raise ValueError("Content dictionary cannot be empty")
+            if "species_name" not in content and \
+               "species" not in content and \
+               "scientific_name" not in content and \
+               "name" not in content:
+                raise ValueError("Dictionary must contain 'species_name', 'species', or 'name' key")
+
+        if isinstance(content, str) and not content.strip():
+            raise ValueError("Content string cannot be empty or whitespace")
+
+        # Validate for special characters
+        def contains_special_characters(text):
+            return any(ord(char) > 127 for char in str(text))
+
+        if isinstance(content, str) and contains_special_characters(content):
+            raise ValueError("Invalid characters in content")
+        species_name = None
+        if isinstance(content, dict):
+            species_name = (content.get("species_name") or
+                           content.get("species") or
+                           content.get("name") or
+                           content.get("common_name") or
+                           content.get("scientific_name"))
+            if species_name and contains_special_characters(species_name):
+                raise BusinessException("Invalid characters in content")
+
         try:
-            species_name = content.get("species_name") or content.get("species")
+            # Initial status update
+            message_bus.publish("status_update", {
+                "message": "Starting to fetch occurrence data...",
+                "state": "running",
+                "progress": 0
+            })
+
             if not species_name:
+                raise BusinessException("Species name is required "
+                                "(provide either 'species_name' or 'species')")
+
+            # Translating species name
+            message_bus.publish("status_update", {
+                "message": f"Translating species name: {species_name}",
+                "state": "running",
+                "progress": 20
+            })
+
+            scientific_name = _self.translate_to_scientific_name_from_api({"name": species_name})
+
+            if ("error" in scientific_name or
+                    "scientific_name" not in scientific_name or
+                    not scientific_name["scientific_name"]):
+                message_bus.publish("status_update", {
+                    "message": f"Could not translate species name: {species_name}",
+                    "state": "error",
+                    "progress": 0
+                })
                 return {
-                    'status': 'error',
-                    'message': 'Missing species name parameter. Please provide either species_name or species.'
+                    "species": species_name,
+                    "occurrence_count": 0,
+                    "occurrences": [],
                 }
+
+            species_name = scientific_name["scientific_name"]
+
+            # Querying database
+            message_bus.publish("status_update", {
+                "message": "Querying database for occurrences...",
+                "state": "running",
+                "progress": 50
+            })
+            country_codes = content.get("country_codes") or content.get("country_code") or content.get("country")
             # Query setup timing
-            if "country_code" in content:
+            if country_codes:
                 # Handle both string and list inputs
                 if isinstance(content["country_code"], str):
                     country_codes = [code.strip() for code in content["country_code"].split(',')]
@@ -751,28 +839,6 @@ class EndangeredSpeciesHandler(BaseHandler):
             else:
                 country_codes = None
                 _self.logger.info("Fetching occurrences for species: %s", species_name)
-
-            scientific_name = _self.translate_to_scientific_name_from_api(
-                {"name": species_name}
-            )
-
-            # Parse the JSON response and check for errors
-            translated_result = json.loads(scientific_name)
-            if ("error" in translated_result or
-                    "scientific_name" not in translated_result or
-                    not translated_result["scientific_name"]):
-                _self.logger.warning(
-                    "Could not translate species name: %s - %s",
-                    species_name,
-                    translated_result["error"],
-                )
-                return {
-                    "species": species_name,
-                    "occurrence_count": 0,
-                    "occurrences": [],
-                }
-
-            species_name = translated_result["scientific_name"]
 
             client = bigquery.Client(
                 project=os.getenv("GOOGLE_CLOUD_PROJECT"),
@@ -811,6 +877,13 @@ class EndangeredSpeciesHandler(BaseHandler):
 
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(query, job_config=job_config)
+
+            message_bus.publish("status_update", {
+                "message": "Processing results...",
+                "state": "running",
+                "progress": 80
+            })
+
             total_occurrences = [
                 {
                     "species": species_name,
@@ -819,32 +892,27 @@ class EndangeredSpeciesHandler(BaseHandler):
                 }
                 for row in query_job
             ]
+
+            # Final success message
+            message_bus.publish("status_update", {
+                "message": f"Found {len(total_occurrences)} occurrences for {species_name}",
+                "state": "complete",
+                "progress": 100
+            })
+
             return {
                 "species": species_name,
                 "occurrence_count": len(total_occurrences),
                 "occurrences": total_occurrences,
             }
 
-        except google.api_core.exceptions.GoogleAPIError as e:
-            _self.logger.error(
-                "BigQuery error: %s",
-                str(e),
-                exc_info=True,
-            )
-            raise
-        except KeyError as e:
-            _self.logger.error(
-                "Missing required field: %s",
-                str(e),
-                exc_info=True,
-            )
-            raise
-        except (TypeError, ValueError) as e:
-            _self.logger.error(
-                "Invalid input: %s",
-                str(e),
-                exc_info=True,
-            )
+        except Exception as e:
+            message_bus.publish("status_update", {
+                "message": f"Error processing request: {str(e)}",
+                "state": "error",
+                "progress": 0
+            })
+            _self.logger.error("Error in get_occurrences: %s", str(e), exc_info=True)
             raise
 
     def get_yearly_occurrences(self, content):
@@ -860,11 +928,16 @@ class EndangeredSpeciesHandler(BaseHandler):
             dict: Yearly occurrence data or error message
         """
         try:
-            if not content.get("species_name"):
-                return {"error": "Species name is required"}
+            species_name = (content.get("species_name") or
+                           content.get("species") or
+                           content.get("name") or
+                           content.get("common_name") or
+                           content.get("scientific_name"))
+            if not species_name:
+                raise BusinessException("Species name is required")
 
             message_bus.publish("status_update", {
-                "message": f"Fetching yearly occurrences for {content['species_name']}...",
+                "message": f"Fetching yearly occurrences for {species_name}...",
                 "state": "running",
                 "progress": 0
             })
@@ -876,20 +949,16 @@ class EndangeredSpeciesHandler(BaseHandler):
                 "progress": 20
             })
 
-            translated = json.loads(
-                self.translate_to_scientific_name_from_api(
-                    {"name": content["species_name"]}
-                )
+            translated = self.translate_to_scientific_name_from_api(
+                    {"name": species_name}
             )
             if "error" in translated or not translated.get("scientific_name"):
                 message_bus.publish("status_update", {
-                    "message": f"Could not find valid scientific name for: {content['species_name']}",
+                    "message": f"Could not find valid scientific name for: {species_name}",
                     "state": "error",
                     "progress": 0
                 })
-                return {
-                    "error": f"Could not find valid scientific name for: {content['species_name']}"
-                }
+                raise BusinessException(f"Could not find valid scientific name for: {species_name}")
 
             # Base query template
             base_query = """
@@ -906,15 +975,19 @@ class EndangeredSpeciesHandler(BaseHandler):
             """
 
             results = {}
-            if content.get("country_codes"):
+            country_codes = content.get("country_codes") or content.get("country_code") or content.get("country") or content.get("countries")
+            self.logger.info("Country codes: %s", country_codes)
+
+            if country_codes:
                 # Process each country
-                for code in content["country_codes"]:
+                for code in country_codes:
                     country_data = self._query_country_occurrences(
                         os.getenv("GOOGLE_CLOUD_PROJECT"),
                         base_query,
                         code,
                         translated["scientific_name"],
                     )
+                    self.logger.info("Country data: %s", country_data)
                     if country_data:
                         results[code] = country_data
             else:
@@ -939,7 +1012,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             if not results:
                 return {
                     "error": f"No occurrence data found for "
-                    f"{content['species_name']} ({translated['scientific_name']})"
+                    f"{species_name} ({translated['scientific_name']})"
                 }
 
             message_bus.publish("status_update", {
@@ -949,7 +1022,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             })
 
             return {
-                "common_name": content["species_name"],
+                "common_name": species_name,
                 "scientific_name": translated["scientific_name"],
                 "yearly_data": results,
                 "type": "temporal",
@@ -995,3 +1068,6 @@ class EndangeredSpeciesHandler(BaseHandler):
 
         query_job = client.query(query, job_config=job_config)
         return [{"year": row.year, "count": row.count} for row in query_job]
+
+class BusinessException(Exception):
+    """Custom exception for business logic errors."""

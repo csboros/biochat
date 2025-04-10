@@ -3,18 +3,24 @@
 import os
 from typing import Optional, List, Dict, Any
 import logging
+import json
 from scipy import stats
 import numpy as np
 import ee
 from google.cloud import bigquery
+try:
+    from google.cloud import secretmanager
+except ImportError:
+    secretmanager = None
 from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
 import streamlit as st
 from app.utils.alpha_shape_utils import AlphaShapeUtils
 from app.tools.message_bus import message_bus
+from ...base_handler import BaseHandler
 
 # pylint: disable=no-member
 # pylint: disable=broad-except
-class EarthEngineHandler:
+class EarthEngineHandler(BaseHandler):
     """Base class for Earth Engine data processing and analysis."""
 
     def __init__(self):
@@ -24,8 +30,32 @@ class EarthEngineHandler:
 
         # Initialize Earth Engine
         try:
-            ee.Initialize()
-        except ee.EEException as e:
+            # Check if running locally via environment variable
+            is_local = os.getenv('LOCAL_DEVELOPMENT') == 'true'
+
+            if not is_local:
+                # Cloud initialization with Secret Manager
+                if secretmanager:
+                    client = secretmanager.SecretManagerServiceClient()
+                    name = (
+                        "projects/***REMOVED***/secrets/"
+                        "EARTH_ENGINE_CREDENTIALS/versions/latest"
+                    )
+                    response = client.access_secret_version(request={"name": name})
+                    credentials_str = response.payload.data.decode("UTF-8")
+                    credentials_dict = json.loads(credentials_str)
+                    credentials = ee.ServiceAccountCredentials(
+                        email=credentials_dict.get('client_email'),
+                        key_data=credentials_str
+                    )
+                    ee.Initialize(credentials, project='***REMOVED***')
+                else:
+                    raise RuntimeError("Secret Manager not available")
+            else:
+                # Local initialization
+                ee.Initialize()
+
+        except Exception as e:
             self.logger.error("Failed to initialize Earth Engine: %s", str(e))
             raise
 
@@ -79,8 +109,28 @@ class EarthEngineHandler:
             LIMIT 10000
             """
 
+
             if isinstance(species_name, dict) and 'species_name' in species_name:
                 species_name = species_name['species_name']
+
+            scientific_name = self.translate_to_scientific_name_from_api({"name": species_name})
+
+            if ("error" in scientific_name or
+                    "scientific_name" not in scientific_name or
+                    not scientific_name["scientific_name"]):
+                message_bus.publish("status_update", {
+                    "message": f"Could not translate species name: {species_name}",
+                    "state": "error",
+                    "progress": 0
+                })
+                return {
+                    "species": species_name,
+                    "occurrence_count": 0,
+                    "occurrences": [],
+                }
+
+            species_name = scientific_name["scientific_name"]
+            self.logger.info(f"Translated species name: {species_name}")
 
             params = [bigquery.ScalarQueryParameter("species_name", "STRING", species_name)]
             job_config = bigquery.QueryJobConfig(query_parameters=params)

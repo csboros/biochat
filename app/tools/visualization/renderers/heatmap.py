@@ -18,7 +18,7 @@ class HeatmapRenderer(BaseChartRenderer):
     """
     @property
     def supported_chart_types(self) -> list[ChartType]:
-        return [ChartType.HEATMAP]
+        return [ChartType.HEATMAP, ChartType.HEAT_MAP]
 
     def render(self, data: Any, parameters: Optional[Dict] = None,
                cache_buster: Optional[str] = None) -> Any:

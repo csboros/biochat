@@ -32,15 +32,23 @@ class SearchTool(Tool):
             FunctionDeclaration(
                 name="google_search",
                 description=(
-                    "Search Google for the given query and return relevant results, "
-                    "try this as last resort before giving up please."
+                    "⚠️ Use this function to search for information about:\n"
+                    "- Species distribution and habitat relationships\n"
+                    "- Environmental correlations\n"
+                    "- Habitat preferences\n\n"
+                    "IMPORTANT: ALWAYS use the 'query' parameter name.\n"
+                    "✅ CORRECT: google_search(query='How does orangutan distribution relate to forest cover?')\n"
+                    "❌ INCORRECT: google_search('How does orangutan distribution relate to forest cover?')\n\n"
+                    "More examples:\n"
+                    "- google_search(query='What is the relationship between tigers and forest density?')\n"
+                    "- google_search(query='Show habitat preferences for gorillas')"
                 ),
                 parameters={
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "query to search for",
+                            "description": "The search query to execute. Must be provided as query='your search text'"
                         }
                     },
                     "required": ["query"]

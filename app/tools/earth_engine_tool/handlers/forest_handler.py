@@ -68,11 +68,7 @@ class ForestHandlerEE(EarthEngineHandler):
             })
 
             # Get species observations from BigQuery
-            message_bus.publish("status_update", {
-                "message": "📍 Fetching species observations...",
-                "state": "running",
-                "progress": 10
-            })
+            message_bus.publish_fetching_observations(10)
             observations = self.filter_marine_observations(
                 self.get_species_observations(species_name, min_observations))
 
@@ -129,11 +125,8 @@ class ForestHandlerEE(EarthEngineHandler):
             correlation_data = self.calculate_forest_correlations(all_results, scale)
 
             # Create prompt and get analysis from LLM
-            message_bus.publish("status_update", {
-                "message": "🤖 Generating expert analysis...",
-                "state": "running",
-                "progress": 75
-            })
+            message_bus.publish_generating_expert_analysis(75)
+
             analysis = self.send_to_llm(
                 self.create_analysis_prompt(species_name, correlation_data, filtering_stats)
             )
@@ -144,13 +137,7 @@ class ForestHandlerEE(EarthEngineHandler):
                 "state": "running",
                 "progress": 90
             })
-
-            message_bus.publish("status_update", {
-                "message": "✅ Analysis complete!",
-                "state": "complete",
-                "progress": 100,
-                "expanded": False
-            })
+            message_bus.publish_analysis_complete()
 
             # Return with filtering statistics included
             return {
@@ -378,9 +365,7 @@ class ForestHandlerEE(EarthEngineHandler):
                 gain_mask = 0
 
             # Add debug logging
-            self.logger.info("Sample loss year: %s", lossyear)
             actual_loss_year = 2000 + lossyear if lossyear > 0 else 0
-            self.logger.info("Actual loss year being stored: %s", actual_loss_year)
 
             # Was the forest lost before or after the observation?
             if actual_loss_year == 0 or year < actual_loss_year:

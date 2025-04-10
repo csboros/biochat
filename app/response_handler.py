@@ -2,8 +2,14 @@
 
 import logging
 import time
+import json
+from typing import Dict, Any
+from vertexai.preview.generative_models import (
+    Part
+)
 import streamlit as st
 from app.tools.visualization.chart_types import ChartType
+
 
 # pylint: disable=no-member
 # pylint: disable=broad-except
@@ -13,10 +19,18 @@ class ResponseHandler:
     def __init__(self):
         """Initialize the response handler."""
         self.logger = logging.getLogger("BioChat.ResponseHandler")
-
+        self.function_handler = None
     def add_message_to_history(self, role, content):
         """Add a message to the session state history."""
         st.session_state.messages.append({"role": role, "content": content})
+
+    def process_translation(self, data_response, parameters):
+        """Processes and visualizes GeoJSON data for protected areas."""
+        self.logger.debug(data_response)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": {"text": data_response["scientific_name"]}
+        })
 
     def process_geojson_data(self, data_response, parameters):
         """Processes and visualizes GeoJSON data for protected areas."""
@@ -389,6 +403,40 @@ class ResponseHandler:
                 "content": {"text": f"Error processing species shared habitat data: {str(e)}"}
             })
 
+    def process_species_translation(self, data_response, parameters):
+        """Process and display species information."""
+        try:
+            # Parse the JSON string if it's a string
+            if isinstance(data_response, str):
+                data = json.loads(data_response)
+            else:
+                data = data_response
+
+            # Extract the scientific name or error message
+            if "scientific_name" in data:
+                message = data["scientific_name"]
+            elif "error" in data:
+                message = data["error"]
+            else:
+                message = "Could not find scientific name"
+
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": message}
+            })
+        except json.JSONDecodeError:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": {"text": str(data_response)}
+            })
+
+    def process_species_info(self, data_response, parameters):
+        """Process and display species information."""
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": {"text": data_response}
+        })
+
     def process_species_correlation_analysis(self, data_response, parameters):
         """Process and display species correlation analysis results."""
         try:
@@ -535,3 +583,240 @@ class ResponseHandler:
                 "role": "assistant",
                 "content": {"text": f"Error processing climate analysis data: {str(e)}"}
             })
+
+    def handle_function_call(self, call):
+        """
+        Helper method to handle different function call types.
+
+        Args:
+            call (dict): The function call details
+            function_handler (FunctionHandler): The function handler instance
+            tools (dict): Dictionary containing correlation_tool and species_tool
+        """
+        try:
+            handlers = {
+                'help': lambda c: self.handle_help_command({
+                    'type': 'category' if c.get('params', {}).get('category') else 'general',
+                'category': c.get('params', {}).get('category'),
+                'tool': c.get('params', {}).get('tool'),
+                'function': c.get('params', {}).get('function')
+            }),
+            'get_yearly_occurrences': lambda c: (
+                self.process_yearly_observations(
+                    c['response'], c['params']
+                )
+            ),
+            'get_occurrences': lambda c: self.process_occurrences_data(c['response'], c['params']),
+            'get_species_occurrences_in_protected_area': lambda c: (
+                self.process_occurrences_data(c['response'], c['params'])
+            ),
+            'get_protected_areas_geojson': lambda c: (
+                self.process_geojson_data(c['response'], c['params'])
+            ),
+            'get_endangered_species_in_protected_area': lambda c: (
+                self.process_json_data(c['response'], c['params'])
+            ),
+            'endangered_species_hci_correlation': lambda c: (
+                self.process_endangered_species_hci_correlation(
+                    c['response'], c['params']
+                )
+            ),
+            'get_species_images': lambda c: (
+                self.process_species_images(c['response'], c['params'])
+            ),
+            'read_terrestrial_hci': lambda c: (
+                self.process_indicator_data(c['response'], c['params'])
+            ),
+            'read_population_density': lambda c: (
+                self.process_indicator_data(c['response'], c['params'])
+            ),
+            'endangered_species_for_country': lambda c: (
+                self.process_endangered_species(c['response'], c['params'])
+            ),
+            'endangered_species_for_countries': lambda c: (
+                self.process_endangered_species(c['response'], c['params'])
+            ),
+            'endangered_families_for_order': lambda c: (
+                self.process_endangered_species(c['response'], c['params'])
+            ),
+            'endangered_species_for_family': lambda c: (
+                self.process_endangered_species(c['response'], c['params'])
+            ),
+            'get_endangered_species_by_country': lambda c: (
+                self.process_endangered_species_by_country(
+                    c['response'], c['params']
+                )
+            ),
+            'get_species_hci_correlation': lambda c: (
+                self.process_species_hci_correlation(
+                    c['response'], c['params']
+                )
+            ),
+            'get_species_hci_correlation_by_status': lambda c: (
+                self.process_species_hci_correlation_by_status(
+                    c['response'], c['params']
+                )
+            ),
+            'get_species_shared_habitat': lambda c: (
+                self.process_species_shared_habitat(
+                    c['response'], c['params']
+                )
+            ),
+            'analyze_species_correlations': lambda c: (
+                self.process_species_correlation_analysis(
+                    c['response'], c['params']
+                )
+            ),
+            'calculate_species_forest_correlation': lambda c: (
+                self.process_correlation_result(
+                    c['response'], c['params'], ChartType.FOREST_CORRELATION
+                )
+            ),
+            'calculate_species_humanmod_correlation': lambda c: (
+                self.process_correlation_result(
+                    c['response'], c['params'], ChartType.HUMANMOD_CORRELATION
+                )
+            ),
+            'analyze_habitat_distribution': lambda c: (
+                self.process_habitat_analysis(c['response'], c['params'])
+            ),
+            'analyze_topography': lambda c: (
+                self.process_topography_analysis(c['response'], c['params'])
+            ),
+            'analyze_climate': lambda c: (
+                    self.process_climate_analysis(c['response'], c['params'])
+                )
+            }
+
+            if call['name'] in handlers:
+                handlers[call['name']](call)
+                return None
+
+            # Handle simple text response functions
+            simple_text_functions = (
+                'number_of_endangered_species_by_conservation_status',
+                'endangered_orders_for_class',
+                'endangered_classes_for_kingdom',
+                'translate_to_scientific_name'
+            )
+            if call['name'] in simple_text_functions:
+                self.add_message_to_history(
+                    "assistant", {"text": call['response']}
+                )
+                return None
+
+            return Part.from_function_response(
+                name=call['name'],
+                response={"content": {"text": call['response']}},
+            )
+        except Exception as e:
+            self.logger.error("Error in function call handling: %s", str(e))
+            self.add_message_to_history(
+                "assistant",
+                {"text": f"Error processing request: {str(e)}"}
+            )
+            return None
+
+
+    def handle_help_command(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle help-related commands and queries.
+        """
+        try:
+            help_type = arguments.get('type', 'general')
+            result = {"success": False, "error": "Invalid request"}
+
+            if help_type == 'general':
+                overview = self.get_system_overview()
+                self.add_message_to_history("assistant", {"text": overview})
+                result = {"success": True, "data": {"text": overview}}
+            elif help_type in ['category', 'tool', 'function']:
+                # Validate required parameters
+                if help_type == 'function' and (not arguments.get('tool') or not arguments.get('function')):
+                    result = {"success": False, "error": "Both tool and function names are required"}
+                elif help_type in ['category', 'tool'] and not arguments.get(help_type):
+                    result = {"success": False, "error": f"{help_type.capitalize()} name is required"}
+                else:
+                    # Get help info from function handler
+                    help_info = self.function_handler.help_handler.handle_help_command(arguments)
+                    if help_info.get('success'):
+                        self.add_message_to_history("assistant", {"text": help_info['data']['text']})
+                    result = help_info
+
+            return result
+
+        except Exception as e:
+            self.logger.error("Error handling help command: %s", str(e), exc_info=True)
+            error_message = f"Error processing help request: {str(e)}"
+            self.add_message_to_history("assistant", {"text": error_message})
+            return {"success": False, "error": error_message}
+
+    def get_system_overview(self) -> str:
+        """
+        Get a comprehensive overview of the system's capabilities.
+
+        Returns:
+            str: A formatted string describing the system's capabilities
+        """
+        overview = """# Biodiversity Chat System Overview
+
+This system provides comprehensive tools for analyzing and understanding biodiversity data. Here are the main capabilities:
+
+## 1. Species Analysis
+- Search and retrieve information about species
+- Get species occurrence data
+- Analyze species distribution patterns
+- View species images
+- Track yearly observation trends
+
+## 2. Habitat Analysis
+- Analyze habitat distribution
+- Evaluate habitat connectivity
+- Study habitat fragmentation
+- Assess forest dependency
+- Analyze topography and climate
+
+## 3. Conservation Status
+- Get endangered species information
+- Analyze conservation status by country
+- Track species by conservation category
+- Monitor protected areas
+
+## 4. Human Impact Analysis
+- Calculate Human Coexistence Index (HCI)
+- Analyze species-HCI correlations
+- Study human modification effects
+- Evaluate population density impacts
+
+## 5. Geographic Analysis
+- Country-specific analysis
+- Protected area analysis
+- Multi-country comparisons
+- Geographic distribution mapping
+
+## 6. Data Visualization
+- Interactive maps
+- Statistical charts
+- Correlation plots
+- Distribution visualizations
+- Time series analysis
+
+## Example Queries
+1. "Show me endangered species in Kenya"
+2. "What is the habitat distribution for African elephants?"
+3. "Analyze the correlation between human activity and species presence"
+4. "Show me species distribution in Serengeti National Park"
+5. "What is the forest dependency of gorillas?"
+
+For more specific information about any of these capabilities, you can ask:
+- "Help me with species analysis"
+- "Tell me about habitat analysis tools"
+- "What conservation status functions are available?"
+- "Show me human impact analysis capabilities"
+- "What geographic analysis can you do?"
+- "What visualization options are available?"
+
+Would you like to know more about any specific aspect of the system?
+"""
+        return overview
+

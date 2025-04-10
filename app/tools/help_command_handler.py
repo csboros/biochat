@@ -110,10 +110,12 @@ class HelpCommandHandler:
                 tool_name = command.get('tool')
                 function_name = command.get('function')
                 return self._handle_function_help(tool_name, function_name)
+
+            available_commands = ['general', 'category', 'tool', 'function']
             return {
                 'success': False,
                 'error': f"Unknown help command type: {command_type}",
-                'available_commands': ['general', 'category', 'tool', 'function']
+                'available_commands': available_commands
             }
 
         except Exception as e:

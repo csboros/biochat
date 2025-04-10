@@ -33,4 +33,30 @@ class MessageBus:
             for callback in st.session_state.subscribers[event_type]:
                 callback(data)
 
+
+    def publish_analysis_complete(self):
+        """Publish an event when analysis is complete."""
+        self.publish("status_update", {
+                "message": "✅ Analysis complete!",
+                "state": "complete",
+                "progress": 100,
+                "expanded": False
+            })
+
+    def publish_generating_expert_analysis(self, progress: int):
+        """Publish an event when analysis is complete."""
+        self.publish("status_update", {
+                "message": "🤖 Generating expert analysis...",
+                "state": "running",
+                "progress": progress
+        })
+    def publish_fetching_observations(self, progress: int):
+        """Publish an event when fetching observations."""
+        self.publish("status_update", {
+                "message": "📍 Fetching species observations...",
+                "state": "running",
+                "progress": progress
+        })
+
 message_bus = MessageBus()
+

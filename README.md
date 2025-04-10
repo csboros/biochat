@@ -1,4 +1,4 @@
-## Overview of the Application 
+## Overview of the Application
 
 This is a Streamlit-based web application that provides an interactive chat interface for exploring biodiversity data, with a particular focus on endangered species. It uses Google's Vertex AI Gemini model for natural language processing and integrates with various biodiversity data sources.
 
@@ -77,7 +77,7 @@ This application requires several API keys and configuration values to be set in
 1. **Google Search API Configuration**
    - `GOOGLE_API_KEY`: Your Google API key for accessing Google Custom Search
    - `GOOGLE_CSE_ID`: Your Google Custom Search Engine ID
-   
+
 ### Local Development
 
 1. Create a `.streamlit/secrets.toml` file in your project root:
@@ -95,72 +95,72 @@ This application requires several API keys and configuration values to be set in
 1. VertexAI API
 2. BigQuery API
 (Additionally, if you deploy on google cloud)
-3. Secret Manager API 
-4. Cloud Build API 
-5. Cloud Run Admin API 
+3. Secret Manager API
+4. Cloud Build API
+5. Cloud Run Admin API
 
-### Running the application locally 
+### Running the application locally
 ```bash
-streamlit run app.py 
+streamlit run app.py
 ```
-you have to be logged in to google cloud and have to select the relevant cloud project 
+you have to be logged in to google cloud and have to select the relevant cloud project
 
 ### Running the application locally in a Docker container
 
-1. add your credentials.json key file from your service principal to .streamlit/credentials.json  
+1. add your credentials.json key file from your service principal to .streamlit/credentials.json
 2. build the docker image using Dockerfile_local, it copies the credentials into the docker image
 ```bash
       docker build -f Dockerfile_local -t biochat .
 ```
-3. Run the application: 
+3. Run the application:
 ```bash
       docker run  -p 8888:8080 biochat
 ```
-4. Access the application under http://localhost:8888 
+4. Access the application under http://localhost:8888
 
 
 ## Data preparations
-The application access endangered species data and GBIF occurance data from Google BigQuery. 
-Since billing for BigQuery is based on the bytes the query scans and the GBIF occurance data is about 1.5 TB big, we copy over part of the occurance data, data only for endangered species and only for mammals. 
+The application access endangered species data and GBIF occurance data from Google BigQuery.
+Since billing for BigQuery is based on the bytes the query scans and the GBIF occurance data is about 1.5 TB big, we copy over part of the occurance data, data only for endangered species and only for mammals.
 
-1. Create a schema 'biodiversity' under your Google project in BigQuery. 
+1. Create a schema 'biodiversity' under your Google project in BigQuery.
 2. run the script scripts/convert.py and scripts/convert_dist.py to convert the two files taxon.txt and distribution.txt to the corresponding csv files (*)
 3. import the two csv files to the biodiversity schema distribution.csv -> table conservation_status, taxon.csv -> table endangered_species
-4. Run the following query to transfer occurances from GBIF occurance data to the biodiversity schema: 
+4. Run the following query to transfer occurances from GBIF occurance data to the biodiversity schema:
 
 ```bash
 CREATE OR REPLACE TABLE `[your_project_id].biodiversity.occurances_endangered_species` AS
-SELECT  species, decimallongitude, decimallatitude, countrycode, individualcount, eventdate  
-FROM `bigquery-public-data.gbif.occurrences` 
-WHERE decimallatitude is not null 
-  AND decimallongitude is not null 
+SELECT  species, decimallongitude, decimallatitude, countrycode, individualcount, eventdate
+FROM `bigquery-public-data.gbif.occurrences`
+WHERE decimallatitude is not null
+  AND decimallongitude is not null
   AND species IN (
-    SELECT CONCAT(genus_name, ' ', species_name) as full_name 
-    FROM `[your_project_id].biodiversity.endangered_species` 
-    WHERE species_name is not null 
+    SELECT CONCAT(genus_name, ' ', species_name) as full_name
+    FROM `[your_project_id].biodiversity.endangered_species`
+    WHERE species_name is not null
   )
 ```
-5. Create a column conservation_status in table endangered_species 
-6. Runthe following update to update the newly created column: 
+5. Create a column conservation_status in table endangered_species
+6. Runthe following update to update the newly created column:
 ```bash
 UPDATE `[your_project_id].biodiversity.endangered_species` es
-SET conservation_status = cs.Scope 
+SET conservation_status = cs.Scope
 FROM `[your_project_id].biodiversity.conservation_status` cs
 WHERE es.conservation_status = CAST(cs.id AS STRING);
 ```
- 
+
 (*) IUCN (2022). The IUCN Red List of Threatened Species. Version 2022-2. https://www.iucnredlist.org. Downloaded on 2023-05-09. https://doi.org/10.15468/0qnb58 accessed via GBIF.org on 2023-11-17. accessed via GBIF.org on 2024-12-28.
 
 ## Deploying and running the application in Production on Google Cloud Run
 
-#### Build docker image 
+#### Build docker image
 ```bash
 export PROJECT_ID="[your-project-id]"
 docker build --platform linux/amd64 -t gcr.io/$PROJECT_ID/biochat-app:latest .
 ```
 #### Push docker image to Google repository
 ```bash
-docker push  gcr.io/$PROJECT_ID/biochat-app:latest  
+docker push  gcr.io/$PROJECT_ID/biochat-app:latest
 ```
 
 #### Create the secrets
@@ -168,9 +168,10 @@ docker push  gcr.io/$PROJECT_ID/biochat-app:latest
 gcloud secrets create GOOGLE_CLOUD_PROJECT --data-file=- <<< "[your-project-id]"
 gcloud secrets create GOOGLE_API_KEY --data-file=- <<< "[your-google-api-key]"
 gcloud secrets create GOOGLE_CSE_ID --data-file=- <<< "[your-cse-id]"
+gcloud secrets create EARTH_ENGINE_CREDENTIALS --data-file=- <<< "[your-earthengine-token]"
 ```
 
-#### Grant Secret Manager access to your service principal 
+#### Grant Secret Manager access to your service principal
 ```bash
 export SERVICE_ACCOUNT="[your-service-principal]"
 
@@ -186,13 +187,17 @@ gcloud secrets add-iam-policy-binding GOOGLE_CSE_ID \
 gcloud secrets add-iam-policy-binding GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
     --role="roles/secretmanager.secretAccessor"
+
+gcloud secrets add-iam-policy-binding EARTH_ENGINE_CREDENTIALS \
+    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --role="roles/secretmanager.secretAccessor"
 ```
 
 #### Grant Vertex AI User role to the service principal
 ```bash
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
-    --role="roles/aiplatform.user"   
+    --role="roles/aiplatform.user"
 ```
 #### Grant BigQuery Job User role (for creating jobs)
 ```bash
@@ -207,7 +212,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --role="roles/bigquery.dataViewer"
 ```
 
-#### Deploy application and reference secrets from Google Cloud Run 
+#### Deploy application and reference secrets from Google Cloud Run
 ```bash
 gcloud run deploy biochat-app \
   --image gcr.io/$PROJECT_ID/biochat-app:latest \
@@ -216,5 +221,5 @@ gcloud run deploy biochat-app \
   --platform managed \
   --region us-central1 \
   --service-account="$SERVICE_ACCOUNT" \
-  --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,GOOGLE_CSE_ID=GOOGLE_CSE_ID:latest,GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest"
+  --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,GOOGLE_CSE_ID=GOOGLE_CSE_ID:latest,GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest,EARTH_ENGINE_CREDENTIALS=EARTH_ENGINE_CREDENTIALS:latest"
 ```

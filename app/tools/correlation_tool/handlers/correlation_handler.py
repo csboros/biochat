@@ -499,11 +499,8 @@ class CorrelationHandler(BaseHandler):
             """
             prompt += f"\n{correlation_data['correlations']}"
 
-            message_bus.publish("status_update", {
-                "message": "Generating AI analysis...",
-                "state": "running",
-                "progress": 70
-            })
+            message_bus.publish_generating_expert_analysis(75)
+
             analysis = self.send_to_llm(prompt)
 
             message_bus.publish("status_update", {

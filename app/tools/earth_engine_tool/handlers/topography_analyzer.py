@@ -43,11 +43,7 @@ class TopographyAnalyzer(EarthEngineHandler):
             })
 
             # Get species observations from BigQuery
-            message_bus.publish("status_update", {
-                "message": "📍 Fetching species observations...",
-                "state": "running",
-                "progress": 10
-            })
+            message_bus.publish_fetching_observations(10)
             self.check_cancellation()
             observations = self.filter_marine_observations(
                 self.get_species_observations(species_name, min_observations))
@@ -130,21 +126,13 @@ class TopographyAnalyzer(EarthEngineHandler):
             )
 
             # Get analysis from Gemini
-            message_bus.publish("status_update", {
-                "message": "🤖 Generating expert analysis...",
-                "state": "running",
-                "progress": 90
-            })
+            message_bus.publish_generating_expert_analysis(90)
+
             analysis = self.send_to_llm(
                 self.create_analysis_prompt(species_name, results)
             )
 
-            message_bus.publish("status_update", {
-                "message": "✅ Analysis complete!",
-                "state": "complete",
-                "progress": 100,
-                "expanded": False
-            })
+            message_bus.publish_analysis_complete()
 
             return {
                 'success': True,

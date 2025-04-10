@@ -62,11 +62,16 @@ class BaseHandler:
         self.logger = logging.getLogger(f"BioChat.{self.__class__.__name__}")
         self.client = bigquery.Client(project=self.project_id)
 
-    def translate_to_scientific_name_from_api(self, content: Dict) -> str:
+    def translate_to_scientific_name_from_api(self, content: Dict) -> Dict:
         """Translates common species name to scientific name using EBI Taxonomy API."""
-        species_name = content.get("name", "").strip()
+        species_name = (
+            content.get("name", "") or
+            content.get("species_name", "") or
+            content.get("common_name", "")
+        ).strip()
+
         if not species_name:
-            return json.dumps({"error": "No species name provided"})
+            return {"error": "No species name provided"}
 
         try:
             self.logger.info("Fetching scientific name for species: %s", species_name)
@@ -85,16 +90,16 @@ class BaseHandler:
                         species_name,
                         scientific_name,
                     )
-                    return json.dumps({"scientific_name": scientific_name})
+                    return {"scientific_name": scientific_name}
 
-            return json.dumps({"error": "Name could not be translated"})
+            return {"error": "Name could not be translated"}
 
         except requests.Timeout:
             self.logger.error("Request timeout for species: %s", species_name)
-            return json.dumps({"error": "Request timed out"})
+            return {"error": "Request timed out"}
         except Exception as e: # pylint: disable=broad-except
             self.logger.error("Error translating species name: %s", str(e))
-            return json.dumps({"error": "An error occurred"})
+            return {"error": "An error occurred"}
 
     def translate_to_common_name_from_api(self, content: Dict) -> str:
         """Translates scientific species name to common name using EBI Taxonomy API."""

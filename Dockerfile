@@ -1,5 +1,7 @@
+
+FROM --platform=linux/amd64 python:3.9-slim
 # Use the official Streamlit image
-FROM python:3.12-slim
+#FROM python:3.12-slim
 
 # Set the working directory
 WORKDIR /app
@@ -12,7 +14,6 @@ RUN pip install -r requirements.txt
 
 # Copy the rest of the application code
 COPY app app/.
-COPY __init__.py .
 
 # Expose the port where Streamlit runs
 EXPOSE 8080
