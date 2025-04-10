@@ -714,7 +714,7 @@ class CorrelationHandler(BaseHandler):
 
         query = f"""
             SELECT {property_name}, decimallongitude, decimallatitude
-            FROM `***REMOVED***.biodiversity.hci`
+            FROM `{st.secrets['GOOGLE_CLOUD_PROJECT']}.biodiversity.hci`
             WHERE decimallatitude is not null
             AND decimallongitude is not null
             AND {property_name} is not null

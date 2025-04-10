@@ -38,7 +38,7 @@ class EarthEngineHandler(BaseHandler):
                 if secretmanager:
                     client = secretmanager.SecretManagerServiceClient()
                     name = (
-                        "projects/***REMOVED***/secrets/"
+                        f"projects/{st.secrets['GOOGLE_CLOUD_PROJECT']}/secrets/"
                         "EARTH_ENGINE_CREDENTIALS/versions/latest"
                     )
                     response = client.access_secret_version(request={"name": name})
@@ -48,7 +48,7 @@ class EarthEngineHandler(BaseHandler):
                         email=credentials_dict.get('client_email'),
                         key_data=credentials_str
                     )
-                    ee.Initialize(credentials, project='***REMOVED***')
+                    ee.Initialize(credentials, project=st.secrets['GOOGLE_CLOUD_PROJECT'])
                 else:
                     raise RuntimeError("Secret Manager not available")
             else:
