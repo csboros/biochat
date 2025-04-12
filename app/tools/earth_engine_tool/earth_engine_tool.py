@@ -113,11 +113,6 @@ class EarthEngineTool(Tool):
                         "species_name": {
                             "type": "string",
                             "description": "Common or scientific name of the species"
-                        },
-                        "visualize": {
-                            "type": "boolean",
-                            "description": "Whether to generate visualizations (map and charts).",
-                            "default": True
                         }
                     },
                     "required": ["species_name"]
@@ -138,16 +133,6 @@ class EarthEngineTool(Tool):
                         "species_name": {
                             "type": "string",
                             "description": "Common or scientific name of the species"
-                        },
-                        "min_observations": {
-                            "type": "integer",
-                            "description": "Minimum number of observations required",
-                            "default": 10
-                        },
-                        "scale": {
-                            "type": "integer",
-                            "description": "Resolution in meters for Earth Engine analysis",
-                            "default": 30
                         }
                     },
                     "required": ["species_name"]

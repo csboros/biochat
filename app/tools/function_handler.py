@@ -158,11 +158,38 @@ class FunctionHandler:
 
         all_declarations.extend([help_declaration, classify_category_declaration])
 
-        # Collect declarations from each tool
-        all_declarations.extend(self.species_tool.get_function_declarations())
-        all_declarations.extend(self.search_tool.get_function_declarations())
-        all_declarations.extend(self.correlation_tool.get_function_declarations())
-        all_declarations.extend(self.earth_engine_tool.get_function_declarations())
+        # Collect declarations from each tool - with null checks
+        if self.species_tool is not None:
+            try:
+                all_declarations.extend(self.species_tool.get_function_declarations())
+            except Exception as e:
+                self.logger.error("Error getting species tool declarations: %s", str(e))
+        else:
+            self.logger.warning("Species tool is None, skipping its declarations")
+
+        if self.search_tool is not None:
+            try:
+                all_declarations.extend(self.search_tool.get_function_declarations())
+            except Exception as e:
+                self.logger.error("Error getting search tool declarations: %s", str(e))
+        else:
+            self.logger.warning("Search tool is None, skipping its declarations")
+
+        if self.correlation_tool is not None:
+            try:
+                all_declarations.extend(self.correlation_tool.get_function_declarations())
+            except Exception as e:
+                self.logger.error("Error getting correlation tool declarations: %s", str(e))
+        else:
+            self.logger.warning("Correlation tool is None, skipping its declarations")
+
+        if self.earth_engine_tool is not None:
+            try:
+                all_declarations.extend(self.earth_engine_tool.get_function_declarations())
+            except Exception as e:
+                self.logger.error("Error getting earth engine tool declarations: %s", str(e))
+        else:
+            self.logger.warning("Earth engine tool is None, skipping its declarations")
 
         return all_declarations
 
@@ -178,11 +205,30 @@ class FunctionHandler:
             "classify_help_category": self.classify_help_category,
         }
 
-        # Collect mappings from each tool
-        all_mappings.update(self.species_tool.get_function_mappings())
-        all_mappings.update(self.search_tool.get_function_mappings())
-        all_mappings.update(self.correlation_tool.get_function_mappings())
-        all_mappings.update(self.earth_engine_tool.get_function_mappings())
+        # Collect mappings from each tool - with null checks
+        if self.species_tool is not None:
+            try:
+                all_mappings.update(self.species_tool.get_function_mappings())
+            except Exception as e:
+                self.logger.error("Error getting species tool mappings: %s", str(e))
+
+        if self.search_tool is not None:
+            try:
+                all_mappings.update(self.search_tool.get_function_mappings())
+            except Exception as e:
+                self.logger.error("Error getting search tool mappings: %s", str(e))
+
+        if self.correlation_tool is not None:
+            try:
+                all_mappings.update(self.correlation_tool.get_function_mappings())
+            except Exception as e:
+                self.logger.error("Error getting correlation tool mappings: %s", str(e))
+
+        if self.earth_engine_tool is not None:
+            try:
+                all_mappings.update(self.earth_engine_tool.get_function_mappings())
+            except Exception as e:
+                self.logger.error("Error getting earth engine tool mappings: %s", str(e))
 
         return all_mappings
 

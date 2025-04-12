@@ -590,8 +590,6 @@ class ResponseHandler:
 
         Args:
             call (dict): The function call details
-            function_handler (FunctionHandler): The function handler instance
-            tools (dict): Dictionary containing correlation_tool and species_tool
         """
         try:
             handlers = {
@@ -692,25 +690,74 @@ class ResponseHandler:
                 handlers[call['name']](call)
                 return None
 
+            # Functions that need to return results to Gemini
+            chain_functions = (
+                'translate_to_scientific_name',
+                'google_search',
+                'get_species_info'  # Add get_species_info to chain functions
+            )
+            print(call['name'])
+            print(call['response'])
+            if call['name'] in chain_functions:
+                # Prepare response for Gemini based on type
+                if isinstance(call['response'], list):
+                    # Convert list to dictionary for Gemini
+                    return Part.from_function_response(
+                        name=call['name'],
+                        response={"results": call['response']},
+                    )
+                elif isinstance(call['response'], str):
+                    # Wrap string in dictionary
+                    return Part.from_function_response(
+                        name=call['name'],
+                        response={"result": call['response']},
+                    )
+                else:
+                    # Use response as is if it's already a dictionary
+                    return Part.from_function_response(
+                        name=call['name'],
+                        response=call['response'],
+                    )
+
             # Handle simple text response functions
             simple_text_functions = (
-                'number_of_endangered_species_by_conservation_status',
+                'endangered_species_by_conservation_status',
                 'endangered_orders_for_class',
-                'endangered_classes_for_kingdom',
-                'translate_to_scientific_name'
+                'endangered_classes_for_kingdom'
             )
+
             if call['name'] in simple_text_functions:
-                self.add_message_to_history(
-                    "assistant", {"text": call['response']}
-                )
+                if isinstance(call['response'], str):
+                    self.add_message_to_history(
+                        "assistant", {"text": call['response']}
+                    )
+                else:
+                    self.add_message_to_history(
+                        "assistant", {"text": str(call['response'])}
+                    )
                 return None
 
-            return Part.from_function_response(
-                name=call['name'],
-                response={"content": {"text": call['response']}},
-            )
+            # Default handling for other functions
+            if isinstance(call['response'], list):
+                # Convert list to dictionary
+                return Part.from_function_response(
+                    name=call['name'],
+                    response={"results": call['response']},
+                )
+            elif isinstance(call['response'], str):
+                # Wrap string in dictionary
+                return Part.from_function_response(
+                    name=call['name'],
+                    response={"result": call['response']},
+                )
+            else:
+                # Use response as is if it's already a dictionary
+                return Part.from_function_response(
+                    name=call['name'],
+                    response=call['response'],
+                )
         except Exception as e:
-            self.logger.error("Error in function call handling: %s", str(e))
+            self.logger.error("Error in function call handling: %s", str(e), exc_info=True)
             self.add_message_to_history(
                 "assistant",
                 {"text": f"Error processing request: {str(e)}"}

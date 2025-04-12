@@ -169,6 +169,7 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="get_endangered_species_by_country",
                 description=(
+                    "Show endangered species locations in a country."
                     "⚠️ MUST USE THIS FUNCTION for ANY of these cases:\n"
                     "1. Questions using words: 'locations', 'where', 'show on map', 'display'\n"
                     "2. Questions about WHERE endangered species are found\n"
@@ -390,7 +391,7 @@ class SpeciesTool(Tool):
                 }
             ),
             FunctionDeclaration(
-                name="number_of_endangered_species_by_conservation_status",
+                name="endangered_species_by_conservation_status",
                 description=(
                     "Get number of endangered species for different conservational "
                     "status for a given country code or the whole world if country "
@@ -433,9 +434,9 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="get_occurrences",
                 description=(
-                    "⚠️ IMPORTANT: This function is for MAP VISUALIZATION of species "
+                    "This function is for MAP VISUALIZATION of species "
                     "distribution. It returns coordinates and data needed to display "
-                    "species locations on a map. DO NOT use this for text-based answers "
+                    "species locations on a map. ⚠️ IMPORTANT: DO NOT use this for text-based answers "
                     "about where species live. Use this function when you need to SHOW "
                     "the distribution on a map.\n\n"
                     "Examples that should use this function:\n"
@@ -581,8 +582,8 @@ class SpeciesTool(Tool):
                 self.endangered_handler.endangered_species_for_country,
             "endangered_species_for_countries":
                 self.endangered_handler.endangered_species_for_countries,
-            "number_of_endangered_species_by_conservation_status":
-                self.endangered_handler.number_of_endangered_species_by_conservation_status,
+            "endangered_species_by_conservation_status":
+                self.endangered_handler.endangered_species_by_conservation_status,
             "endangered_species_hci_correlation":
                 self.endangered_handler.endangered_species_hci_correlation,
             "get_occurrences": self.endangered_handler.get_occurrences,

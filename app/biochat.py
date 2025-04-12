@@ -101,6 +101,13 @@ Key definitions and concepts:
        - Use get_occurrences for location data
        - Use get_yearly_occurrences for temporal trends
 
+    10. When processing google_search results:
+        - ALWAYS extract and summarize the relevant information from the search results
+        - NEVER tell the user to review the search results themselves
+        - Provide a comprehensive answer based on the search results
+        - If the search results contain a list (like countries, species, etc.), format it as a bulleted list
+        - If the search results are incomplete, acknowledge this and provide what information is available
+
     Remember: Always use the appropriate function based on whether the query is about a single country or multiple countries.
 
     IMPORTANT: You must use the provided functions for any queries about species, countries, or biodiversity data.
@@ -246,7 +253,7 @@ Key definitions and concepts:
             self.response_handler = ResponseHandler()
 
             # Initialize the function selector
-#            self.function_selector = FunctionSelector(self.func_handler)
+            self.function_selector = FunctionSelector(self.func_handler)
 
         except (google_exceptions.ResourceExhausted, google_exceptions.TooManyRequests) as e:
             self.logger.error("API quota exceeded: %s", str(e), exc_info=True)
@@ -288,18 +295,18 @@ Key definitions and concepts:
             self.display_message_history()
 
             # Handle function selector in the sidebar
-#            function_result = self.setup_sidebar_function_selector()
+            function_result = self.setup_sidebar_function_selector()
 
-            # Process the assistant's response in the main content area
-            # if function_result:
-            #     # Add user message to history BEFORE processing
-            #     self.add_message_to_history("user", {"text": f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}"})
+            # # Process the assistant's response in the main content area
+            if function_result:
+                # Add user message to history BEFORE processing
+                self.add_message_to_history("user", {"text": f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}"})
 
-            #     # Process the assistant's response
-            #     self.process_assistant_response(f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}")
+                # Process the assistant's response
+                self.process_assistant_response(f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}")
 
-            #     # Display message history
-            #     self.display_message_history()
+                # Display message history
+                self.display_message_history()
 
         except ResponseValidationError as e:
             # Handle response validation error
@@ -378,6 +385,14 @@ Key definitions and concepts:
                     function_name = result["function_name"]
                     parameters = result["parameters"]
                     function_details = result["function_details"]
+
+                    # Get the description and extract only the first sentence
+                    description = function_details.get("description", "")
+                    first_sentence = description.split('.')[0] + '.' if description else ""
+
+                    # Display the first sentence of the description
+                    st.write(f"**Description**: {first_sentence}")
+
                     # Store the function call information for later use
                     function_result = {
                         "function_name": function_name,
@@ -538,7 +553,6 @@ Key definitions and concepts:
                 "progress": 0
             })
             return
-        self.logger.info("Processing response parts: %s", parts)
         part_to_process_next_round = []
         for part in parts:
             try:
@@ -741,13 +755,54 @@ Key definitions and concepts:
             return None
 
         if func_parts and len(func_parts) > 0:
-            self.logger.debug("Sending function responses back to Gemini with parts: %s", func_parts)
-            response = self.chat.send_message(func_parts)
+            self.logger.debug("Sending function responses back to Gemini with parts: %s",
+                              func_parts)
+
+            # Determine if this is likely a final response that needs higher temperature
+            needs_higher_temp = self._should_use_higher_temperature(function_calls)
+
+            if needs_higher_temp:
+                # Use higher temperature for final responses (like google_search results)
+                response = self.chat.send_message(
+                    func_parts,
+                    generation_config=GenerationConfig(
+                        temperature=0.9,
+                        max_output_tokens=1200
+                    )
+                )
+            else:
+                # Use default (low) temperature for potential intermediate function calls
+                response = self.chat.send_message(func_parts)
+
             self.logger.debug("Received response from Gemini: %s",
-                              str(response.candidates[0].content.parts
-                                  if response.candidates else "No candidates"))
+                         str(response.candidates[0].content.parts
+                             if response.candidates else "No candidates"))
             return response
+
         return None
+
+    def _should_use_higher_temperature(self, function_calls):
+        """
+        Determine if we should use a higher temperature based on the function responses.
+
+        Args:
+            function_calls: List of function calls
+
+        Returns:
+            bool: True if higher temperature should be used, False otherwise
+        """
+        # Functions that typically produce final responses that benefit from higher temperature
+        final_response_functions = [
+            'google_search',
+            'get_species_info'
+        ]
+
+        # Check if any of the function calls are from final response functions
+        for call in function_calls:
+            if call['name'] in final_response_functions:
+                return True
+
+        return False
 
     def handle_final_response(self, part):
         """Handles the final response from the assistant."""

@@ -532,7 +532,7 @@ class EndangeredSpeciesHandler(BaseHandler):
 
         return hierarchy
 
-    def number_of_endangered_species_by_conservation_status(self, content) -> str:
+    def endangered_species_by_conservation_status(self, content) -> str:
         """
         Retrieves count of endangered species by conservation status.
 
@@ -987,7 +987,6 @@ class EndangeredSpeciesHandler(BaseHandler):
                         code,
                         translated["scientific_name"],
                     )
-                    self.logger.info("Country data: %s", country_data)
                     if country_data:
                         results[code] = country_data
             else:

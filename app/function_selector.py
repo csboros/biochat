@@ -69,13 +69,16 @@ class FunctionSelector:
         except Exception as e:
             self.logger.error("Error getting available functions: %s", str(e), exc_info=True)
 
+        # Sort the available_functions dictionary by keys (function names) alphabetically
+        available_functions = dict(sorted(available_functions.items()))
+
         return available_functions
 
     def render(self) -> Dict[str, Any]:
         """Render the function selector UI."""
         st.subheader("Function Selector")
 
-        # Create function selection dropdown using the mappings
+        # Create function selection dropdown using only the function names
         function_names = list(self.available_functions.keys())
 
         if not function_names:
@@ -85,7 +88,7 @@ class FunctionSelector:
         selected_function_index = st.selectbox(
             "Select Function",
             range(len(function_names)),
-            format_func=lambda x: f"{function_names[x]} - {self.available_functions[function_names[x]]['description']}"
+            format_func=lambda x: function_names[x]  # Show only the function name
         )
 
         if selected_function_index is None:
@@ -95,15 +98,58 @@ class FunctionSelector:
         selected_function = function_names[selected_function_index]
         function_details = self.available_functions[selected_function]
 
+        # Display the description below the selector
+        st.write(f"**Description**: {function_details['description'].split('.')[0]}.")  # First sentence only
+
         # Create a form for parameter inputs
         with st.form("function_parameters"):
             st.markdown(f"### Parameters for {selected_function}")
 
+            # Get function declaration from all declarations
+            function_declaration = None
+            function_info = {}
+            try:
+                # Get all declarations and find the one for the selected function
+                all_declarations = self.function_handler.get_all_function_declarations()
+                for decl in all_declarations:
+                    if decl.to_dict().get('name') == selected_function:
+                        function_declaration = decl
+                        function_info = function_declaration.to_dict()
+                        break
+            except Exception as e:
+                st.warning(f"Could not get function declaration: {str(e)}")
+
             # Create input fields for each parameter
             param_values = {}
             for param_name in function_details['inputs']:
-                # For now, treat all parameters as required string inputs
-                param_values[param_name] = st.text_input(f"{param_name} (required)")
+                # Get parameter details from the function declaration
+                param_info = {}
+                if 'parameters' in function_info and 'properties' in function_info['parameters']:
+                    param_info = function_info['parameters']['properties'].get(param_name, {})
+
+                # Check if this parameter has enum values
+                enum_values = param_info.get('enum', None)
+
+                # For chart_type specifically, check if it's supposed to be an enum
+                if param_name == 'chart_type' and not enum_values:
+                    # Try to find enum values in a different location or hardcode common chart types
+                    enum_values = ['bar', 'line', 'scatter', 'pie', 'map']
+                    st.info(f"Using predefined chart types for {param_name}")
+
+                if enum_values:
+                    # Use a selectbox for enum parameters
+                    st.write(f"{param_name} (Dropdown selection)")
+                    param_values[param_name] = st.selectbox(
+                        f"Select {param_name}",
+                        options=enum_values,
+                        key=f"enum_{param_name}"
+                    )
+                else:
+                    # Use text input for non-enum parameters
+                    param_values[param_name] = st.text_input(
+                        f"{param_name} (required)",
+                        key=f"text_{param_name}"
+                    )
 
             # Add execute button
             submitted = st.form_submit_button("Execute Function")
