@@ -70,7 +70,7 @@ class CorrelationTool(Tool):
                             "minItems": 1
                         },
                     },
-                    "required": ["country_names"],
+#                    "required": ["country_names"],
                 },
             ),
             FunctionDeclaration(

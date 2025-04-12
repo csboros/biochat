@@ -277,9 +277,7 @@ Key definitions and concepts:
             st.session_state.status_subscribed = True
 
     def run(self):
-        """
-        Main execution method for the Streamlit application.
-        """
+        """Main execution method for the Streamlit application."""
         self.logger.info("Starting BioChat Application")
 
         # Always display the title at the top
@@ -289,41 +287,52 @@ Key definitions and concepts:
         # Add a separator
         st.markdown("<hr>", unsafe_allow_html=True)
 
+        # Initialize tracking variables in session state
+        if 'current_display_id' not in st.session_state:
+            st.session_state.current_display_id = 0
+
+        if 'last_function_id' not in st.session_state:
+            st.session_state.last_function_id = None
+
         try:
-            # Core functionality
-            self.handle_user_input()
-            self.display_message_history()
+            # Create a container for the chat display that can be cleared
+            chat_container = st.container()
 
             # Handle function selector in the sidebar
             function_result = self.setup_sidebar_function_selector()
 
-            # # Process the assistant's response in the main content area
+            # Check if we have a new function submission
             if function_result:
-                # Add user message to history BEFORE processing
-                self.add_message_to_history("user", {"text": f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}"})
+                # Create a unique identifier for this function call
+                function_id = f"{function_result['function_name']}_{str(function_result['parameters'])}"
 
-                # Process the assistant's response
-                self.process_assistant_response(f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}")
+                # Only process if this is a new function call
+                if function_id != st.session_state.last_function_id:
+                    # Update the last function ID
+                    st.session_state.last_function_id = function_id
 
-                # Display message history
-                self.display_message_history()
+                    # Increment the display ID to force a refresh
+                    st.session_state.current_display_id += 1
 
-        except ResponseValidationError as e:
-            # Handle response validation error
-            self.logger.debug("Current messages before pop: %s", st.session_state.messages)
-            if st.session_state.messages:
-                st.session_state.messages.pop()  # Only pop if there are messages
-                self.logger.debug("Popped a message. Current messages: %s", st.session_state.messages)
-            else:
-                self.logger.warning("Attempted to pop from an empty messages list.")
+                    # Add user message to history
+                    self.add_message_to_history("user", {"text": f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}"})
 
-            self.logger.error("ResponseValidationError: %s", str(e), exc_info=True)
-            st.error("No results found. Please try a different prompt.")
-            self.display_message_history()
+                    # Process the assistant's response
+                    self.process_assistant_response(f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}")
+
+            # Handle regular user input
+            self.handle_user_input()
+
+            # Clear the container before displaying messages
+            with chat_container:
+                # Use a key based on the current display ID to force a refresh
+                st.empty()
+                # Display message history with a unique key
+                self.display_message_history(key=f"messages_{st.session_state.current_display_id}")
+
         except Exception as e:
-            # Catch-all for unexpected errors not handled by process_assistant_response
-            self.logger.error("Critical application error: %s", str(e), exc_info=True)
-            st.error("A critical error occurred. Please refresh the page and try again.")
+            self.logger.error(f"Critical application error: {str(e)}", exc_info=True)
+            st.error(f"An error occurred: {str(e)}")
 
     def setup_sidebar_function_selector(self):
         """
@@ -408,7 +417,7 @@ Key definitions and concepts:
         return _self.chart_handler.draw_chart(_df, _chart_type, _parameters,
                                               cache_buster=message_index)
 
-    def display_message_history(self):
+    def display_message_history(self, key=None):
         """
         Display the chat message history.
         """

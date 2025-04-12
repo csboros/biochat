@@ -76,8 +76,6 @@ class FunctionSelector:
 
     def render(self) -> Dict[str, Any]:
         """Render the function selector UI."""
-        st.subheader("Function Selector")
-
         # Create function selection dropdown using only the function names
         function_names = list(self.available_functions.keys())
 
@@ -85,10 +83,14 @@ class FunctionSelector:
             st.warning("No functions available")
             return None
 
+        # Create a simple layout
+        st.subheader("Function Selector")
+
+        # Function dropdown
         selected_function_index = st.selectbox(
             "Select Function",
             range(len(function_names)),
-            format_func=lambda x: function_names[x]  # Show only the function name
+            format_func=lambda x: function_names[x]
         )
 
         if selected_function_index is None:
@@ -98,11 +100,15 @@ class FunctionSelector:
         selected_function = function_names[selected_function_index]
         function_details = self.available_functions[selected_function]
 
-        # Display the description below the selector
-        st.write(f"**Description**: {function_details['description'].split('.')[0]}.")  # First sentence only
+        # Get the description
+        description = function_details['description'].split('.')[0] + '.'  # First sentence only
 
         # Create a form for parameter inputs
-        with st.form("function_parameters"):
+        result = None
+        with st.form(key=f"function_form_{selected_function}"):
+            # Show the description at the top of the form
+            st.markdown(f"**Description**: {description}")
+
             st.markdown(f"### Parameters for {selected_function}")
 
             # Get function declaration from all declarations
@@ -127,6 +133,9 @@ class FunctionSelector:
                 if 'parameters' in function_info and 'properties' in function_info['parameters']:
                     param_info = function_info['parameters']['properties'].get(param_name, {})
 
+                # Check if this parameter is an array type
+                is_array = param_info.get('type') == 'array'
+
                 # Check if this parameter has enum values
                 enum_values = param_info.get('enum', None)
 
@@ -136,19 +145,29 @@ class FunctionSelector:
                     enum_values = ['bar', 'line', 'scatter', 'pie', 'map']
                     st.info(f"Using predefined chart types for {param_name}")
 
-                if enum_values:
+                if is_array:
+                    # Special handling for array parameters
+                    st.write(f"{param_name} (Comma-separated list)")
+                    # Add description if available
+                    if 'description' in param_info:
+                        st.info(param_info['description'])
+                    param_values[param_name] = st.text_input(
+                        f"Enter {param_name} as comma-separated values",
+                        key=f"text_{param_name}_{selected_function}"
+                    )
+                elif enum_values:
                     # Use a selectbox for enum parameters
                     st.write(f"{param_name} (Dropdown selection)")
                     param_values[param_name] = st.selectbox(
                         f"Select {param_name}",
                         options=enum_values,
-                        key=f"enum_{param_name}"
+                        key=f"enum_{param_name}_{selected_function}"
                     )
                 else:
                     # Use text input for non-enum parameters
                     param_values[param_name] = st.text_input(
                         f"{param_name} (required)",
-                        key=f"text_{param_name}"
+                        key=f"text_{param_name}_{selected_function}"
                     )
 
             # Add execute button
@@ -158,13 +177,31 @@ class FunctionSelector:
                 # Filter out parameters that are not filled out
                 param_values = {name: value for name, value in param_values.items() if value}
 
-                return {
+                # Process parameters based on their types
+                processed_params = {}
+                for param_name, value in param_values.items():
+                    # Get parameter info again
+                    param_info = {}
+                    if 'parameters' in function_info and 'properties' in function_info['parameters']:
+                        param_info = function_info['parameters']['properties'].get(param_name, {})
+
+                    # Check if this parameter is an array type
+                    is_array = param_info.get('type') == 'array'
+
+                    if is_array:
+                        # Convert comma-separated string to list
+                        processed_params[param_name] = [item.strip() for item in value.split(',') if item.strip()]
+                    else:
+                        # Keep other parameters as is
+                        processed_params[param_name] = value
+
+                result = {
                     "function_name": function_details['handler'],
-                    "parameters": param_values,
+                    "parameters": processed_params,
                     "function_details": function_details
                 }
 
-        return None
+        return result
 
     def execute_function(self, function_name: Any, parameters: Dict[str, Any]) -> Any:
         """Execute the selected function with the provided parameters."""
