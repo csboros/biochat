@@ -76,6 +76,9 @@ class FunctionSelector:
 
     def render(self) -> Dict[str, Any]:
         """Render the function selector UI."""
+        # Create a simple layout
+        st.subheader("Function Selector")
+
         # Create function selection dropdown using only the function names
         function_names = list(self.available_functions.keys())
 
@@ -83,47 +86,50 @@ class FunctionSelector:
             st.warning("No functions available")
             return None
 
-        # Create a simple layout
-        st.subheader("Function Selector")
-
-        # Function dropdown
-        selected_function_index = st.selectbox(
+        # Function dropdown: Use function names directly as options
+        # The return value will be the selected name, not the index.
+        selected_function_name = st.selectbox(
             "Select Function",
-            range(len(function_names)),
-            format_func=lambda x: function_names[x]
+            options=function_names,  # Use names as options
+            index=0, # Default to the first function if state is invalid
+            key="function_selector_dropdown" # Keep the key for state
         )
 
-        if selected_function_index is None:
-            return None
+        # No need to check for None index anymore, selectbox returns the name
+        if not selected_function_name:
+             # This case might happen if function_names is empty, though we check above.
+             return None
 
-        # Get the selected function details
-        selected_function = function_names[selected_function_index]
-        function_details = self.available_functions[selected_function]
+        # Get the selected function details using the name
+        function_details = self.available_functions[selected_function_name]
 
-        # Get the description
+        # Get function declaration from all declarations
+        function_declaration = None
+        function_info = {}
+        try:
+            # Get all declarations and find the one for the selected function
+            all_declarations = self.function_handler.get_all_function_declarations()
+            for decl in all_declarations:
+                # Use the selected_function_name for comparison
+                if decl.to_dict().get('name') == selected_function_name:
+                    function_declaration = decl
+                    function_info = function_declaration.to_dict()
+                    break
+        except Exception as e:
+            st.warning(f"Could not get function declaration: {str(e)}")
+
+        # Display the description
         description = function_details['description'].split('.')[0] + '.'  # First sentence only
+        st.markdown(f"**Description**: {description}")
 
         # Create a form for parameter inputs
         result = None
-        with st.form(key=f"function_form_{selected_function}"):
-            # Show the description at the top of the form
-            st.markdown(f"**Description**: {description}")
 
-            st.markdown(f"### Parameters for {selected_function}")
+        # Use a unique key for the form based on the selected function name
+        form_key = f"function_form_{selected_function_name}"
 
-            # Get function declaration from all declarations
-            function_declaration = None
-            function_info = {}
-            try:
-                # Get all declarations and find the one for the selected function
-                all_declarations = self.function_handler.get_all_function_declarations()
-                for decl in all_declarations:
-                    if decl.to_dict().get('name') == selected_function:
-                        function_declaration = decl
-                        function_info = function_declaration.to_dict()
-                        break
-            except Exception as e:
-                st.warning(f"Could not get function declaration: {str(e)}")
+        with st.form(key=form_key):
+            st.markdown("### Parameters")
 
             # Create input fields for each parameter
             param_values = {}
@@ -136,6 +142,10 @@ class FunctionSelector:
                 # Check if this parameter is an array type
                 is_array = param_info.get('type') == 'array'
 
+                # Also check if the parameter name suggests it should be an array
+                array_name_patterns = ['codes', 'names', 'ids', 'list', 'array']
+                name_suggests_array = any(pattern in param_name.lower() for pattern in array_name_patterns)
+
                 # Check if this parameter has enum values
                 enum_values = param_info.get('enum', None)
 
@@ -145,7 +155,10 @@ class FunctionSelector:
                     enum_values = ['bar', 'line', 'scatter', 'pie', 'map']
                     st.info(f"Using predefined chart types for {param_name}")
 
-                if is_array:
+                # Create a unique key for each input field
+                input_key = f"{form_key}_{param_name}"
+
+                if is_array or name_suggests_array:
                     # Special handling for array parameters
                     st.write(f"{param_name} (Comma-separated list)")
                     # Add description if available
@@ -153,7 +166,7 @@ class FunctionSelector:
                         st.info(param_info['description'])
                     param_values[param_name] = st.text_input(
                         f"Enter {param_name} as comma-separated values",
-                        key=f"text_{param_name}_{selected_function}"
+                        key=input_key
                     )
                 elif enum_values:
                     # Use a selectbox for enum parameters
@@ -161,13 +174,13 @@ class FunctionSelector:
                     param_values[param_name] = st.selectbox(
                         f"Select {param_name}",
                         options=enum_values,
-                        key=f"enum_{param_name}_{selected_function}"
+                        key=input_key
                     )
                 else:
                     # Use text input for non-enum parameters
                     param_values[param_name] = st.text_input(
                         f"{param_name} (required)",
-                        key=f"text_{param_name}_{selected_function}"
+                        key=input_key
                     )
 
             # Add execute button
@@ -188,7 +201,11 @@ class FunctionSelector:
                     # Check if this parameter is an array type
                     is_array = param_info.get('type') == 'array'
 
-                    if is_array:
+                    # Also check if the parameter name suggests it should be an array
+                    array_name_patterns = ['codes', 'names', 'ids', 'list', 'array']
+                    name_suggests_array = any(pattern in param_name.lower() for pattern in array_name_patterns)
+
+                    if is_array or name_suggests_array:
                         # Convert comma-separated string to list
                         processed_params[param_name] = [item.strip() for item in value.split(',') if item.strip()]
                     else:
@@ -196,7 +213,8 @@ class FunctionSelector:
                         processed_params[param_name] = value
 
                 result = {
-                    "function_name": function_details['handler'],
+                    # Use selected_function_name here
+                    "function_name": selected_function_name,
                     "parameters": processed_params,
                     "function_details": function_details
                 }

@@ -278,69 +278,73 @@ Key definitions and concepts:
 
     def run(self):
         """Main execution method for the Streamlit application."""
-        self.logger.info("Starting BioChat Application")
+        self.logger.info("Starting BioChat Application run")
 
+        # --- Render UI Shell and Check Inputs ---
         # Always display the title at the top
         st.title("Biodiversity Chat")
         st.write("[See example queries](https://github.com/csboros/biochat/blob/main/prompts.md)")
-
-        # Add a separator
         st.markdown("<hr>", unsafe_allow_html=True)
 
-        # Initialize tracking variables in session state
-        if 'current_display_id' not in st.session_state:
-            st.session_state.current_display_id = 0
+        # Render the sidebar structure and check if its form was submitted
+        # This function now also sets st.session_state.pending_function_call if needed
+        sidebar_form_submitted = self.setup_sidebar_function_selector()
 
-        if 'last_function_id' not in st.session_state:
-            st.session_state.last_function_id = None
+        # Check for main chat input (store prompt if entered)
+        user_prompt = st.chat_input("What would you like to know about biodiversity?", key="main_chat_input")
 
-        try:
-            # Create a container for the chat display that can be cleared
-            chat_container = st.container()
+        # --- Process Inputs (Prioritize Sidebar Submission) ---
+        processed_input_this_run = False
 
-            # Handle function selector in the sidebar
-            function_result = self.setup_sidebar_function_selector()
+        # 1. Check if sidebar form was submitted *in this specific run*
+        if sidebar_form_submitted:
+            pending_call = st.session_state.pop('pending_function_call', None) # Retrieve and remove
+            if pending_call:
+                function_id = f"{pending_call['function_name']}_{str(pending_call['parameters'])}"
+                last_processed = st.session_state.get('last_function_id')
 
-            # Check if we have a new function submission
-            if function_result:
-                # Create a unique identifier for this function call
-                function_id = f"{function_result['function_name']}_{str(function_result['parameters'])}"
+                if function_id != last_processed:
+                    self.logger.info("Processing sidebar function submission: %s", pending_call['function_name'])
+                    st.session_state.last_function_id = function_id # Mark as processed
 
-                # Only process if this is a new function call
-                if function_id != st.session_state.last_function_id:
-                    # Update the last function ID
-                    st.session_state.last_function_id = function_id
+                    user_func_text = f"Function Call: {pending_call['function_name']} with parameters {pending_call['parameters']}"
+                    self.add_message_to_history("user", {"text": user_func_text})
 
-                    # Increment the display ID to force a refresh
-                    st.session_state.current_display_id += 1
+                    simulated_prompt_for_func = f"Execute {pending_call['function_name']} with {pending_call['parameters']}"
+                    self.process_assistant_response(simulated_prompt_for_func)
+                    processed_input_this_run = True
+                else:
+                    self.logger.debug("Skipping already processed pending function call: %s", function_id)
+            else:
+                # This case should ideally not happen if form_submitted is True, but log if it does
+                self.logger.warning("Sidebar form reported submitted, but no pending_function_call found in state.")
 
-                    # Add user message to history
-                    self.add_message_to_history("user", {"text": f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}"})
+        # 2. If sidebar wasn't submitted/processed, check for main chat input
+        elif user_prompt:
+            self.logger.info("Processing main chat input.")
+            # Add user message to history BEFORE processing
+            self.add_message_to_history("user", {"text": user_prompt})
+            # Process the assistant's response
+            self.process_assistant_response(user_prompt)
+            processed_input_this_run = True
 
-                    # Process the assistant's response
-                    self.process_assistant_response(f"Call the function {function_result['function_details']['aliases'][0]} with parameters {function_result['parameters']}")
+        # --- Display Message History ---
+        # Always display the history at the end
+        self.logger.debug("Displaying message history.")
+        self.display_message_history()
 
-            # Handle regular user input
-            self.handle_user_input()
-
-            # Clear the container before displaying messages
-            with chat_container:
-                # Use a key based on the current display ID to force a refresh
-                st.empty()
-                # Display message history with a unique key
-                self.display_message_history(key=f"messages_{st.session_state.current_display_id}")
-
-        except Exception as e:
-            self.logger.error(f"Critical application error: {str(e)}", exc_info=True)
-            st.error(f"An error occurred: {str(e)}")
+        # --- Optional: Add a small delay if processing happened ---
+        # Sometimes a tiny delay can help Streamlit catch up, though it's a hack
+        # if processed_input_this_run:
+        #    time.sleep(0.05)
 
     def setup_sidebar_function_selector(self):
         """
-        Sets up the sidebar with CSS styling and function selector.
-
-        Returns:
-            dict or None: Function call information if a function was selected, None otherwise
+        Sets up the sidebar, renders the function selector, and stores
+        the result in session state if the form is submitted.
+        Returns True if the form was submitted in this run, False otherwise.
         """
+        form_submitted = False # Flag to indicate submission
         # Add custom CSS for the sidebar tab styling and width
         st.markdown("""
             <style>
@@ -383,39 +387,28 @@ Key definitions and concepts:
             </style>
         """, unsafe_allow_html=True)
 
-        function_result = None
-
         # Create the function selector in the sidebar
         with st.sidebar:
             st.markdown('<div class="sidebar-tab">Function Selector</div>', unsafe_allow_html=True)
+            # Use expanded=False for default state
             with st.expander("Select a function", expanded=False):
+                # Render the function selector UI
                 result = self.function_selector.render()
                 if result:
-                    function_name = result["function_name"]
-                    parameters = result["parameters"]
-                    function_details = result["function_details"]
+                    # Store the result in session state
+                    st.session_state.pending_function_call = result
+                    # Clear any previous stale function ID to avoid conflicts
+                    st.session_state.pop('last_function_id', None)
+                    form_submitted = True # Set the flag
 
-                    # Get the description and extract only the first sentence
-                    description = function_details.get("description", "")
-                    first_sentence = description.split('.')[0] + '.' if description else ""
-
-                    # Display the first sentence of the description
-                    st.write(f"**Description**: {first_sentence}")
-
-                    # Store the function call information for later use
-                    function_result = {
-                        "function_name": function_name,
-                        "parameters": parameters,
-                        "function_details": function_details
-                    }
-
-        return function_result
+        return form_submitted # Return the flag
 
     @st.cache_data(show_spinner=False)
-    def render_cached_chart(_self, _df, _chart_type, _parameters, message_index):  # pylint: disable=no-self-argument
-        """Cache chart rendering for each message"""
+    def render_cached_chart(_self, _df, _chart_type, _parameters, chart_id):  # Renamed message_index to chart_id
+        """Cache chart rendering using a stable ID"""
+        # Use chart_id as the cache buster
         return _self.chart_handler.draw_chart(_df, _chart_type, _parameters,
-                                              cache_buster=message_index)
+                                              cache_buster=chart_id)
 
     def display_message_history(self, key=None):
         """
@@ -431,7 +424,8 @@ Key definitions and concepts:
             messages_to_display = list(st.session_state.messages)
 
             # Display each message using the stable copy
-            for i, message in enumerate(messages_to_display):
+            # No need for enumerate if index 'i' is not used elsewhere
+            for message in messages_to_display:
                 role = message.get("role", "")
                 content = message.get("content", {})
 
@@ -452,7 +446,9 @@ Key definitions and concepts:
                                 if df is not None and chart_type is not None:
                                     # Generate a unique string ID based on the chart data
                                     # This avoids using indices that might cause errors
-                                    chart_id = f"chart_{hash(str(df))}"
+                                    # Using hash of string representation for simplicity
+                                    chart_id = f"chart_{hash(str(df))}_{chart_type}"
+                                    # Pass the stable chart_id instead of the loop index
                                     self.render_cached_chart(df, chart_type, parameters, chart_id)
                                 else:
                                     st.markdown("*Chart data could not be displayed*")
@@ -470,26 +466,6 @@ Key definitions and concepts:
         for char in text:
             yield char
             time.sleep(0.001)  # Small delay for smooth streaming
-
-    def handle_user_input(self):
-        """
-        Processes user input.
-        """
-        # Create a fixed position container for status updates at the bottom of the viewport
-        if "status_container" not in st.session_state:
-            st.markdown(self.get_status_bar_css(), unsafe_allow_html=True)
-            st.session_state.status_container = st.empty()
-            st.session_state.is_cancelled = False
-
-        if prompt := st.chat_input("What would you like to know about biodiversity?"):
-            self.logger.info("Received new user prompt: %s", prompt)
-            st.session_state.is_cancelled = False  # Reset cancellation state
-
-            # Add user message to history BEFORE processing
-            self.add_message_to_history("user", {"text": prompt})
-
-            # Process the assistant's response
-            self.process_assistant_response(prompt)
 
     def process_assistant_response(self, prompt: str, retry_count=0) -> None:
         """Process the assistant's response."""
