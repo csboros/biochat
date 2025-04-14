@@ -30,25 +30,57 @@ class FunctionSelector:
 
     def _get_available_functions(self):
         """Get available functions from the function handler."""
+        self.logger.info("Starting _get_available_functions")
         available_functions = {}
+
+        # --- Define functions to exclude from the UI ---
+        excluded_functions = {
+            'help',
+            'classify_help_category',
+            'translate_to_common_name',
+            'translate_to_scientific_name',
+            'google_search',
+            'get_species_info',
+            'get_species_images',
+            'endangered_species_for_countries'
+        }
+        # --- End of definition ---
 
         try:
             # Get all function declarations from the function handler
             function_declarations = self.function_handler.get_all_function_declarations()
             function_mappings = self.function_handler.get_all_function_mappings()
 
+            # --- Log the total number of declarations and mapping keys received ---
+            self.logger.debug("Received %s declarations.", len(function_declarations))
+            self.logger.debug("Received %s mappings. Keys: %s", len(function_mappings), list(function_mappings.keys()))
+            # --- End of addition ---
+
             # Convert function declarations to the format expected by the UI
-            for declaration in function_declarations:
-                # Access the name from the raw function declaration or from the to_dict() method
-                function_info = declaration.to_dict()
-                function_name = function_info.get('name')
+            for i, declaration in enumerate(function_declarations):
+                function_info = {}
+                function_name = None
+                try:
+                    # Access the name from the raw function declaration or from the to_dict() method
+                    function_info = declaration.to_dict()
+                    function_name = function_info.get('name')
+                    # --- Log each function name being processed ---
+                    self.logger.debug("Processing declaration %s: name='%s'", i+1, function_name)
+                    # --- End of addition ---
+
+                except Exception as e:
+                    # --- Log errors during declaration processing ---
+                    self.logger.error("Error processing declaration %s: %s. Error: %s", i+1, declaration, e, exc_info=True)
+                    # --- End of addition ---
+                    continue # Skip this declaration if conversion fails
 
                 if not function_name:
-                    self.logger.warning("Function declaration missing name: %s", declaration)
+                    self.logger.warning("Declaration %s missing name: %s", i+1, declaration)
                     continue
 
-                # Skip help and classification functions as they're internal
-                if function_name in ['help', 'classify_help_category']:
+                # --- Updated check to skip excluded functions ---
+                if function_name in excluded_functions:
+                    self.logger.debug("Skipping excluded function: '%s'", function_name)
                     continue
 
                 # Check if we have a mapping for this function
@@ -62,15 +94,24 @@ class FunctionSelector:
                     # Create function details
                     available_functions[function_name] = {
                         'description': function_info.get('description', ''),
-                        'handler': function_name,
+                        'handler': function_name, # Keep handler name for potential execution logic
                         'inputs': parameters,
                         'aliases': [function_name]  # Use function name as alias
                     }
+                else:
+                    # --- Log missing mapping ---
+                    self.logger.warning("No mapping found for declared function: '%s'. Skipping.", function_name)
+                    # --- End of addition ---
+
         except Exception as e:
             self.logger.error("Error getting available functions: %s", str(e), exc_info=True)
 
         # Sort the available_functions dictionary by keys (function names) alphabetically
         available_functions = dict(sorted(available_functions.items()))
+
+        # --- Log the final list of available function keys ---
+        self.logger.info("Finished _get_available_functions. Available keys: %s", list(available_functions.keys()))
+        # --- End of addition ---
 
         return available_functions
 
@@ -116,7 +157,7 @@ class FunctionSelector:
                     function_info = function_declaration.to_dict()
                     break
         except Exception as e:
-            st.warning(f"Could not get function declaration: {str(e)}")
+            st.warning("Could not get function declaration: %s", str(e))
 
         # Display the description
         description = function_details['description'].split('.')[0] + '.'  # First sentence only
@@ -131,77 +172,113 @@ class FunctionSelector:
         with st.form(key=form_key):
             st.markdown("### Parameters")
 
-            # Create input fields for each parameter
+            required_params = []
+            if function_info and 'parameters' in function_info and 'required' in function_info['parameters']:
+                required_params = function_info['parameters'].get('required', [])
+
+            # --- Define a placeholder for optional enums ---
+            placeholder = "-- Select --"
+            # --- End of addition ---
+
             param_values = {}
             for param_name in function_details['inputs']:
-                # Get parameter details from the function declaration
                 param_info = {}
-                if 'parameters' in function_info and 'properties' in function_info['parameters']:
+                if function_info and 'parameters' in function_info and 'properties' in function_info['parameters']:
                     param_info = function_info['parameters']['properties'].get(param_name, {})
 
-                # Check if this parameter is an array type
-                is_array = param_info.get('type') == 'array'
+                is_required = param_name in required_params
+                required_label_suffix = " (required)" if is_required else ""
 
-                # Also check if the parameter name suggests it should be an array
+                # --- Check for country code format hints ---
+                format_hint = ""
+                # Check only parameters related to country codes
+                if 'country_code' in param_name.lower():
+                    pattern = param_info.get('pattern', '')
+                    description_lower = param_info.get('description', '').lower()
+
+                    if pattern == '^[A-Z]{2}$' or '2-letter' in description_lower or 'alpha-2' in description_lower:
+                        format_hint = "(expects 2-letter ISO codes)"
+                    elif pattern == '^[A-Z]{3}$' or '3-letter' in description_lower or 'alpha-3' in description_lower:
+                        format_hint = "(expects 3-letter ISO codes)"
+
+                # Combine original description and format hint
+                original_description = param_info.get('description', '')
+                display_description = f"{original_description.strip()} {format_hint}".strip()
+                # --- End of country code format check ---
+
+                is_array = param_info.get('type') == 'array'
                 array_name_patterns = ['codes', 'names', 'ids', 'list', 'array']
                 name_suggests_array = any(pattern in param_name.lower() for pattern in array_name_patterns)
-
-                # Check if this parameter has enum values
                 enum_values = param_info.get('enum', None)
 
-                # For chart_type specifically, check if it's supposed to be an enum
                 if param_name == 'chart_type' and not enum_values:
-                    # Try to find enum values in a different location or hardcode common chart types
                     enum_values = ['bar', 'line', 'scatter', 'pie', 'map']
-                    st.info(f"Using predefined chart types for {param_name}")
+                    # --- Update description display ---
+                    if not display_description: # Add info only if no other description exists
+                         st.info(f"Using predefined chart types for {param_name}")
+                    # --- End of update ---
 
-                # Create a unique key for each input field
                 input_key = f"{form_key}_{param_name}"
 
                 if is_array or name_suggests_array:
-                    # Special handling for array parameters
-                    st.write(f"{param_name} (Comma-separated list)")
-                    # Add description if available
-                    if 'description' in param_info:
-                        st.info(param_info['description'])
+                    st.write(f"{param_name} (Comma-separated list){required_label_suffix}")
+                    if display_description:
+                        st.info(display_description)
                     param_values[param_name] = st.text_input(
                         f"Enter {param_name} as comma-separated values",
                         key=input_key
                     )
                 elif enum_values:
-                    # Use a selectbox for enum parameters
-                    st.write(f"{param_name} (Dropdown selection)")
+                    st.write(f"{param_name} (Dropdown selection){required_label_suffix}")
+                    if display_description:
+                        st.info(display_description)
+
+                    # --- Modify options and default index for selectbox ---
+                    display_options = [placeholder] + enum_values
+                    # Default to placeholder (index 0) if not required,
+                    # else default to the first actual option (index 1)
+                    default_index = 0 if not is_required else 1
+
                     param_values[param_name] = st.selectbox(
                         f"Select {param_name}",
-                        options=enum_values,
+                        options=display_options,
+                        index=default_index, # Use calculated default index
                         key=input_key
                     )
+                    # --- End of modification ---
+
                 else:
-                    # Use text input for non-enum parameters
+                    # --- Update description display ---
+                    # Display description/hint above the input field
+                    if display_description:
+                        st.info(display_description)
+                    # --- End of update ---
                     param_values[param_name] = st.text_input(
-                        f"{param_name} (required)",
+                        f"{param_name}{required_label_suffix}", # Label includes required suffix here
                         key=input_key
                     )
 
-            # Add execute button
             submitted = st.form_submit_button("Execute Function")
 
             if submitted:
-                # Filter out parameters that are not filled out
-                param_values = {name: value for name, value in param_values.items() if value}
+                # --- Modify filtering to exclude placeholder ---
+                # Initial filter for non-empty values
+                filtered_values = {name: value for name, value in param_values.items() if value}
 
-                # Process parameters based on their types
                 processed_params = {}
-                for param_name, value in param_values.items():
-                    # Get parameter info again
+                for param_name, value in filtered_values.items():
+                    # Get parameter info again to check if it was an enum
                     param_info = {}
-                    if 'parameters' in function_info and 'properties' in function_info['parameters']:
-                        param_info = function_info['parameters']['properties'].get(param_name, {})
+                    if function_info and 'parameters' in function_info and 'properties' in function_info['parameters']:
+                         param_info = function_info['parameters']['properties'].get(param_name, {})
+                    is_enum = 'enum' in param_info
+
+                    # Skip if it's an enum and the value is the placeholder
+                    if is_enum and value == placeholder:
+                        continue # Don't include this parameter
 
                     # Check if this parameter is an array type
                     is_array = param_info.get('type') == 'array'
-
-                    # Also check if the parameter name suggests it should be an array
                     array_name_patterns = ['codes', 'names', 'ids', 'list', 'array']
                     name_suggests_array = any(pattern in param_name.lower() for pattern in array_name_patterns)
 
@@ -211,11 +288,11 @@ class FunctionSelector:
                     else:
                         # Keep other parameters as is
                         processed_params[param_name] = value
+                # --- End of modification ---
 
                 result = {
-                    # Use selected_function_name here
                     "function_name": selected_function_name,
-                    "parameters": processed_params,
+                    "parameters": processed_params, # Use the newly processed params
                     "function_details": function_details
                 }
 
@@ -228,11 +305,10 @@ class FunctionSelector:
             function_mappings = self.function_handler.get_all_function_mappings()
 
             if function_name in function_mappings:
-                self.logger.info(f"Executing function: {function_name}")
+                self.logger.info("Executing function: %s", function_name)
                 return function_mappings[function_name](parameters)
-            else:
-                st.error(f"Function '{function_name}' not found")
-                return None
+            st.error("Function '%s' not found", function_name)
+            return None
         except Exception as e:
             st.error(f"Error executing function: {str(e)}")
             return None

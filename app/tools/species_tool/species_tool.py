@@ -208,7 +208,7 @@ class SpeciesTool(Tool):
                     "properties": {
                         "family_name": {
                             "type": "string",
-                            "description": "name of the family to get endangered species for",
+                            "description": "name of the family to get endangered species for (e.g., Felidae, Canidae, Ursidae)",
                         },
                         "conservation_status": {
                             "type": "string",
@@ -217,6 +217,15 @@ class SpeciesTool(Tool):
                                 "Least Concern, Endangered, Near Threatened, Vulnerable, "
                                 "Data Deficient, Critically Endangered, Extinct"
                             ),
+                            "enum": [
+                                "Least Concern",
+                                "Endangered",
+                                "Near Threatened",
+                                "Vulnerable",
+                                "Data Deficient",
+                                "Critically Endangered",
+                                "Extinct"
+                            ]
                         },
                         "chart_type": {
                             "type": "string",
@@ -224,8 +233,10 @@ class SpeciesTool(Tool):
                                 "type of chart to display, supported values: "
                                 "'force_directed_graph', 'tree_chart'"
                             ),
+                            "enum": ["force_directed_graph", "tree_chart"]
                         },
                     },
+                    "required": ["family_name", "chart_type"]
                 }
             ),
             FunctionDeclaration(
@@ -262,10 +273,12 @@ class SpeciesTool(Tool):
                         },
                         "chart_type": {
                             "type": "string",
-                            "description": "type of chart to display, supported values: "
-                            "'force_directed_graph', 'tree_chart'",
+                            "description": ("type of chart to display, supported values: "
+                                "'force_directed_graph', 'tree_chart'"),
+                            "enum": ["force_directed_graph", "tree_chart"]
                         },
                     },
+                    "required": ["order_name", "chart_type"]
                 }
             ),
             FunctionDeclaration(
@@ -298,6 +311,7 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="endangered_species_for_country",
                 description=(
+                    "Get endangered species information for  a country. "
                     "⚠️ Use this function ONLY for getting a simple LIST of species "
                     "(NO locations/maps).\n"
                     "DO NOT use this function if the question asks about:\n"
@@ -336,6 +350,15 @@ class SpeciesTool(Tool):
                                 "Filter by conservation status "
                                 "(e.g., 'Critically Endangered')"
                             ),
+                            "enum": [
+                                "Least Concern",
+                                "Endangered",
+                                "Near Threatened",
+                                "Vulnerable",
+                                "Data Deficient",
+                                "Critically Endangered",
+                                "Extinct"
+                            ]
                         },
                         "chart_type": {
                             "type": "string",
@@ -346,7 +369,7 @@ class SpeciesTool(Tool):
                             "enum": ["force_directed_graph", "tree_chart"]
                         },
                     },
-                    "required": ["country_code"],
+                    "required": ["country_code", "chart_type"]
                 }
             ),
             FunctionDeclaration(
@@ -378,6 +401,15 @@ class SpeciesTool(Tool):
                                 "Filter by conservation status "
                                 "(e.g., 'Critically Endangered')"
                             ),
+                            "enum": [
+                                "Least Concern",
+                                "Endangered",
+                                "Near Threatened",
+                                "Vulnerable",
+                                "Data Deficient",
+                                "Critically Endangered",
+                                "Extinct"
+                            ]
                         },
                         "chart_type": {
                             "type": "string",
@@ -385,9 +417,10 @@ class SpeciesTool(Tool):
                                 "type of chart to display, supported values: "
                                 "'force_directed_graph', 'tree_chart'"
                             ),
+                             "enum": ["force_directed_graph", "tree_chart"]
                         },
                     },
-                    "required": ["country_codes"]
+                    "required": ["country_codes", "chart_type"]
                 }
             ),
             FunctionDeclaration(
@@ -402,7 +435,7 @@ class SpeciesTool(Tool):
                     "properties": {
                         "country_code": {
                             "type": "string",
-                            "description": "country code to get endangered species for",
+                            "description": "two letter country code to get endangered species for",
                         },
                         "conservation_status": {
                             "type": "string",
@@ -411,8 +444,19 @@ class SpeciesTool(Tool):
                                 "Least Concern, Endangered, Near Threatened, Vulnerable, "
                                 "Data Deficient, Critically Endangered, Extinct,"
                             ),
+                            "enum": [
+                                "Least Concern",
+                                "Endangered",
+                                "Near Threatened",
+                                "Vulnerable",
+                                "Data Deficient",
+                                "Critically Endangered",
+                                "Extinct"
+                            ]
                         },
+
                     },
+                    "required": ["conservation_status"]
                 }
             ),
             FunctionDeclaration(
@@ -434,11 +478,12 @@ class SpeciesTool(Tool):
             FunctionDeclaration(
                 name="get_occurrences",
                 description=(
-                    "This function is for MAP VISUALIZATION of species "
+                    "This function is for MAP VISUALIZATION of specific species "
                     "distribution. It returns coordinates and data needed to display "
                     "species locations on a map. ⚠️ IMPORTANT: DO NOT use this for text-based answers "
-                    "about where species live. Use this function when you need to SHOW "
-                    "the distribution on a map.\n\n"
+                    "about where species live OR for analyzing Human Coexistence Index (HCI) data. "
+                    "Use this function ONLY when you need to SHOW "
+                    "the distribution of a specific species on a map.\n\n"
                     "Examples that should use this function:\n"
                     "- 'Where can I find Orangutans in the wild?'\n"
                     "- 'Show me a map of where lions live'\n"
@@ -476,7 +521,7 @@ class SpeciesTool(Tool):
                             "enum": ["HEATMAP", "HEXAGON_MAP", "GEOJSON_MAP"]
                         },
                     },
-                    "required": ["species_name"],
+                    "required": ["species_name", "chart_type"],
                 },
             ),
             FunctionDeclaration(

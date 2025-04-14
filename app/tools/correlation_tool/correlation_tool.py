@@ -33,19 +33,17 @@ class CorrelationTool(Tool):
              FunctionDeclaration(
                 name="read_terrestrial_hci",
                 description=(
-                    "Read and compare terrestrial human coexistence index (HCI) data "
-                    "between countries. IMPORTANT: Use this function for ANY questions "
-                    "about: "
-                    "- terrestrial HCI data "
-                    "- human impact on wildlife "
-                    "- human-wildlife coexistence comparisons "
-                    "- wildlife impact between countries. "
+                    "Read and compare the overall terrestrial Human Coexistence Index (HCI) "
+                    "value between different countries. Use this ONLY for questions asking "
+                    "to compare the general HCI index score or overall human coexistence "
+                    "levels across specified countries. "
                     "Examples: "
                     "'What is the terrestrial HCI data for Kenya and Uganda?', "
-                    "'Compare human impact on wildlife between Kenya and Uganda', "
-                    "'Show me the human coexistence index for Tanzania and Kenya', "
-                    "'How does human impact on wildlife compare in East Africa', "
-                    "'What is the human-wildlife coexistence situation in Kenya vs Tanzania'"
+                    "'Compare the HCI index between Kenya and Uganda', "
+                    "'Show me the human coexistence index score for Tanzania and Kenya'. "
+                    "IMPORTANT: This function provides ONLY the country-level HCI index value. "
+                    "It does NOT analyze specific species data or map species locations. "
+                    "Do NOT use for questions about individual species."
                 ),
                 parameters={
                     "type": "object",
@@ -54,23 +52,12 @@ class CorrelationTool(Tool):
                             "type": "array",
                             "items": {"type": "string"},
                             "description": (
-                                "List of country names to compare. For queries about HCI "
-                                "data, human impact on wildlife, or coexistence "
-                                "comparisons between countries."
-                            ),
-                            "minItems": 1
-                        },
-                        "country_codes": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": (
-                                "List of three letter country codes "
-                                "(e.g., ['KEN', 'UGA'])"
+                                "List of country names to compare their HCI index values."
                             ),
                             "minItems": 1
                         },
                     },
-#                    "required": ["country_names"],
+                    "required": ["country_names"],
                 },
             ),
             FunctionDeclaration(

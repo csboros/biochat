@@ -41,3 +41,7 @@ RendererRegistry.register(JSONRenderer)
 RendererRegistry.register(HabitatViz)
 RendererRegistry.register(TopographyViz)
 RendererRegistry.register(ClimateViz)
+
+import logging
+import os
+logging.info(f"[PID: {os.getpid()}] Renderer registration in renderers/__init__.py completed.")

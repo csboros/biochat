@@ -4,8 +4,11 @@ import logging
 import os
 import json
 from typing import Dict, List
+import pycountry
 import requests
 from google.cloud import bigquery
+
+from app.exceptions import BusinessException
 
 class BaseHandler:
     """Base handler class that provides common functionality for API interactions and logging."""
@@ -170,3 +173,69 @@ class BaseHandler:
                     bigquery.ScalarQueryParameter(key, "STRING", value)
                 )
         return parameters
+
+    def get_country_code(self, content):
+        """
+        Get country code from content, either directly or by converting country name.
+
+        Args:
+            content (dict): Input dictionary containing either country_code or country_name
+
+        Returns:
+            str: Two-letter country code
+
+        Raises:
+            BusinessException: If country code cannot be determined
+        """
+        try:
+            # First try to get direct country_code
+            if "country_code" in content:
+                return content["country_code"].upper()
+
+            # Then try to convert from country_name
+            if "country_name" in content:
+                try:
+                    country = pycountry.countries.search_fuzzy(content["country_name"])[0]
+                    return country.alpha_2
+                except (LookupError, IndexError):
+                    self.logger.error("Could not find country code for name: %s", content["country_name"])
+
+            raise BusinessException("Country code could not be determined")
+
+        except Exception as e:
+            self.logger.error("Error determining country code: %s", str(e))
+            raise BusinessException("Country code could not be determined") from e
+
+    def get_io3_code(self, content):
+        """
+        Get country code from content, either directly or by converting country name.
+
+        Args:
+            content (dict): Input dictionary containing either country_code or country_name
+
+        Returns:
+            str: Two-letter country code
+
+        Raises:
+            BusinessException: If country code cannot be determined
+        """
+        try:
+            # First try to get direct country_code
+            if "country_code" in content:
+                return content["country_code"].upper()
+
+            # Then try to convert from country_name
+            if "country_name" in content:
+                try:
+                    country = pycountry.countries.search_fuzzy(content["country_name"])[0]
+                    return country.alpha_3
+                except (LookupError, IndexError):
+                    self.logger.error("Could not find country code for name: %s", content["country_name"])
+
+            raise BusinessException("Country code could not be determined")
+
+        except Exception as e:
+            self.logger.error("Error determining country code: %s", str(e))
+            raise BusinessException("Country code could not be determined") from e
+
+

@@ -307,7 +307,7 @@ Key definitions and concepts:
                     self.logger.info("Processing sidebar function submission: %s", pending_call['function_name'])
                     st.session_state.last_function_id = function_id # Mark as processed
 
-                    user_func_text = f"Function Call: {pending_call['function_name']} with parameters {pending_call['parameters']}"
+                    user_func_text = f"Please call the following function: {pending_call['function_name']} with parameters {pending_call['parameters']}"
                     self.add_message_to_history("user", {"text": user_func_text})
 
                     simulated_prompt_for_func = f"Execute {pending_call['function_name']} with {pending_call['parameters']}"
