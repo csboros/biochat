@@ -251,7 +251,7 @@ class SpeciesTool(Tool):
                         "kingdom_name": {
                             "type": "string",
                             "description": (
-                                "name of the kingdom (e.g., Animalia, Plantae) "
+                                "name of the kingdom (e.g., Animalia, only Animalia is available in the dataset) "
                                 "to get endangered classes for"
                             ),
                         }
@@ -471,7 +471,7 @@ class SpeciesTool(Tool):
                 parameters={
                     "type": "object",
                     "properties": {
-                        "continent": {"type": "string", "default": "Africa"},
+                        "continent": {"type": "string", "default": "Africa", "description": "Only Africa is available in the dataset"}
                     }
                 }
             ),

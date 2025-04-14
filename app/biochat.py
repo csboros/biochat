@@ -286,57 +286,123 @@ Key definitions and concepts:
         st.write("[See example queries](https://github.com/csboros/biochat/blob/main/prompts.md)")
         st.markdown("<hr>", unsafe_allow_html=True)
 
+        # Add CSS and JavaScript for a custom spinner
+        st.markdown("""
+            <style>
+                .centered-spinner {
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background-color: white;
+                    padding: 20px 30px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    z-index: 1000;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 15px;
+                }
+                .spinner-text {
+                    font-weight: 500;
+                    font-size: 16px;
+                    color: #333;
+                }
+                .spinner {
+                    width: 40px;
+                    height: 40px;
+                    border: 4px solid rgba(0, 0, 0, 0.1);
+                    border-radius: 50%;
+                    border-left-color: #09f;
+                    animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        """, unsafe_allow_html=True)
+
+        # Create a container for the centered spinner
+        spinner_container = st.container()
+
         # Render the sidebar structure and check if its form was submitted
-        # This function now also sets st.session_state.pending_function_call if needed
         sidebar_form_submitted = self.setup_sidebar_function_selector()
 
         # Check for main chat input (store prompt if entered)
         user_prompt = st.chat_input("What would you like to know about biodiversity?", key="main_chat_input")
 
-        # --- Process Inputs (Prioritize Sidebar Submission) ---
-        processed_input_this_run = False
-
         # 1. Check if sidebar form was submitted *in this specific run*
         if sidebar_form_submitted:
-            pending_call = st.session_state.pop('pending_function_call', None) # Retrieve and remove
+            # Show the spinner in the center of the screen
+            with spinner_container:
+                spinner_placeholder = st.empty()
+                spinner_placeholder.markdown(
+                    """<div class="centered-spinner">
+                        <div class="spinner-text">Processing your request...</div>
+                        <div class="spinner"></div>
+                    </div>""",
+                    unsafe_allow_html=True
+                )
+
+                # Store the spinner placeholder in session state for message bus updates
+                st.session_state.status_container = spinner_placeholder
+
+            # Process the request
+            pending_call = st.session_state.pop('pending_function_call', None)
             if pending_call:
                 function_id = f"{pending_call['function_name']}_{str(pending_call['parameters'])}"
                 last_processed = st.session_state.get('last_function_id')
 
                 if function_id != last_processed:
                     self.logger.info("Processing sidebar function submission: %s", pending_call['function_name'])
-                    st.session_state.last_function_id = function_id # Mark as processed
+                    st.session_state.last_function_id = function_id
 
                     user_func_text = f"Please call the following function: {pending_call['function_name']} with parameters {pending_call['parameters']}"
                     self.add_message_to_history("user", {"text": user_func_text})
 
                     simulated_prompt_for_func = f"Execute {pending_call['function_name']} with {pending_call['parameters']}"
                     self.process_assistant_response(simulated_prompt_for_func)
-                    processed_input_this_run = True
                 else:
                     self.logger.debug("Skipping already processed pending function call: %s", function_id)
             else:
-                # This case should ideally not happen if form_submitted is True, but log if it does
                 self.logger.warning("Sidebar form reported submitted, but no pending_function_call found in state.")
+
+            # Clear the spinner after processing if it wasn't already cleared by message bus
+            if "status_container" in st.session_state:
+                spinner_placeholder.empty()
+                del st.session_state.status_container
 
         # 2. If sidebar wasn't submitted/processed, check for main chat input
         elif user_prompt:
+            # Show the spinner in the center of the screen
+            with spinner_container:
+                spinner_placeholder = st.empty()
+                spinner_placeholder.markdown(
+                    """<div class="centered-spinner">
+                        <div class="spinner-text">Processing your request...</div>
+                        <div class="spinner"></div>
+                    </div>""",
+                    unsafe_allow_html=True
+                )
+
+                # Store the spinner placeholder in session state for message bus updates
+                st.session_state.status_container = spinner_placeholder
+
+            # Process the request
             self.logger.info("Processing main chat input.")
-            # Add user message to history BEFORE processing
             self.add_message_to_history("user", {"text": user_prompt})
-            # Process the assistant's response
             self.process_assistant_response(user_prompt)
-            processed_input_this_run = True
+
+            # Clear the spinner after processing if it wasn't already cleared by message bus
+            if "status_container" in st.session_state:
+                spinner_placeholder.empty()
+                del st.session_state.status_container
 
         # --- Display Message History ---
-        # Always display the history at the end
         self.logger.debug("Displaying message history.")
         self.display_message_history()
-
-        # --- Optional: Add a small delay if processing happened ---
-        # Sometimes a tiny delay can help Streamlit catch up, though it's a hack
-        # if processed_input_this_run:
-        #    time.sleep(0.05)
 
     def setup_sidebar_function_selector(self):
         """
@@ -930,26 +996,31 @@ Would you like to know more about any specific aspect of the system?
         """Handle status updates from various handlers."""
         if "status_container" in st.session_state:
             progress = data.get("progress", 50 if data.get("state") == "running" else 100)
+            message = data.get("message", "Processing...")
 
+            # If message doesn't already have an emoji, add a default one based on state
+            if not any(char in message for char in ['🔍', '🔎', '📊', '✅', '❌', '🌡️', '📈', '🎨']):
+                if data.get("state") == "running":
+                    message = f"⏳ {message}"
+                elif data.get("state") == "complete":
+                    message = f"✅ {message}"
+                elif data.get("state") == "error":
+                    message = f"❌ {message}"
 
             if data.get("state") == "running":
                 st.session_state.status_container.markdown(
-                    f"<div class='fixed-status'>"
-                    f"<div class='status-text'>"
-                    f"{data.get('message', 'Processing...')} ({progress}%)</div>"
-                    f"<div class='progress-bar running'>"
-                    f"<div class='progress-bar-fill' style='width: {progress}%;'></div></div>"
-                    f"</div>",
+                    f"""<div class="centered-spinner">
+                        <div class="spinner-text">{message} ({progress}%)</div>
+                        <div class="spinner"></div>
+                    </div>""",
                     unsafe_allow_html=True
                 )
             elif data.get("state") == "complete":
                 st.session_state.status_container.markdown(
-                    f"<div class='fixed-status'>"
-                    f"<div class='status-text'>"
-                    f"{data.get('message', 'Complete')} (100%)</div>"
-                    f"<div class='progress-bar complete'>"
-                    f"<div class='progress-bar-fill' style='width: 100%;'></div></div>"
-                    f"</div>",
+                    f"""<div class="centered-spinner">
+                        <div class="spinner-text">{message} (100%)</div>
+                        <div class="spinner"></div>
+                    </div>""",
                     unsafe_allow_html=True
                 )
                 # Clear after a short delay
@@ -958,12 +1029,10 @@ Would you like to know more about any specific aspect of the system?
                 del st.session_state.status_container
             elif data.get("state") == "error":
                 st.session_state.status_container.markdown(
-                    f"<div class='fixed-status'>"
-                    f"<div class='status-text'>"
-                    f"{data.get('message', 'Error')} (0%)</div>"
-                    f"<div class='progress-bar error'>"
-                    f"<div class='progress-bar-fill' style='width: 0%;'></div></div>"
-                    f"</div>",
+                    f"""<div class="centered-spinner" style="border-color: #e74c3c;">
+                        <div class="spinner-text" style="color: #e74c3c;">{message}</div>
+                        <div class="spinner" style="border-left-color: #e74c3c;"></div>
+                    </div>""",
                     unsafe_allow_html=True
                 )
                 # Clear after a short delay

@@ -42,7 +42,7 @@ class CorrelationHandler(BaseHandler):
         """
         try:
             message_bus.publish("status_update", {
-                "message": f"Starting species-HCI correlation analysis for {country_code}...",
+                "message": f"🔍 Starting species-HCI correlation analysis for {country_code}...",
                 "state": "running",
                 "progress": 0
             })
@@ -151,7 +151,7 @@ class CorrelationHandler(BaseHandler):
             )
 
             message_bus.publish("status_update", {
-                "message": "Executing database query...",
+                "message": "🔎 Executing database query...",
                 "state": "running",
                 "progress": 30
             })
@@ -159,7 +159,7 @@ class CorrelationHandler(BaseHandler):
             results = query_job.result()
 
             message_bus.publish("status_update", {
-                "message": "Processing correlation results...",
+                "message": "📊 Processing correlation results...",
                 "state": "running",
                 "progress": 60
             })
@@ -181,7 +181,7 @@ class CorrelationHandler(BaseHandler):
 
             if handle_finishing:
                 message_bus.publish("status_update", {
-                    "message": "Correlation analysis complete",
+                    "message": "✅ Correlation analysis complete",
                     "state": "complete",
                     "progress": 100
                 })
@@ -192,7 +192,7 @@ class CorrelationHandler(BaseHandler):
 
         except Exception as e:
             message_bus.publish("status_update", {
-                "message": f"Error in correlation analysis: {str(e)}",
+                "message": f"❌ Error in correlation analysis: {str(e)}",
                 "state": "error"
             })
             self.logger.error("Error fetching correlation data: %s", str(e), exc_info=True)
@@ -247,7 +247,7 @@ class CorrelationHandler(BaseHandler):
         """
         try:
             message_bus.publish("status_update", {
-                "message": f"Analyzing correlations for {status} species...",
+                "message": f"🔍 Analyzing correlations for {status} species...",
                 "state": "running",
                 "progress": 0
             })
@@ -350,7 +350,7 @@ class CorrelationHandler(BaseHandler):
             )
 
             message_bus.publish("status_update", {
-                "message": "Executing database query...",
+                "message": "🔎 Executing database query...",
                 "state": "running",
                 "progress": 40
             })
@@ -358,7 +358,7 @@ class CorrelationHandler(BaseHandler):
             results = query_job.result()
 
             message_bus.publish("status_update", {
-                "message": "Processing correlation results...",
+                "message": "📊 Processing correlation results...",
                 "state": "running",
                 "progress": 60
             })
@@ -377,7 +377,7 @@ class CorrelationHandler(BaseHandler):
                 })
             if handle_finishing:
                 message_bus.publish("status_update", {
-                    "message": "Analysis complete",
+                    "message": "✅ Analysis complete",
                     "state": "complete",
                     "progress": 100
                 })
@@ -388,7 +388,7 @@ class CorrelationHandler(BaseHandler):
 
         except Exception as e:
             message_bus.publish("status_update", {
-                "message": f"Error analyzing correlations: {str(e)}",
+                "message": f"❌ Error analyzing correlations: {str(e)}",
                 "state": "error"
             })
             self.logger.error(
@@ -420,7 +420,7 @@ class CorrelationHandler(BaseHandler):
         """
         try:
             message_bus.publish("status_update", {
-                "message": "Starting species correlation analysis...",
+                "message": "🔍 Starting species correlation analysis...",
                 "state": "running",
                 "progress": 0
             })
@@ -459,7 +459,7 @@ class CorrelationHandler(BaseHandler):
                 raise ValueError("Either country_code or conservation_status must be provided")
 
             message_bus.publish("status_update", {
-                "message": "Fetching correlation data...",
+                "message": "🔎 Fetching correlation data...",
                 "state": "running",
                 "progress": 30
             })
@@ -504,7 +504,7 @@ class CorrelationHandler(BaseHandler):
             analysis = self.send_to_llm(prompt)
 
             message_bus.publish("status_update", {
-                "message": "Analysis complete",
+                "message": "✅ Analysis complete",
                 "state": "complete",
                 "progress": 100
             })
@@ -517,7 +517,7 @@ class CorrelationHandler(BaseHandler):
 
         except Exception as e:
             message_bus.publish("status_update", {
-                "message": f"Error in analysis: {str(e)}",
+                "message": f"❌ Error in analysis: {str(e)}",
                 "state": "error"
             })
             self.logger.error(

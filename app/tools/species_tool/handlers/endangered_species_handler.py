@@ -37,7 +37,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             kingdom_name = content['kingdom_name']
 
             message_bus.publish("status_update", {
-                "message": f"Fetching endangered classes for {kingdom_name} kingdom...",
+                "message": f"🔍 Fetching endangered classes for {kingdom_name} kingdom...",
                 "state": "running",
                 "progress": 0
             })
@@ -70,7 +70,7 @@ class EndangeredSpeciesHandler(BaseHandler):
 
             # Processing results
             message_bus.publish("status_update", {
-                "message": "Processing results...",
+                "message": "📊 Processing results...",
                 "state": "running",
                 "progress": 70
             })
@@ -82,7 +82,7 @@ class EndangeredSpeciesHandler(BaseHandler):
                 results.append(formatted_entry)
 
             message_bus.publish("status_update", {
-                "message": "Data retrieved successfully",
+                "message": "✅ Data retrieved successfully",
                 "state": "complete",
                 "progress": 100
             })
@@ -131,34 +131,28 @@ class EndangeredSpeciesHandler(BaseHandler):
             clazz = content.get('class_name') or content.get('animal_class')
 
             message_bus.publish("status_update", {
-                "message": f"Fetching endangered orders for {clazz} class...",
+                "message": f"🔍 Fetching endangered orders for class...",
                 "state": "running",
                 "progress": 0
             })
 
-            self.logger.info("Fetching families for classes from BigQuery")
-
+            self.logger.info("Fetching orders for class from BigQuery")
             client = bigquery.Client(
                 project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             )
             query = """
-                SELECT order_name, count(order_name) as cnt
+                SELECT
+                    order_name,
+                    COUNT(DISTINCT CONCAT(genus_name, ' ', species_name)) as cnt
                 FROM `{project_id}.biodiversity.endangered_species`
-                WHERE LOWER(class) = LOWER(@class_name)
-                    AND order_name IS NOT NULL
+                WHERE class_name = @class_name
                 GROUP BY order_name
-                ORDER BY order_name
+                ORDER BY cnt DESC
             """
-
-            query = self.build_query(
-                query,
-                where_clause=""
-            )
-
-            parameters = self.get_parameters(
-                class_name=clazz
-            )
-
+            query = self.build_query(query)
+            parameters = [
+                bigquery.ScalarQueryParameter("class_name", "STRING", clazz)
+            ]
             job_config = bigquery.QueryJobConfig(query_parameters=parameters)
             query_job = client.query(
                 query,
@@ -166,7 +160,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             )
 
             message_bus.publish("status_update", {
-                "message": "Processing results...",
+                "message": "📊 Processing results...",
                 "state": "running",
                 "progress": 70
             })
@@ -178,7 +172,7 @@ class EndangeredSpeciesHandler(BaseHandler):
                 results.append(formatted_entry)
 
             message_bus.publish("status_update", {
-                "message": "Data retrieved successfully",
+                "message": "✅ Data retrieved successfully",
                 "state": "complete",
                 "progress": 100
             })
@@ -230,7 +224,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             order_name = content.get('order_name') or content.get('order')
 
             message_bus.publish("status_update", {
-                "message": f"Fetching endangered families for {order_name} order...",
+                "message": f"🔍 Fetching endangered families for {order_name} order...",
                 "state": "running",
                 "progress": 0
             })
@@ -257,7 +251,7 @@ class EndangeredSpeciesHandler(BaseHandler):
                    for row in query_job]
 
             message_bus.publish("status_update", {
-                "message": "Data retrieved successfully",
+                "message": "✅ Data retrieved successfully",
                 "state": "complete",
                 "progress": 100
             })
@@ -306,7 +300,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             conservation_status = content.get('conservation_status')
 
             message_bus.publish("status_update", {
-                "message": f"Fetching endangered species for {family_name} family...",
+                "message": f"🔍 Fetching endangered species for {family_name} family...",
                 "state": "running",
                 "progress": 0
             })
@@ -325,7 +319,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             query_job = client.query(query, job_config=job_config)
 
             message_bus.publish("status_update", {
-                "message": "Processing results...",
+                "message": "📊 Processing results...",
                 "state": "running",
                 "progress": 70
             })
@@ -335,7 +329,7 @@ class EndangeredSpeciesHandler(BaseHandler):
                    for row in query_job]
 
             message_bus.publish("status_update", {
-                "message": "Data retrieved successfully",
+                "message": "✅ Data retrieved successfully",
                 "state": "complete",
                 "progress": 100
             })
@@ -390,7 +384,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             conservation_status = content.get('conservation_status')
 
             message_bus.publish("status_update", {
-                "message": f"Fetching endangered species for country {country_code}...",
+                "message": f"🔍 Fetching endangered species for country {country_code}...",
                 "state": "running",
                 "progress": 0
             })
@@ -409,7 +403,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             formatted_data = self._format_hierarchy_data(results_data)
 
             message_bus.publish("status_update", {
-                "message": "Data retrieved successfully",
+                "message": "✅ Data retrieved successfully",
                 "state": "complete",
                 "progress": 100
             })

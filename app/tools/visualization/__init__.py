@@ -10,7 +10,6 @@ from .renderer_registry import RendererRegistry
 
 __all__ = ['ChartFactory', 'RendererRegistry']
 
-logging.info(f"[PID: {os.getpid()}]  visualization/__init__.py completed.")
-
+logging.info("[PID: %s] visualization/__init__.py completed.", os.getpid())
 
 # At the end of app/tools/visualization/renderers/__init__.py
