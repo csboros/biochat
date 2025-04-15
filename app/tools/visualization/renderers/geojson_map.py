@@ -25,7 +25,10 @@ class GeoJsonMapRenderer(BaseChartRenderer):
         Render a GeoJSON map visualization.
 
         Args:
-            data: JSON string containing array of GeoJSON features
+            data: Can be:
+                - JSON string containing array of GeoJSON features
+                - List of dictionaries with lat/long coordinates
+                - GeoJSON object
             parameters: Additional visualization parameters
             cache_buster: Optional cache buster string
 
@@ -51,18 +54,25 @@ class GeoJsonMapRenderer(BaseChartRenderer):
                 view_state = self.default_view_state
 
             # Extract features with IUCN category
-            features = [
-                {
-                    "type": "Feature",
-                    "geometry": item["geojson"],
-                    "properties": {
-                        "name": item["name"],
-                        "category": item["category"],
-                        "color": self._get_iucn_color(item["category"]),
-                    },
-                }
-                for item in geojson_data
-            ]
+            features = []
+            # Check if data is already in GeoJSON format
+            if isinstance(geojson_data, dict) and "features" in geojson_data:
+                features = geojson_data["features"]
+            # Otherwise, try to construct features from the data
+            else:
+                for item in geojson_data:
+                    if isinstance(item, dict):
+                        feature = {
+                            "type": "Feature",
+                            "geometry": item.get("geojson", item.get("geometry", {})),
+                            "properties": {
+                                "name": item.get("name", "Unknown"),
+                                "category": item.get("category", "Not Reported"),
+                                "color": self._get_iucn_color(item.get("category", "Not Reported")),
+                            },
+                        }
+                        features.append(feature)
+
             geojson_layer = {"type": "FeatureCollection", "features": features}
 
             col1, col2 = st.columns([3, 1])  # 3:1 ratio for map:legend

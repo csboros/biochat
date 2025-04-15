@@ -37,7 +37,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             kingdom_name = content['kingdom_name']
 
             message_bus.publish("status_update", {
-                "message": f"🔍 Fetching endangered classes for {kingdom_name} kingdom...",
+                "message": f"'🦁' Fetching endangered classes for {kingdom_name} kingdom...",
                 "state": "running",
                 "progress": 0
             })
@@ -131,7 +131,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             clazz = content.get('class_name') or content.get('animal_class')
 
             message_bus.publish("status_update", {
-                "message": f"🔍 Fetching endangered orders for class...",
+                "message": "🦁 Fetching endangered orders for class...",
                 "state": "running",
                 "progress": 0
             })
@@ -184,7 +184,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             raise
         except google.api_core.exceptions.GoogleAPIError as e:
             message_bus.publish("status_update", {
-                "message": f"Database error: {str(e)}",
+                "message": f"'❌'Database error: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -192,7 +192,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             raise
         except (TypeError, ValueError) as e:
             message_bus.publish("status_update", {
-                "message": f"Invalid input: {str(e)}",
+                "message": f"'❌' Invalid input: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -224,7 +224,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             order_name = content.get('order_name') or content.get('order')
 
             message_bus.publish("status_update", {
-                "message": f"🔍 Fetching endangered families for {order_name} order...",
+                "message": f"'🐘' Fetching endangered families for {order_name} order...",
                 "state": "running",
                 "progress": 0
             })
@@ -270,7 +270,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             raise
         except (TypeError, ValueError) as e:
             message_bus.publish("status_update", {
-                "message": f"Invalid input: {str(e)}",
+                "message": f"'❌' Invalid input: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -300,7 +300,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             conservation_status = content.get('conservation_status')
 
             message_bus.publish("status_update", {
-                "message": f"🔍 Fetching endangered species for {family_name} family...",
+                "message": f"'🐘' Fetching endangered species for {family_name} family...",
                 "state": "running",
                 "progress": 0
             })
@@ -338,7 +338,7 @@ class EndangeredSpeciesHandler(BaseHandler):
 
         except google.api_core.exceptions.GoogleAPIError as e:
             message_bus.publish("status_update", {
-                "message": f"Database error: {str(e)}",
+                "message": f"'❌' Database error: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -346,7 +346,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             raise
         except (TypeError, ValueError) as e:
             message_bus.publish("status_update", {
-                "message": f"Invalid input: {str(e)}",
+                "message": f"'❌' Invalid input: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -412,7 +412,7 @@ class EndangeredSpeciesHandler(BaseHandler):
 
         except google.api_core.exceptions.GoogleAPIError as e:
             message_bus.publish("status_update", {
-                "message": f"Database error: {str(e)}",
+                "message": f"'❌'Database error: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -420,7 +420,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             raise
         except (TypeError, ValueError) as e:
             message_bus.publish("status_update", {
-                "message": f"Invalid input: {str(e)}",
+                "message": f"'❌' Invalid input: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -902,7 +902,7 @@ class EndangeredSpeciesHandler(BaseHandler):
 
         except Exception as e:
             message_bus.publish("status_update", {
-                "message": f"Error processing request: {str(e)}",
+                "message": f"'❌' Error processing request: {str(e)}",
                 "state": "error",
                 "progress": 0
             })
@@ -931,14 +931,14 @@ class EndangeredSpeciesHandler(BaseHandler):
                 raise BusinessException("Species name is required")
 
             message_bus.publish("status_update", {
-                "message": f"Fetching yearly occurrences for {species_name}...",
+                "message": f"'🐘' Fetching yearly occurrences for {species_name}...",
                 "state": "running",
                 "progress": 0
             })
 
             # Translate name and validate
             message_bus.publish("status_update", {
-                "message": "Validating species name...",
+                "message": "'🐘' Validating species name...",
                 "state": "running",
                 "progress": 20
             })
@@ -948,7 +948,7 @@ class EndangeredSpeciesHandler(BaseHandler):
             )
             if "error" in translated or not translated.get("scientific_name"):
                 message_bus.publish("status_update", {
-                    "message": f"Could not find valid scientific name for: {species_name}",
+                    "message": f"'❌' Could not find valid scientific name for: {species_name}",
                     "state": "error",
                     "progress": 0
                 })

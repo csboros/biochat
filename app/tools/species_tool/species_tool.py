@@ -516,9 +516,8 @@ class SpeciesTool(Tool):
                             "description": (
                                 "type of chart to display. For species distribution "
                                 "visualization, use 'HEXAGON_MAP' (default) or 'HEATMAP'. "
-                                "Use 'GEOJSON_MAP' only for geographic boundary visualization."
                             ),
-                            "enum": ["HEATMAP", "HEXAGON_MAP", "GEOJSON_MAP"]
+                            "enum": ["HEATMAP", "HEXAGON_MAP"]
                         },
                     },
                     "required": ["species_name", "chart_type"],

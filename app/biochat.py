@@ -17,7 +17,6 @@ from vertexai.preview.generative_models import (
     GenerativeModel,
     Part,
     Tool,
-    ResponseValidationError,
     FinishReason,
     ToolConfig
 )
@@ -250,7 +249,7 @@ Key definitions and concepts:
                 self.chat = st.session_state.chat_session
 
             self.generation_config = GenerationConfig(temperature=0.01)
-            self.response_handler = ResponseHandler()
+            self.response_handler = ResponseHandler(self.func_handler)
 
             # Initialize the function selector
             self.function_selector = FunctionSelector(self.func_handler)
@@ -490,8 +489,7 @@ Key definitions and concepts:
             messages_to_display = list(st.session_state.messages)
 
             # Display each message using the stable copy
-            # No need for enumerate if index 'i' is not used elsewhere
-            for message in messages_to_display:
+            for i, message in enumerate(messages_to_display):
                 role = message.get("role", "")
                 content = message.get("content", {})
 
@@ -511,8 +509,6 @@ Key definitions and concepts:
 
                                 if df is not None and chart_type is not None:
                                     # Generate a unique string ID based on the chart data
-                                    # This avoids using indices that might cause errors
-                                    # Using hash of string representation for simplicity
                                     chart_id = f"chart_{hash(str(df))}_{chart_type}"
                                     # Pass the stable chart_id instead of the loop index
                                     self.render_cached_chart(df, chart_type, parameters, chart_id)
@@ -525,7 +521,7 @@ Key definitions and concepts:
                             st.image(content["image"])
         except Exception as e:
             # Catch any other errors that might occur
-            self.logger.error(f"Error displaying message history: {str(e)}")
+            self.logger.error("Error displaying message history: %s", str(e))
 
     def _stream_text(self, text: str):
         """Generator function to stream text character by character."""
@@ -760,15 +756,7 @@ Key definitions and concepts:
         return function_calls
 
     def process_function_calls(self, function_calls):
-        """
-        Processes function calls and their responses.
-
-        Args:
-            function_calls (list): List of function calls to process
-
-        Returns:
-            Response: New response from Gemini if needed
-        """
+        """Processes function calls and their responses."""
         func_parts = []
 
         # Process function calls with the verified tools
@@ -781,9 +769,20 @@ Key definitions and concepts:
                     self.logger.warning("No response for function call: %s", call['name'])
                     continue
 
-                response = self.response_handler.handle_function_call(
-                    call
-                )
+                # Special fast path for help function to improve UI responsiveness
+                if call['name'] == 'help' and 'response' in call and call['response'].get('success'):
+                    response_data = call['response'].get('data', {})
+                    if 'text' in response_data:
+                        # Directly add to message history without going through response handler
+                        message_content = {
+                            "text": response_data['text']
+                        }
+                        self.add_message_to_history("assistant", message_content)
+                        # Return an empty list to indicate we've handled this function call
+                        return []
+
+                # Standard path for other function calls
+                response = self.response_handler.handle_function_call(call)
 
                 # Validate the response before adding it
                 if response:
@@ -999,7 +998,16 @@ Would you like to know more about any specific aspect of the system?
             message = data.get("message", "Processing...")
 
             # If message doesn't already have an emoji, add a default one based on state
-            if not any(char in message for char in ['🔍', '🔎', '📊', '✅', '❌', '🌡️', '📈', '🎨']):
+            if not any(char in message for char in ['🔍', '🔎', '📊', '✅', '❌', '🌡️', '📈', '🎨',
+                                                    '⏳', '🦊', '👨‍🦰', '🌍', '🦁', '🐘', '🌳', '🌲',
+                                                    '🏞️', '🗺️', '🧪', '🧬', '🔬', '🧮', '📉', '📝',
+                                                    '🤖', '🖼️', '📚', '🔧', '🔄', '📄', '🔍', '🔎',
+                                                    '📋', '🔗', '📊', '📈', '📉', '📌', '📎', '📂',
+                                                    '📁', '📃', '📜', '📑', '📒', '📓', '📔', '📕',
+                                                    '📖', '📗', '📘', '📙', '📚', '📤', '📥', '📦',
+                                                    '📫', '📬', '📭', '📮', '📯', '📰', '📱', '📲',
+                                                    '📳', '📴', '📵', '📶', '📷', '📸', '📹', '📺',
+                                                    '📻', '📼', '📽️', '📿', '🔀', '🔁', '🔂', '🔃']):
                 if data.get("state") == "running":
                     message = f"⏳ {message}"
                 elif data.get("state") == "complete":

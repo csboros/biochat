@@ -36,7 +36,6 @@ class FunctionSelector:
         # --- Define functions to exclude from the UI ---
         excluded_functions = {
             'help',
-            'classify_help_category',
             'translate_to_common_name',
             'translate_to_scientific_name',
             'google_search',

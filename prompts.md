@@ -42,10 +42,12 @@
 - List the endangered species for Germany with status Critically Endangered
 - Show me endangered families in the order Primates
 - What's the breakdown of  endangered species in Brazil by conservation status?
-- Analyse habitat  distribution of Bornean orangutan
 
- ![Screenshot](screenshots/screenshot_8_1.png)
- ![Screenshot](screenshots/screenshot_8_2.png)
+## Earth Engine Analysis
+- Analyse habitat distribution of Bornean orangutan
+
+  ![Screenshot](screenshots/screenshot_8_1.png)
+  ![Screenshot](screenshots/screenshot_8_2.png)
 
 - How does orangutan distribution relate to forest cover?
 
@@ -57,17 +59,17 @@
 
 - Analyze climate for Gorilla beringei
 
- ![Screenshot](screenshots/screenshot_8_5.png)
+  ![Screenshot](screenshots/screenshot_8_5.png)
 
- - Show human modification correlation for Bornean Orangutan
-
+- Show human modification correlation for Bornean Orangutan
 
 - Analyze the correlation between human coexistence index and critically endangered species
 
- ![Screenshot](screenshots/screenshot_8_6.png)
+  ![Screenshot](screenshots/screenshot_8_6.png)
 
-- Analyze the correlation between human coexistence index  and species in Kenya
- ![Screenshot](screenshots/screenshot_8_7.png)
+- Analyze the correlation between human coexistence index and species in Kenya
+
+  ![Screenshot](screenshots/screenshot_8_7.png)
 
 
 ## Human Impact Analysis

@@ -25,6 +25,7 @@ class EarthEngineHandler(BaseHandler):
 
     def __init__(self):
         """Initialize the EarthEngineHandler."""
+        super().__init__()  # Call the parent class's __init__ method
         self.logger = logging.getLogger("BioChat." + self.__class__.__name__)
         self.alpha_shape_utils = AlphaShapeUtils()
 

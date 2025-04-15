@@ -238,4 +238,3 @@ class BaseHandler:
             self.logger.error("Error determining country code: %s", str(e))
             raise BusinessException("Country code could not be determined") from e
 
-

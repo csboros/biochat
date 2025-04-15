@@ -4,10 +4,10 @@ Function handler that consolidates all tool definitions and makes them available
 
 from typing import Dict, Any, List, Union
 from enum import Enum
+import logging
 from vertexai.generative_models import FunctionDeclaration
 from app.tools.message_bus import message_bus
 from app.tools.help_command_handler import HelpCommandHandler
-import logging
 
 from .species_tool import SpeciesTool
 from .search_tool import SearchTool
@@ -78,8 +78,7 @@ class FunctionHandler:
             self.logger.error("Failed to initialize EarthEngineTool: %s", str(e))
             self.earth_engine_tool = None
 
-        self.help_handler = HelpCommandHandler()
-        self.help_handler.function_handler = self  # Set the function handler reference
+        self.help_handler = HelpCommandHandler()  # Initialize without tools first
 
         # Store tools in a dictionary for easy access
         self._tools_dict = {
@@ -89,6 +88,10 @@ class FunctionHandler:
             ToolName.EARTH_ENGINE.value: self.earth_engine_tool,
             ToolName.HELP.value: self.help_handler
         }
+
+        # Later, after all tools are initialized:
+        self.help_handler.set_tools(list(self._tools_dict.values()))
+
 
         # Mark as initialized
         self._initialized = True
@@ -115,48 +118,19 @@ class FunctionHandler:
         # Add help function declaration
         help_declaration = FunctionDeclaration(
             name="help",
-            description="Get help about available tools, functions, and system capabilities",
+            description="Get help about available tools, functions, and system capabilities. Use this for any questions about what the system can do, how to use it, or to learn about available features.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "type": {
-                        "type": "string",
-                        "description": "Type of help requested (general, category, tool, or function)",
-                        "enum": ["general", "category", "tool", "function"]
-                    },
                     "category": {
                         "type": "string",
-                        "description": "Category name when requesting category-specific help"
-                    },
-                    "tool": {
-                        "type": "string",
-                        "description": "Tool name when requesting tool-specific help"
-                    },
-                    "function": {
-                        "type": "string",
-                        "description": "Function name when requesting function-specific help"
+                        "description": "Category name or topic to get help about"
                     }
                 }
             }
         )
 
-        # Add category classification declaration
-        classify_category_declaration = FunctionDeclaration(
-            name="classify_help_category",
-            description="Classify a help request into the appropriate category",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The help request to classify"
-                    }
-                },
-                "required": ["query"]
-            }
-        )
-
-        all_declarations.extend([help_declaration, classify_category_declaration])
+        all_declarations.append(help_declaration)
 
         # Collect declarations from each tool - with null checks
         if self.species_tool is not None:
@@ -202,7 +176,6 @@ class FunctionHandler:
         """
         all_mappings = {
             "help": self.handle_help_command,
-            "classify_help_category": self.classify_help_category,
         }
 
         # Collect mappings from each tool - with null checks
@@ -304,33 +277,25 @@ class FunctionHandler:
 
     def handle_help_command(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Handle help-related commands and queries.
+        Handle help command requests.
 
         Args:
             arguments: Dictionary containing help command arguments
 
         Returns:
-            Dictionary containing help information
+            Dictionary containing the help response
         """
-        return self.help_handler.handle_help_command(arguments)
+        self.logger.info("Handling help command with arguments: %s", arguments)
 
-    def classify_help_category(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Classify a help request into the appropriate category.
+        # If no type is specified, default to general help
+        if 'type' not in arguments:
+            arguments['type'] = 'general'
 
-        Args:
-            arguments: Dictionary containing the query to classify
+        # Process the help request using the help handler
+        result = self.help_handler.handle_help_command(arguments)
+        self.logger.info("Help command result: %s", result.get('success'))
 
-        Returns:
-            Dictionary containing the classified category
-        """
-        query = arguments.get('query', '').lower()
-
-        # Return the classification result
-        return {
-            'success': True,
-            'category': self.help_handler.parse_natural_language_query(query)
-        }
+        return result
 
     def get_system_overview(self) -> str:
         """
@@ -412,5 +377,4 @@ class FunctionHandler:
             Dictionary containing available functions information
         """
         return self.help_handler.handle_help_command({'type': 'general'})
-
 

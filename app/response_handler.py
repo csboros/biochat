@@ -16,10 +16,25 @@ from app.tools.visualization.chart_types import ChartType
 class ResponseHandler:
     """Handles processing of different types of responses from the chat interface."""
 
-    def __init__(self):
-        """Initialize the response handler."""
+    def __init__(self, function_handler=None):
+        """
+        Initialize the response handler.
+
+        Args:
+            function_handler: The function handler instance to use for help commands
+        """
         self.logger = logging.getLogger("BioChat.ResponseHandler")
-        self.function_handler = None
+        self.function_handler = function_handler
+
+    def set_function_handler(self, function_handler):
+        """
+        Set the function handler after initialization.
+
+        Args:
+            function_handler: The function handler instance to use
+        """
+        self.function_handler = function_handler
+
     def add_message_to_history(self, role, content):
         """Add a message to the session state history."""
         st.session_state.messages.append({"role": role, "content": content})
@@ -592,13 +607,18 @@ class ResponseHandler:
             call (dict): The function call details
         """
         try:
+            print(f"DEBUG: Handling function call: {call['name']} with params: {call.get('params', {})}")
+
+            # Special handling for help commands
+            if call['name'] == 'help':
+                print(f"DEBUG: Processing help command")
+                help_result = self.handle_help_command(call.get('params', {}))
+                print(f"DEBUG: Help result: {help_result}")
+                # No need to return anything, the message has been added to history
+                return None
+
             handlers = {
-                'help': lambda c: self.handle_help_command({
-                    'type': 'category' if c.get('params', {}).get('category') else 'general',
-                'category': c.get('params', {}).get('category'),
-                'tool': c.get('params', {}).get('tool'),
-                'function': c.get('params', {}).get('function')
-            }),
+             'help': lambda c: self.handle_help_command(c.get('params', {})),
             'get_yearly_occurrences': lambda c: (
                 self.process_yearly_observations(
                     c['response'], c['params']
@@ -721,6 +741,7 @@ class ResponseHandler:
 
             # Handle simple text response functions
             simple_text_functions = (
+                'help',  # Add help to simple text functions
                 'endangered_species_by_conservation_status',
                 'endangered_orders_for_class',
                 'endangered_classes_for_kingdom'
@@ -764,106 +785,121 @@ class ResponseHandler:
             )
             return None
 
-
     def handle_help_command(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle help-related commands and queries.
+
+        Args:
+            arguments: Dictionary containing help command arguments
+
+        Returns:
+            Dictionary containing the help response
         """
         try:
-            help_type = arguments.get('type', 'general')
-            result = {"success": False, "error": "Invalid request"}
+            # Check if function_handler is available
+            if self.function_handler is None:
+                error_message = "Help system is not fully initialized"
+                self.add_message_to_history("assistant", {"text": error_message})
+                return {"success": False, "error": error_message}
 
-            if help_type == 'general':
-                overview = self.get_system_overview()
-                self.add_message_to_history("assistant", {"text": overview})
-                result = {"success": True, "data": {"text": overview}}
-            elif help_type in ['category', 'tool', 'function']:
-                # Validate required parameters
-                if help_type == 'function' and (not arguments.get('tool') or not arguments.get('function')):
-                    result = {"success": False, "error": "Both tool and function names are required"}
-                elif help_type in ['category', 'tool'] and not arguments.get(help_type):
-                    result = {"success": False, "error": f"{help_type.capitalize()} name is required"}
+            # Add debug logging
+            print(f"DEBUG: Handling help command with arguments: {arguments}")
+
+            # Get help info from function handler
+            help_info = self.function_handler.help_handler.handle_help_command(arguments)
+            print(f"DEBUG: Got help info: {help_info}")
+
+            if help_info.get('success'):
+                # Check if data contains text directly
+                if 'data' in help_info and 'text' in help_info['data']:
+                    print(f"DEBUG: Found text in data: {help_info['data']['text'][:100]}...")
+                    self.add_message_to_history("assistant", {"text": help_info['data']['text']})
+                    return help_info
+                # If there's no text in data, we need to format the data for display
+                elif 'data' in help_info:
+                    print(f"DEBUG: Formatting data: {help_info['data']}")
+                    formatted_text = self._format_help_data(help_info['data'])
+                    print(f"DEBUG: Formatted text: {formatted_text[:100]}...")
+                    self.add_message_to_history("assistant", {"text": formatted_text})
+                    return help_info
+                # If there's no data at all, just show the message
+                elif 'message' in help_info:
+                    print(f"DEBUG: Using message: {help_info['message']}")
+                    self.add_message_to_history("assistant", {"text": help_info['message']})
+                    return help_info
                 else:
-                    # Get help info from function handler
-                    help_info = self.function_handler.help_handler.handle_help_command(arguments)
-                    if help_info.get('success'):
-                        self.add_message_to_history("assistant", {"text": help_info['data']['text']})
-                    result = help_info
-
-            return result
+                    print(f"DEBUG: No text, data, or message found in help_info")
+                    self.add_message_to_history("assistant", {"text": "Help information retrieved successfully."})
+                    return help_info
+            else:
+                # Handle error case
+                error_message = help_info.get('error', 'Unknown error in help system')
+                print(f"DEBUG: Error in help system: {error_message}")
+                self.add_message_to_history("assistant", {"text": error_message})
+                return help_info
 
         except Exception as e:
             self.logger.error("Error handling help command: %s", str(e), exc_info=True)
+            print(f"DEBUG: Exception in handle_help_command: {str(e)}")
             error_message = f"Error processing help request: {str(e)}"
             self.add_message_to_history("assistant", {"text": error_message})
             return {"success": False, "error": error_message}
 
-    def get_system_overview(self) -> str:
+    def _format_help_data(self, data):
         """
-        Get a comprehensive overview of the system's capabilities.
+        Format help data into a readable text format.
+
+        Args:
+            data: The help data to format
 
         Returns:
-            str: A formatted string describing the system's capabilities
+            A formatted string representation of the help data
         """
-        overview = """# Biodiversity Chat System Overview
+        if isinstance(data, str):
+            return data
 
-This system provides comprehensive tools for analyzing and understanding biodiversity data. Here are the main capabilities:
+        if isinstance(data, dict):
+            result = ""
 
-## 1. Species Analysis
-- Search and retrieve information about species
-- Get species occurrence data
-- Analyze species distribution patterns
-- View species images
-- Track yearly observation trends
+            if 'tools' in data:
+                # Format tools data
+                result = "# Available Tools\n\n"
+                for tool in data['tools']:
+                    result += f"## {tool['name']}\n"
+                    if 'description' in tool:
+                        result += f"{tool['description']}\n\n"
+                    if 'functions' in tool:
+                        result += "### Functions:\n"
+                        for func in tool['functions']:
+                            result += f"- **{func['name']}**: {func.get('description', 'No description available')}\n"
+                    result += "\n"
+                return result
 
-## 2. Habitat Analysis
-- Analyze habitat distribution
-- Evaluate habitat connectivity
-- Study habitat fragmentation
-- Assess forest dependency
-- Analyze topography and climate
+            if 'categories' in data:
+                # Format category help data
+                result = "# Available Categories\n\n"
+                for category in data['categories']:
+                    result += f"## {category['name']}\n"
+                    if 'description' in category:
+                        result += f"{category['description']}\n\n"
+                return result
 
-## 3. Conservation Status
-- Get endangered species information
-- Analyze conservation status by country
-- Track species by conservation category
-- Monitor protected areas
+            # If we have other keys, just format them generically
+            for key, value in data.items():
+                result += f"# {key.capitalize()}\n\n"
+                if isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, dict) and 'name' in item:
+                            result += f"## {item['name']}\n"
+                            if 'description' in item:
+                                result += f"{item['description']}\n\n"
+                        else:
+                            result += f"- {item}\n"
+                else:
+                    result += f"{value}\n\n"
 
-## 4. Human Impact Analysis
-- Calculate Human Coexistence Index (HCI)
-- Analyze species-HCI correlations
-- Study human modification effects
-- Evaluate population density impacts
+            return result if result else str(data)
 
-## 5. Geographic Analysis
-- Country-specific analysis
-- Protected area analysis
-- Multi-country comparisons
-- Geographic distribution mapping
-
-## 6. Data Visualization
-- Interactive maps
-- Statistical charts
-- Correlation plots
-- Distribution visualizations
-- Time series analysis
-
-## Example Queries
-1. "Show me endangered species in Kenya"
-2. "What is the habitat distribution for African elephants?"
-3. "Analyze the correlation between human activity and species presence"
-4. "Show me species distribution in Serengeti National Park"
-5. "What is the forest dependency of gorillas?"
-
-For more specific information about any of these capabilities, you can ask:
-- "Help me with species analysis"
-- "Tell me about habitat analysis tools"
-- "What conservation status functions are available?"
-- "Show me human impact analysis capabilities"
-- "What geographic analysis can you do?"
-- "What visualization options are available?"
-
-Would you like to know more about any specific aspect of the system?
-"""
-        return overview
+        # For lists or other types
+        return str(data)
 
