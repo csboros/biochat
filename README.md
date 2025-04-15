@@ -2,6 +2,9 @@
 
 This is a Streamlit-based web application that provides an interactive chat interface for exploring biodiversity data, with a particular focus on endangered species. It uses Google's Vertex AI Gemini model for natural language processing and integrates with various biodiversity data sources.
 
+## Link to the Video
+https://appsolutelydigital.com/BioChat.mp4
+
 
 ### Key Features
 
@@ -178,7 +181,7 @@ export SERVICE_ACCOUNT="[your-service-principal]"
 
 gcloud secrets add-iam-policy-binding GOOGLE_API_KEY \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
-    --role="roles/secretmanager.secretAccessor"
+    --role="roles/secretmanager.secretAccessor"SEV
 
 gcloud secrets add-iam-policy-binding GOOGLE_CSE_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
@@ -224,3 +227,5 @@ gcloud run deploy biochat-app \
   --service-account="$SERVICE_ACCOUNT" \
   --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,GOOGLE_CSE_ID=GOOGLE_CSE_ID:latest,GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest,EARTH_ENGINE_CREDENTIALS=EARTH_ENGINE_CREDENTIALS:latest"
 ```
+
+
