@@ -47,6 +47,8 @@
 - Analyse habitat distribution of Bornean orangutan
 
   ![Screenshot](screenshots/screenshot_8_1.png)
+
+- Analyse habitat distribution of Bornean orangutan
   ![Screenshot](screenshots/screenshot_8_2.png)
 
 - How does orangutan distribution relate to forest cover?
@@ -63,6 +65,8 @@
 
 - Show human modification correlation for Bornean Orangutan
 
+## Human Coexistence Index
+
 - Analyze the correlation between human coexistence index and critically endangered species
 
   ![Screenshot](screenshots/screenshot_8_6.png)
@@ -71,8 +75,6 @@
 
   ![Screenshot](screenshots/screenshot_8_7.png)
 
-
-## Human Impact Analysis
 - Show me the terrestrial human coexistence index for Tanzania
 
   ![Screenshot](screenshots/screenshot_5.png)
@@ -86,11 +88,13 @@
 
   ![Screenshot](screenshots/screenshot_6.png)
 
-
 ## Edge cases
 - What is the current population of blue whales in the Pacific Ocean?
 - When was the last sighting of the Ivory-billed Woodpecker?
 - How many Sumatran Rhinos are left in the wild as of 2024?
 - What conservation efforts are being made to protect the Vaquita porpoise?
 - Which countries still have wild populations of Snow Leopards?
+
+## Link to the Video
+https://appsolutelydigital.com/BioChat.mp4
 
